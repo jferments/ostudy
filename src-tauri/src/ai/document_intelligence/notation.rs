@@ -1,14 +1,21 @@
-//! Writes a section's formulas, ions and powers the way its source prints them.
+//! Writes formulas, ions and powers the way the source prints them, in study
+//! guide sections and lessons.
 //!
 //! The source text keeps printed sub- and superscripts (HCO₃⁻, Ca²⁺), but a
 //! model often writes them flat (HCO3-, Ca2+). Each flat spelling of a word
 //! the source prints with marks is rewritten to the printed word. A spelling
 //! the source also uses unmarked, such as the H2 of an H2 receptor, is left
-//! as written, so nothing is guessed.
+//! as written, so nothing is guessed. A lesson's source is its knowledge
+//! catalog; after that, a lesson's remaining flat formulas are printed by the
+//! chemistry rules the guide layout uses, since no layout sets them later.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::document_study_guides::StudyGuideSectionContent;
+use serde_json::Value;
+
+use crate::{
+    document_study_guide_export::chemistry, document_study_guides::StudyGuideSectionContent,
+};
 
 /// Rewrites flat spellings in every text field of `section`; returns how many
 /// words changed.
@@ -29,6 +36,32 @@ pub(super) fn print_source_notation(
         }
     });
     count
+}
+
+/// Fields of a lesson answer that name things rather than teach them.
+const LESSON_NAME_FIELDS: &[&str] = &["kind", "callout", "timing", "style", "knowledgeUnitIds"];
+
+/// Prints the formulas in every text of a lesson answer, before it is decoded:
+/// first as `source_text` (its knowledge) prints them, then by the chemistry
+/// rules. Narration is printed too; speech reads it aloud as names.
+pub(super) fn print_lesson_notation(source_text: &str, answer: &mut Value) {
+    let words = printed_words(source_text);
+    visit_strings(answer, &mut |text| {
+        let (printed, _) = apply(text, &words);
+        *text = chemistry::printed(&printed);
+    });
+}
+
+fn visit_strings(value: &mut Value, visit: &mut impl FnMut(&mut String)) {
+    match value {
+        Value::String(text) => visit(text),
+        Value::Array(items) => items.iter_mut().for_each(|item| visit_strings(item, visit)),
+        Value::Object(fields) => fields
+            .iter_mut()
+            .filter(|(key, _)| !LESSON_NAME_FIELDS.contains(&key.as_str()))
+            .for_each(|(_, field)| visit_strings(field, visit)),
+        _ => {}
+    }
 }
 
 /// Flat spelling to printed word, for every word of `source` with a sub- or
@@ -289,5 +322,31 @@ mod tests {
             section.overview,
             "H2 blockers, B12, CA2+ and Ca²⁺ ions; a type 2 diabetes note."
         );
+    }
+
+    #[test]
+    fn prints_a_lesson_answer_from_its_knowledge_then_by_rule() {
+        let knowledge = "Parietal cells return HCO₃⁻ to the blood; H2 receptor blockers.";
+        let mut answer = serde_json::json!({
+            "title": "Acid and HCO3-",
+            "steps": [{
+                "blocks": [{"kind": "keyPoints", "items": ["Ca2+ and HCO3− move", "H2 receptor"]}],
+                "narration": "Bicarbonate, written HCO3-, leaves with CO2.",
+                "knowledgeUnitIds": ["K3"],
+                "check": {"timing": "after", "style": "recall", "prompt": "What carries H+?"}
+            }]
+        });
+        print_lesson_notation(knowledge, &mut answer);
+        assert_eq!(answer["title"], "Acid and HCO₃⁻");
+        let step = &answer["steps"][0];
+        assert_eq!(step["blocks"][0]["items"][0], "Ca²⁺ and HCO₃⁻ move");
+        assert_eq!(step["blocks"][0]["items"][1], "H2 receptor");
+        assert_eq!(
+            step["narration"],
+            "Bicarbonate, written HCO₃⁻, leaves with CO₂."
+        );
+        assert_eq!(step["knowledgeUnitIds"][0], "K3");
+        assert_eq!(step["check"]["prompt"], "What carries H⁺?");
+        assert_eq!(step["blocks"][0]["kind"], "keyPoints");
     }
 }

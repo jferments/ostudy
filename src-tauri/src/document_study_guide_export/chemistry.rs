@@ -86,9 +86,26 @@ fn species(text: &str) -> Vec<(usize, usize)> {
 }
 
 fn formula_pieces(text: &str) -> Vec<Piece> {
-    let chars = text.char_indices().collect::<Vec<_>>();
     let mut out = Vec::<Piece>::new();
     let mut plain_from = 0_usize;
+    for (start, end, formula) in formulas(text) {
+        push_text(&mut out, &text[plain_from..start]);
+        for piece in formula.pieces() {
+            match piece {
+                Piece::Text(value) => push_text(&mut out, &value),
+                other => out.push(other),
+            }
+        }
+        plain_from = end;
+    }
+    push_text(&mut out, &text[plain_from..]);
+    out
+}
+
+/// The formulas in `text`, each with the byte range it is written in.
+pub(crate) fn formulas(text: &str) -> Vec<(usize, usize, Formula<'_>)> {
+    let chars = text.char_indices().collect::<Vec<_>>();
+    let mut found = Vec::new();
     let mut index = 0_usize;
     while index < chars.len() {
         let (start, c) = chars[index];
@@ -96,14 +113,7 @@ fn formula_pieces(text: &str) -> Vec<Piece> {
         if boundary && c.is_ascii_uppercase() {
             if let Some((formula, end)) = formula_at(text, start) {
                 if !followed_by_name(&text[end..]) {
-                    push_text(&mut out, &text[plain_from..start]);
-                    for piece in formula {
-                        match piece {
-                            Piece::Text(value) => push_text(&mut out, &value),
-                            other => out.push(other),
-                        }
-                    }
-                    plain_from = end;
+                    found.push((start, end, formula));
                     while index < chars.len() && chars[index].0 < end {
                         index += 1;
                     }
@@ -113,8 +123,47 @@ fn formula_pieces(text: &str) -> Vec<Piece> {
         }
         index += 1;
     }
-    push_text(&mut out, &text[plain_from..]);
+    found
+}
+
+/// `text` with its formulas printed in Unicode sub- and superscripts
+/// (HCO3- becomes HCO₃⁻), for text shown where no layout sets them.
+pub(crate) fn printed(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut from = 0;
+    for (start, end, formula) in formulas(text) {
+        out.push_str(&text[from..start]);
+        for piece in formula.pieces() {
+            match piece {
+                Piece::Text(value) | Piece::Italic(value) => out.push_str(&value),
+                Piece::Sub(value) => out.extend(value.chars().map(subscript)),
+                Piece::Sup(value) => out.extend(value.chars().map(superscript)),
+            }
+        }
+        from = end;
+    }
+    out.push_str(&text[from..]);
     out
+}
+
+fn subscript(c: char) -> char {
+    c.to_digit(10)
+        .and_then(|digit| char::from_u32(0x2080 + digit))
+        .unwrap_or(c)
+}
+
+fn superscript(c: char) -> char {
+    match c {
+        '1' => '¹',
+        '2' => '²',
+        '3' => '³',
+        '+' => '⁺',
+        '−' | '-' => '⁻',
+        other => other
+            .to_digit(10)
+            .and_then(|digit| char::from_u32(0x2070 + digit))
+            .unwrap_or(other),
+    }
 }
 
 fn is_word_char(c: char) -> bool {
@@ -143,14 +192,37 @@ fn followed_by_name(rest: &str) -> bool {
 }
 
 /// One element symbol and its count, as written.
-struct Atom<'a> {
-    symbol: &'a str,
-    count: &'a str,
+pub(crate) struct Atom<'a> {
+    pub(crate) symbol: &'a str,
+    pub(crate) count: &'a str,
 }
 
-/// The formula starting at byte `start`, as pieces, and the byte where it
-/// ends; `None` when the word there is not a formula.
-fn formula_at(text: &str, start: usize) -> Option<(Vec<Piece>, usize)> {
+/// A formula read from text: its atoms in order and its charge, a magnitude
+/// (empty for one) and a sign, `+` or `−`.
+pub(crate) struct Formula<'a> {
+    pub(crate) atoms: Vec<Atom<'a>>,
+    pub(crate) charge: Option<(&'a str, char)>,
+}
+
+impl Formula<'_> {
+    fn pieces(&self) -> Vec<Piece> {
+        let mut pieces = Vec::new();
+        for atom in &self.atoms {
+            pieces.push(Piece::Text(atom.symbol.to_string()));
+            if !atom.count.is_empty() {
+                pieces.push(Piece::Sub(atom.count.to_string()));
+            }
+        }
+        if let Some((magnitude, sign)) = self.charge {
+            pieces.push(Piece::Sup(format!("{magnitude}{sign}")));
+        }
+        pieces
+    }
+}
+
+/// The formula starting at byte `start` and the byte where it ends; `None`
+/// when the word there is not a formula.
+fn formula_at(text: &str, start: usize) -> Option<(Formula<'_>, usize)> {
     let bytes = text.as_bytes();
     let mut position = start;
     let mut atoms = Vec::<Atom<'_>>::new();
@@ -224,20 +296,12 @@ fn formula_at(text: &str, start: usize) -> Option<(Vec<Piece>, usize)> {
     if !formula {
         return None;
     }
-    let mut pieces = Vec::new();
-    for atom in &atoms {
-        pieces.push(Piece::Text(atom.symbol.to_string()));
-        if !atom.count.is_empty() {
-            pieces.push(Piece::Sub(atom.count.to_string()));
-        }
-    }
     let mut end = position;
-    if let Some((length, sign)) = charge {
-        let sign = if sign == '+' { '+' } else { '−' };
-        pieces.push(Piece::Sup(format!("{magnitude}{sign}")));
+    let charge = charge.map(|(length, sign)| {
         end += length;
-    }
-    Some((pieces, end))
+        (magnitude, if sign == '+' { '+' } else { '−' })
+    });
+    Some((Formula { atoms, charge }, end))
 }
 
 #[cfg(test)]
@@ -297,5 +361,15 @@ mod tests {
         ] {
             assert_eq!(show(text), text, "{text}");
         }
+    }
+
+    #[test]
+    fn prints_formulas_in_unicode() {
+        assert_eq!(
+            printed("HCO3− and Ca2+ via the Na+-K+ ATPase; SO42-, H2O, CO2 and H2 receptors."),
+            "HCO₃⁻ and Ca²⁺ via the Na⁺-K⁺ ATPase; SO₄²⁻, H₂O, CO₂ and H2 receptors."
+        );
+        assert_eq!(printed("Fe3+ and vitamin B12"), "Fe³⁺ and vitamin B12");
+        assert_eq!(printed("HCO₃⁻ stays"), "HCO₃⁻ stays");
     }
 }

@@ -32,7 +32,7 @@ use crate::{
 };
 
 mod canvas;
-mod chemistry;
+pub(crate) mod chemistry;
 pub(crate) mod figures;
 mod guide_typst;
 mod key_terms;

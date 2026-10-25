@@ -33,6 +33,7 @@ pub(crate) mod narration;
 pub(crate) mod podcasts;
 pub(crate) mod pptx;
 pub(crate) mod slide_design;
+mod spoken;
 pub(crate) mod teaching;
 pub(crate) mod voices;
 pub(crate) mod writing;
