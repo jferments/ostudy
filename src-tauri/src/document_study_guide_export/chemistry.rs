@@ -127,8 +127,25 @@ pub(crate) fn formulas(text: &str) -> Vec<(usize, usize, Formula<'_>)> {
 }
 
 /// `text` with its formulas printed in Unicode sub- and superscripts
-/// (HCO3- becomes HCO₃⁻), for text shown where no layout sets them.
+/// (HCO3- becomes HCO₃⁻), for text shown where no layout sets them. LaTeX
+/// math is left as written.
 pub(crate) fn printed(text: &str) -> String {
+    outside_math(text, printed_text)
+}
+
+/// `text` with `change` applied to its prose, and its `$…$` and `$$…$$`
+/// math kept as written.
+pub(crate) fn outside_math(text: &str, mut change: impl FnMut(&str) -> String) -> String {
+    super::math_source::segments(text)
+        .into_iter()
+        .map(|segment| match segment {
+            super::math_source::MathSegment::Text(prose) => change(prose),
+            super::math_source::MathSegment::Formula { source, .. } => source.to_string(),
+        })
+        .collect()
+}
+
+fn printed_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut from = 0;
     for (start, end, formula) in formulas(text) {
@@ -371,5 +388,9 @@ mod tests {
         );
         assert_eq!(printed("Fe3+ and vitamin B12"), "Fe³⁺ and vitamin B12");
         assert_eq!(printed("HCO₃⁻ stays"), "HCO₃⁻ stays");
+        assert_eq!(
+            printed("CO2 and $CO_2 + H_2O$ give H2CO3"),
+            "CO₂ and $CO_2 + H_2O$ give H₂CO₃"
+        );
     }
 }
