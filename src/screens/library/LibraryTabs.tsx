@@ -23,8 +23,8 @@ interface LibraryTabsProps {
 }
 
 /**
- * A subject's pages as folder tabs: Flashcards (the Workbench), Study guides,
- * Lessons, Podcasts and Documents. The open
+ * A subject's pages as folder tabs: Lessons, Study guides, Flashcards (the
+ * Workbench), Podcasts and Documents. The open
  * page's tab is in front, joined to the page below it; the others sit back on
  * a shaded face.
  */
