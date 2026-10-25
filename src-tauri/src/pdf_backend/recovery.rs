@@ -114,9 +114,10 @@ const MIN_BROKEN_SHARE: f64 = 0.25;
 /// Pages the structure reader broke into pieces. It starts a new element at
 /// every small glyph, so a paragraph with H₂CO₃, Na⁺-K⁺ or a citation number in
 /// it comes out as scraps ("-K", "+", "3") under headings that are really
-/// pieces of the sentence ("and HCO", ". The H"). The page's own text keeps
-/// those paragraphs whole.
-fn fragmented_pages(chunks: &[ExtractedSemanticChunk]) -> BTreeSet<usize> {
+/// pieces of the sentence ("and HCO", ". The H"). Extraction rebuilds such a
+/// page from its text runs; one it could not rebuild falls back here to its
+/// page text, which keeps those paragraphs whole.
+pub(super) fn fragmented_pages(chunks: &[ExtractedSemanticChunk]) -> BTreeSet<usize> {
     let mut counts = BTreeMap::<usize, (usize, usize)>::new();
     for chunk in chunks {
         let broken = is_scrap(&chunk.text)
@@ -153,7 +154,7 @@ fn is_scrap(text: &str) -> bool {
 }
 
 /// A heading that starts in lower case or on punctuation continues a sentence.
-fn is_sentence_piece(heading: &str) -> bool {
+pub(super) fn is_sentence_piece(heading: &str) -> bool {
     heading.trim_start().chars().next().is_some_and(|first| {
         first.is_lowercase() || matches!(first, '.' | ',' | ';' | ':' | ')' | '-' | '−' | '–')
     })

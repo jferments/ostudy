@@ -1,5 +1,6 @@
 mod contracts;
 mod extraction;
+mod layout;
 mod quality;
 mod recovery;
 mod ruled_tables;
