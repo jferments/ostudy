@@ -95,6 +95,8 @@ copies into the distribution.
 - image `0.25.10` for PNG encoding of PDFium bitmaps on desktop
 - pdfium-render `0.9.3`, compiled against PDFium API build `7881`
 - sysinfo `0.39.6` for cross-platform available-memory observation used by document concurrency planning
+- sherpa-onnx `2.0.0` (Apache-2.0), default features disabled, with `static`, on Linux, macOS and Android: on-device speech recognition. Its static archive also carries ONNX Runtime (MIT), SentencePiece, Kaldi and OpenFst (Apache-2.0), kissfft (BSD-3-Clause) and utf8proc (MIT). It is isolated in `src-tauri/src/platform/speech_recognition.rs`. Its `sherpa-onnx-sys` build script reads the archive staged by the native installer and never downloads one (see below). Windows is excluded until a dynamic-runtime build exists. See [ADR 0061](../decisions/0061-local-speech-input.md).
+- webkit2gtk `2.0.2` with `v2_40`, Linux only, which wry already uses: lets the main window enable microphone capture and answer its permission request
 
 `pdfium-bundled`, justpdf/justpdf-render, and rusty-tesseract are explicitly prohibited by repository dependency verification.
 
@@ -102,7 +104,7 @@ copies into the distribution.
 
 `keyring` is isolated behind `src-tauri/src/ai/secrets.rs`. It stores credential bytes in the operating-system credential service when available. SQLite stores only nonsecret provider metadata and credential epochs. An explicit session-only backend keeps a credential in native process memory and never writes it to disk.
 
-`reqwest` is isolated behind the bounded modules in `src-tauri/src/ai/gateway/`, with HTTP client construction confined to `gateway/client.rs`. The clients use Rustls, disabled redirects, bounded response bodies, no cookies, and no raw provider-body logging. Provider adapters use ostudy-owned wire DTOs rather than provider SDKs. The `url` crate owns normalized endpoint parsing and loopback/LAN/cloud policy.
+`reqwest` is isolated behind the bounded modules in `src-tauri/src/ai/gateway/`, with HTTP client construction confined to `gateway/client.rs`. The clients use Rustls, disabled redirects, bounded response bodies, no cookies, and no raw provider-body logging. Provider adapters use ostudy-owned wire DTOs rather than provider SDKs. The `url` crate owns normalized endpoint parsing and loopback/LAN/cloud policy. The only other client is the speech model download in `src-tauri/src/speech_input/install.rs`: HTTPS-only GET requests for the pinned model files, following Hugging Face's redirect to its file storage, each file bounded by its published size and checked against its SHA-256; repository policy verification enforces both the confinement and that shape.
 
 `base64` is used only inside the native document-intelligence task to lower a verified local PNG page into an inline provider content part. The encoded page is transient request data. It is not stored in SQLite, logs, diagnostics, or frontend state.
 
@@ -114,6 +116,8 @@ PDF rendering and desktop OCR depend on native software that is intentionally **
 
 The default precompiled PDFium source is the established third-party `bblanchon/pdfium-binaries` distribution at immutable release `chromium/7881`. It is not represented as an official Google/Foxit distribution. A downloaded archive is never extracted until its SHA-256 matches the committed manifest. The extracted native library is stored under ignored `src-tauri/resources/native/pdfium/` with a local provenance record containing both archive and extracted-library hashes.
 
+The same manifest pins sherpa-onnx `2.0.0`: one release archive of static libraries per desktop target and the Android shared-library archive, each with its SHA-256. `install-native-deps.sh` (also with `--pdfium-only`, and `--android` for the Android archive) stages the archive under ignored `src-tauri/resources/native/sherpa-onnx/` after checking its hash, and `.cargo/config.toml` sets `SHERPA_ONNX_ARCHIVE_DIR` to that folder. With the variable set, the crate's build script uses only the staged archive and fails when it is missing, so Cargo never fetches native code. The speech model itself is not a build input: the app downloads it on first use from a pinned revision and checks every file's size and SHA-256 before installing it.
+
 Builders who do not want to use that binary distribution can provide their own compatible PDFium `7881` library through `OSTUDY_PDFIUM_PATH` or install PDFium system-wide. Building PDFium from the official source remains the highest-provenance option, but it uses Chromium's depot_tools/GN/Ninja build infrastructure and is therefore not the default developer setup path.
 
 ### Platform installers
@@ -121,7 +125,7 @@ Builders who do not want to use that binary distribution can provide their own c
 - Linux/macOS: `scripts/install-native-deps.sh`
 - Windows PowerShell: `scripts/install-native-deps.ps1`
 
-`--pdfium-only` provisions only the audited PDFium runtime and is used by build/check/release automation. The default desktop setup also verifies or installs Tesseract.
+`--pdfium-only` provisions the audited PDFium runtime and the sherpa-onnx archive without Tesseract, and is used by build/check/release automation. The default desktop setup also verifies or installs Tesseract.
 
 For Tesseract, ostudy prefers the established operating-system channels documented by the Tesseract project instead of maintaining its own ad-hoc executable bundle:
 

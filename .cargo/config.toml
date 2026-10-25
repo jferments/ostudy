@@ -6,3 +6,7 @@ retry = 3
 # so concurrent connections contend on every allocation. oStudy never reads
 # sqlite3_memory_used() or sets a soft heap limit.
 LIBSQLITE3_FLAGS = "-DSQLITE_DEFAULT_MEMSTATUS=0"
+# The sherpa-onnx speech libraries are linked from archives that
+# scripts/install-native-deps.sh pins and verifies, never downloaded by the
+# sherpa-onnx-sys build script itself.
+SHERPA_ONNX_ARCHIVE_DIR = { value = "src-tauri/resources/native/sherpa-onnx", relative = true }

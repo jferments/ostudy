@@ -115,6 +115,7 @@ start_headless_window_manager() {
 }
 
 printf '[ui-performance] Building isolated deterministic fixture\n'
+"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
 FIXTURE_TEST="library_backup::extended_tests::performance_fixture_tests::writes_stage_0_ui_performance_pending_restore"
 if [[ "$CAPTURE_COMMAND" == "capture-candidate" ]]; then
   FIXTURE_TEST="library_backup::extended_tests::performance_fixture_tests::writes_stage_4a_large_library_drag_pending_restore"

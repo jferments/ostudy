@@ -75,7 +75,7 @@ pnpm install --frozen-lockfile
 pnpm run verify:fonts
 node ./scripts/verify-external-file-streaming.mjs
 
-./scripts/install-native-deps.sh --pdfium-only
+./scripts/install-native-deps.sh --pdfium-only --android
 export OSTUDY_PDFIUM_PATH="$ROOT_DIR/src-tauri/resources/native/pdfium/libpdfium.so"
 
 if [[ "${OSTUDY_LINUX_FULL_PASSED:-0}" == "1" ]]; then

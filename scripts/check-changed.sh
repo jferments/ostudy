@@ -86,6 +86,7 @@ fi
 if [[ "$document_only" == "1" ]]; then
   printf '\nDocument-platform-only change detected; running focused cross-layer contracts.\n'
   bash "$SCRIPT_DIR/check-static.sh"
+  "$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
   prepare_cargo_target "$ROOT_DIR"
   cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features
   cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features --lib document_
@@ -107,6 +108,7 @@ fi
 
 if [[ "$is_rust_only" == "1" ]]; then
   bash "$SCRIPT_DIR/check-static.sh"
+  "$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
   prepare_cargo_target "$ROOT_DIR"
   printf '\n==> Rust compile check for the current tree\n'
   cargo check --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features

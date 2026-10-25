@@ -23,6 +23,7 @@ import { TutorMarkdown } from "./TutorMarkdown";
 import { sourcesLabel, TutorSources } from "./TutorSources";
 import { useArtwork } from "../../ui/artwork/Artwork";
 import { useLiveTurn } from "./useLiveTurn";
+import { useSpeechInput } from "./useSpeechInput";
 import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStarters";
 import { styles, withoutFigures } from "./presentation";
 
@@ -80,6 +81,20 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const turns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
   const lastTurnId = tutor.detail?.turns.at(-1)?.id;
   const live = useLiveTurn(tutor.liveOperationId);
+  const withDraft = (text: string) => (tutor.draft.trim() ? `${tutor.draft.trimEnd()} ${text}` : text);
+  const speech = useSpeechInput({
+    onText: (text) => {
+      tutor.setDraft(withDraft(text));
+      input.current?.focus();
+    },
+    // A question that ended on a pause is sent as heard; if sending cannot
+    // start now, it waits in the draft.
+    onPause: (text) => {
+      const spoken = withDraft(text);
+      tutor.setDraft(spoken);
+      void tutor.send(hintOnly ? "hint" : question ? "answer" : "explain", spoken);
+    },
+  });
   const liveAnswer = (
     <div className={styles.assistantMessage} data-testid="tutor-live-answer">
       {live?.draft && !hintOnly ? <div aria-busy="true"><TutorMarkdown text={live.draft} /></div> : null}
@@ -235,11 +250,53 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     </>
   );
   const submitLabel = hintOnly ? "Request hint" : question ? "Submit answer" : "Send";
-  const sendDisabled = locked || tutor.needsRefresh || !tutor.draft.trim();
+  const recording = speech.phase === "recording";
+  const sendDisabled = locked || tutor.needsRefresh || !tutor.draft.trim() || speech.phase !== "idle";
+  const speechStatus = recording
+    ? "Recording…"
+    : speech.phase === "transcribing"
+      ? "Turning speech into text…"
+      : speech.phase === "downloading"
+        ? `Downloading speech input… ${Math.round(speech.downloaded * 100)}%`
+        : null;
+  const microphone = speech.available ? (
+    <>
+      {recording ? (
+        <>
+          <span className={styles.recordingTime} aria-hidden="true">
+            {Math.floor(speech.seconds / 60)}:{String(speech.seconds % 60).padStart(2, "0")}
+          </span>
+          <span className={styles.level} aria-hidden="true">
+            <span style={{ width: `${Math.round(speech.level * 100)}%` }} />
+          </span>
+          <IconButton icon="close" label="Discard recording" onClick={speech.cancel} />
+        </>
+      ) : null}
+      <IconButton
+        icon="mic"
+        label={recording ? "Stop and use recording" : "Speak"}
+        aria-pressed={recording}
+        className={recording ? styles.micRecording : undefined}
+        loading={speech.phase === "transcribing" || speech.phase === "downloading"}
+        disabled={!recording && (speech.phase !== "idle" || locked || tutor.needsRefresh)}
+        onClick={speech.toggle}
+      />
+    </>
+  ) : null;
 
   const composerForm = (
-    <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); submit(); }}>
+    <form
+      className={styles.composer}
+      onSubmit={(event) => { event.preventDefault(); submit(); }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && recording) {
+          event.preventDefault();
+          speech.cancel();
+        }
+      }}
+    >
       {composerInput(styles.composerInput, 1)}
+      {microphone}
       {question ? (
         <Button size="small" variant="ghost" className="tw:mb-1" disabled={sendDisabled} onClick={() => { void tutor.send("explain"); }}>Ask instead</Button>
       ) : null}
@@ -249,6 +306,16 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
         <IconButton icon="arrow-up" type="submit" label={submitLabel} className={styles.send} disabled={sendDisabled} />
       )}
     </form>
+  );
+  const composer = (
+    <>
+      {composerForm}
+      {speech.available ? (
+        <p className={speech.error ? styles.speechError : styles.speechStatus} role="status">
+          {speech.error ?? speechStatus}
+        </p>
+      ) : null}
+    </>
   );
 
   const transcriptView = (
@@ -278,7 +345,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
             />
           ) : null}
           <h3>What are we studying today?</h3>
-          <div className={styles.welcomeComposer}>{composerForm}</div>
+          <div className={styles.welcomeComposer}>{composer}</div>
           <div className={styles.toolbar}>
             {scopePicker}
             <Button size="small" variant="secondary" className={styles.scope} disabled={!canQuiz} onClick={() => { void tutor.send("quiz"); }}>
@@ -434,7 +501,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
           ) : null}
         </div>
         {notices}
-        {!welcome ? <div className={styles.composerWrap}>{composerForm}</div> : null}
+        {!welcome ? <div className={styles.composerWrap}>{composer}</div> : null}
       </div>
       {sourceBeside && source ? (
         <aside className={styles.sourcePanel} aria-label="Source">
