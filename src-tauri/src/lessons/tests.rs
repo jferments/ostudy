@@ -992,6 +992,43 @@ fn a_crowded_step_still_fits_its_designed_slide() {
 }
 
 #[test]
+fn a_slide_draws_a_formulas_sub_and_superscripts() {
+    use super::slide_design::{read_slide_designs, GetLessonSlideDesignsInput};
+    use crate::document_study_guide_export::StudyGuidePdfTheme;
+
+    // HCO3- is set as HCO, a subscript 3 and a superscript minus; a slide that
+    // dropped those runs would draw the same as plain HCO.
+    let step_svg = |point: &str| {
+        let mut content = loop_of_henle(&[UNIT]);
+        content.steps[0].slide_points = vec![point.to_string()];
+        let database = library();
+        let id = create(&database, content).unwrap();
+        let designs = database
+            .with_connection(|connection| {
+                read_slide_designs(
+                    connection,
+                    GetLessonSlideDesignsInput {
+                        lesson_id: id,
+                        revision_number: None,
+                        theme: StudyGuidePdfTheme::Navy,
+                    },
+                )
+            })
+            .unwrap();
+        designs
+            .slides
+            .into_iter()
+            .find(|slide| slide.key == "step:two-limbs")
+            .unwrap()
+            .svg
+    };
+    assert_ne!(
+        step_svg("Ducts secrete HCO3- into the lumen"),
+        step_svg("Ducts secrete HCO into the lumen")
+    );
+}
+
+#[test]
 fn a_lecture_is_prepared_once_as_a_pptx_export_for_its_operation() {
     use super::pptx::{prepare, PrepareLessonLecturePptxInput};
     use crate::paths::AppPaths;
