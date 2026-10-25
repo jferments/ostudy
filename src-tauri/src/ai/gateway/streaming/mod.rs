@@ -1,7 +1,7 @@
 pub(super) mod sse;
 pub(super) mod usage;
 
-use std::time::Duration;
+use std::{future::Future, sync::Arc, time::Duration};
 
 use serde_json::{json, Value};
 use tokio::time::{sleep, timeout, Instant};
@@ -31,6 +31,24 @@ use sse::SseChatAccumulator;
 use usage::usage_delta;
 
 const STREAM_WIRE_MULTIPLIER: usize = 16;
+
+/// Receives the structured output a stream has accumulated so far. The gateway
+/// only hands it over; the task that installed the observer decides what, if
+/// anything, may be shown before the finished output is validated.
+pub(crate) type OutputObserver = Arc<dyn Fn(&str) + Send + Sync>;
+
+tokio::task_local! {
+    static OUTPUT_OBSERVER: OutputObserver;
+}
+
+/// Runs `future` with `observer` told of each streamed output growth.
+pub(crate) async fn observe_output<F: Future>(observer: OutputObserver, future: F) -> F::Output {
+    OUTPUT_OBSERVER.scope(observer, future).await
+}
+
+fn report_output(stream: &SseChatAccumulator) {
+    let _ = OUTPUT_OBSERVER.try_with(|observer| observer(stream.partial_output()));
+}
 
 /// Owned by the physical attempt, not its successful decode path. A failure,
 /// cancellation or empty reasoning-only completion must not erase reported cost.
@@ -348,6 +366,7 @@ impl AiGateway {
         let mut first_model_output_ms = None;
         if model_progress_bytes > before_first {
             record_current_provider_activity(true);
+            report_output(stream);
             first_model_output_ms =
                 Some(u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX));
         }
@@ -369,6 +388,7 @@ impl AiGateway {
             if next_progress_bytes > model_progress_bytes {
                 model_progress_bytes = next_progress_bytes;
                 record_current_provider_activity(true);
+                report_output(stream);
                 if first_model_output_ms.is_none() {
                     first_model_output_ms = Some(
                         u64::try_from(request_started.elapsed().as_millis()).unwrap_or(u64::MAX),

@@ -1,6 +1,8 @@
 //! Structured tutor output and answer-spoiler safeguards. Unchecked provider
-//! text is never streamed to the learner, stored as a finished hint, or granted
-//! source authority merely because it looks like a citation.
+//! text is never stored as a finished answer or hint, or granted source
+//! authority merely because it looks like a citation. Only an explanation's
+//! public text shows while it is written, as a draft the checked turn
+//! replaces; hints, quizzes and grading are never shown before their checks.
 
 use std::collections::HashSet;
 
@@ -237,6 +239,103 @@ fn safe_hint() -> &'static str {
     "Identify exactly what the question asks you to recall. Separate the given information from the missing term or relationship, then work through one relevant definition or causal step before revealing the answer."
 }
 
+/// The public `text` of a structured answer still being written: the
+/// top-level `text` string as far as it has arrived, escapes decoded. `None`
+/// until that string starts. This is unchecked provider text, shown only for
+/// turns whose finished answers carry no private material; [`validate`] still
+/// decides what is kept.
+pub(crate) fn partial_text(output: &str) -> Option<String> {
+    let start = output.find('{')?;
+    let mut chars = output[start + 1..].chars().peekable();
+    let mut depth = 1_usize;
+    let mut expect_key = true;
+    while let Some(character) = chars.next() {
+        match character {
+            '"' => {
+                let (value, complete) = read_string(&mut chars);
+                if !complete {
+                    return None;
+                }
+                if depth == 1 && expect_key {
+                    expect_key = false;
+                    if value == "text" {
+                        while chars
+                            .next_if(|next| next.is_whitespace() || *next == ':')
+                            .is_some()
+                        {}
+                        if chars.next()? != '"' {
+                            return None;
+                        }
+                        return Some(read_string(&mut chars).0);
+                    }
+                }
+            }
+            '{' | '[' => depth += 1,
+            '}' | ']' => depth = depth.checked_sub(1)?,
+            ',' if depth == 1 => expect_key = true,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Reads a JSON string after its opening quote, as far as it goes; the flag
+/// says whether its closing quote arrived. An escape cut off mid-way ends it.
+fn read_string(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> (String, bool) {
+    let mut text = String::new();
+    while let Some(character) = chars.next() {
+        match character {
+            '"' => return (text, true),
+            '\\' => {
+                let Some(escape) = chars.next() else {
+                    return (text, false);
+                };
+                let decoded = match escape {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    'b' => '\u{8}',
+                    'f' => '\u{c}',
+                    'u' => {
+                        let Some(unit) = hex_unit(chars) else {
+                            return (text, false);
+                        };
+                        if (0xd800..0xdc00).contains(&unit) {
+                            // A high surrogate needs its low half before it can show.
+                            let (Some(slash), Some(u)) = (chars.next(), chars.next()) else {
+                                return (text, false);
+                            };
+                            let Some(low) = hex_unit(chars) else {
+                                return (text, false);
+                            };
+                            if slash != '\\' || u != 'u' || !(0xdc00..0xe000).contains(&low) {
+                                text.push('\u{fffd}');
+                                continue;
+                            }
+                            char::from_u32(0x10000 + ((unit - 0xd800) << 10) + (low - 0xdc00))
+                                .unwrap_or('\u{fffd}')
+                        } else {
+                            char::from_u32(unit).unwrap_or('\u{fffd}')
+                        }
+                    }
+                    other => other,
+                };
+                text.push(decoded);
+            }
+            other => text.push(other),
+        }
+    }
+    (text, false)
+}
+
+fn hex_unit(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> Option<u32> {
+    let mut unit = 0;
+    for _ in 0..4 {
+        unit = unit * 16 + chars.next()?.to_digit(16)?;
+    }
+    Some(unit)
+}
+
 fn normalized(text: &str) -> String {
     text.chars()
         .filter(|character| character.is_alphanumeric())
@@ -291,6 +390,40 @@ mod tests {
             "Paris",
             "Name the capital"
         ));
+    }
+
+    #[test]
+    fn partial_text_reads_the_public_text_as_it_arrives() {
+        assert_eq!(partial_text(""), None);
+        assert_eq!(partial_text("{\"sourceIds\":[\"a\"],\"te"), None);
+        assert_eq!(
+            partial_text("{\"text\": \"Osmosis is"),
+            Some("Osmosis is".to_string())
+        );
+        assert_eq!(
+            partial_text(
+                "```json\n{\"text\":\"Line\\none \\\"quoted\\\" \\u00e9\",\"sourceIds\":[]}"
+            ),
+            Some("Line\none \"quoted\" \u{e9}".to_string())
+        );
+        // A cut-off escape waits for the rest.
+        assert_eq!(
+            partial_text("{\"text\":\"caf\\u00"),
+            Some("caf".to_string())
+        );
+        assert_eq!(
+            partial_text("{\"text\":\"smile \\ud83d\\ude00"),
+            Some("smile \u{1f600}".to_string())
+        );
+        // Only the top-level text counts, wherever it comes.
+        assert_eq!(
+            partial_text("{\"quiz\":{\"text\":\"private\",\"q\":\"}\"},\"text\":\"public"),
+            Some("public".to_string())
+        );
+        assert_eq!(
+            partial_text("{\"sourceIds\":[\"text\"],\"quiz\":null}"),
+            None
+        );
     }
 
     #[test]

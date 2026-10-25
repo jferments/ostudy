@@ -21,6 +21,7 @@ import { useTutor } from "./TutorContext";
 import { TutorMarkdown } from "./TutorMarkdown";
 import { sourcesLabel, TutorSources } from "./TutorSources";
 import { useArtwork } from "../../ui/artwork/Artwork";
+import { useLiveTurn } from "./useLiveTurn";
 import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStarters";
 import { styles } from "./presentation";
 
@@ -77,6 +78,13 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const question = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
   const turns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
   const lastTurnId = tutor.detail?.turns.at(-1)?.id;
+  const live = useLiveTurn(tutor.liveOperationId);
+  const liveAnswer = (
+    <div className={styles.assistantMessage} data-testid="tutor-live-answer">
+      {live?.draft && !hintOnly ? <div aria-busy="true"><TutorMarkdown text={live.draft} /></div> : null}
+      <p role="status" className={styles.muted}>{live?.status ?? (hintOnly ? "Preparing a hint…" : "Thinking…")}</p>
+    </div>
+  );
   const chosen = tutor.target?.title ?? sourcesLabel(tutor.scope, tutor.choices);
   const inlineHistory = showHistory && layoutMode !== "compact" && !hintOnly;
   // Only the wide, full-page chat has room to keep a source open beside it.
@@ -98,7 +106,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
 
   useEffect(() => {
     if (followTail.current && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
-  }, [tutor.detail, tutor.busy]);
+  }, [tutor.detail, tutor.busy, live?.draft]);
 
   // The composer grows with its text up to its CSS maximum, then scrolls.
   useEffect(() => {
@@ -309,7 +317,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
                   ? <div className={styles.message}>{turn.assistantText}</div>
                   : <TutorMarkdown text={turn.assistantText} />
                 : null}
-              {turn.state === "running" ? <p role="status" className={styles.muted}>Thinking…</p> : null}
+              {turn.state === "running" ? liveAnswer : null}
               {turn.errorMessage ? <InlineNotice kind="error">{turn.errorMessage}</InlineNotice> : null}
               {!turn.evidenceCurrent && turn.state === "complete" ? (
                 <InlineNotice kind="warning">The source has changed or been removed. This answer is historical, not current evidence.</InlineNotice>
@@ -342,7 +350,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
         );
       })}
       {tutor.busy && !turns.some((turn) => turn.state === "running") ? (
-        <p role="status" className={cn(styles.muted, "tw:mx-auto tw:w-full tw:max-w-3xl")}>{hintOnly ? "Preparing a hint…" : "Thinking…"}</p>
+        <div className="tw:mx-auto tw:w-full tw:max-w-3xl">{liveAnswer}</div>
       ) : null}
     </div>
   );

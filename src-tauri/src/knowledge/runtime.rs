@@ -25,6 +25,9 @@ pub struct TaskProgress {
     pub completed: usize,
     pub total: usize,
     pub canceled: bool,
+    /// The answer as it is being written, for a turn whose answers may show
+    /// before they are checked. The finished turn replaces it.
+    pub draft: Option<String>,
 }
 
 #[derive(Clone)]
@@ -67,6 +70,15 @@ impl TaskGuard {
                 task.progress.phase = phase.chars().take(80).collect();
                 task.progress.completed = completed.min(total);
                 task.progress.total = total;
+            }
+        }
+    }
+
+    /// Shows `text` as the answer being written; see [`TaskProgress::draft`].
+    pub(crate) fn draft(operation_id: &str, text: String) {
+        if let Ok(mut tasks) = TASKS.active.lock() {
+            if let Some(task) = tasks.get_mut(operation_id) {
+                task.progress.draft = Some(text);
             }
         }
     }
@@ -122,6 +134,7 @@ impl TaskRegistry {
                     completed: 0,
                     total: 0,
                     canceled: false,
+                    draft: None,
                 },
             },
         );
