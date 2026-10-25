@@ -26,7 +26,7 @@
     if "t" in run {
       run.t
     } else if "b" in run {
-      strong(run.b)
+      text(weight: 700, run.b)
     } else if "i" in run {
       emph(run.i)
     } else if "sub" in run {
