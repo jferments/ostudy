@@ -412,8 +412,16 @@ pub(super) async fn speak_text(
     key: String,
     choose: impl FnOnce(&Resolved) -> Result<(&'static SpeechModel, String), CommandError>,
 ) -> Result<LessonStepNarrationDto, CommandError> {
-    let (pieces, narrator, _narrating) =
-        prepare(database, paths, runtime, text, key, PURPOSE, choose)?;
+    let (pieces, narrator, _narrating) = prepare(
+        database,
+        paths,
+        runtime,
+        text,
+        key,
+        PURPOSE,
+        usize::MAX,
+        choose,
+    )?;
     let mut found = database.with_connection(|connection| {
         pieces
             .iter()
@@ -447,14 +455,17 @@ pub struct SpokenPieceDto {
 
 /// Speaks one piece of saved text, counted from 0, in the speech setting's
 /// model and voice. Long text is listened to piece by piece, so the first
-/// piece plays while the next is made. `purpose` names the operation the
+/// piece plays while the next is made; no piece is longer than `longest`
+/// characters or than the model takes. `purpose` names the operation the
 /// request is accounted under.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn speak_piece(
     database: &Database,
     paths: &AppPaths,
     runtime: &AiRuntimeState,
     text: &str,
     index: usize,
+    longest: usize,
     key: String,
     purpose: &'static str,
 ) -> Result<SpokenPieceDto, CommandError> {
@@ -465,6 +476,7 @@ pub(crate) async fn speak_piece(
         text,
         format!("{key}:{index}"),
         purpose,
+        longest,
         |settings| Ok((settings.model, settings.voice.clone())),
     )?;
     let piece = pieces.get(index).ok_or_else(|| {
@@ -503,8 +515,10 @@ pub(crate) async fn speak_piece(
     })
 }
 
-/// The pieces `text` is spoken in and who speaks them, once the setting has a
-/// connection and nothing else is speaking `key`.
+/// The pieces `text` is spoken in, none longer than `longest` characters, and
+/// who speaks them, once the setting has a connection and nothing else is
+/// speaking `key`.
+#[allow(clippy::too_many_arguments)]
 fn prepare<'a>(
     database: &'a Database,
     paths: &'a AppPaths,
@@ -512,6 +526,7 @@ fn prepare<'a>(
     text: &str,
     key: String,
     stage: &'static str,
+    longest: usize,
     choose: impl FnOnce(&Resolved) -> Result<(&'static SpeechModel, String), CommandError>,
 ) -> Result<(Vec<String>, Narrator<'a>, Narrating), CommandError> {
     // A voice reads HCO₃⁻ as letters and marks; it hears "bicarbonate".
@@ -527,7 +542,7 @@ fn prepare<'a>(
     let engine = speech::engine(request.profile.provider_kind)?;
     let narrating = Narrating::begin(key)?;
     let (model, voice) = choose(&settings)?;
-    let pieces = segments(text, model.max_characters);
+    let pieces = segments(text, longest.min(model.max_characters));
     let narrator = Narrator {
         database,
         paths,

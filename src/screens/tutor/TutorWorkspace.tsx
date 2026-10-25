@@ -450,7 +450,8 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
         </div>
         {notices}
         {!welcome ? <div className={styles.composerWrap}>{composerForm}</div> : null}
-        <audio ref={reader.audioRef} hidden />
+        <audio ref={reader.audioRefs[0]} preload="auto" hidden />
+        <audio ref={reader.audioRefs[1]} preload="auto" hidden />
       </div>
       {sourceBeside && source ? (
         <aside className={styles.sourcePanel} aria-label="Source">

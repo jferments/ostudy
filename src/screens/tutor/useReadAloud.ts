@@ -8,7 +8,8 @@ import {
 } from "../../media/managedPlayback";
 
 export interface ReadAloud {
-  audioRef: React.RefObject<HTMLAudioElement | null>;
+  /** Two hidden audio elements the pieces take turns in. */
+  audioRefs: readonly [React.RefObject<HTMLAudioElement | null>, React.RefObject<HTMLAudioElement | null>];
   /** The reply being read, if any. */
   turnId: string | null;
   /** Why the last reading stopped early, with the reply it was for. */
@@ -24,12 +25,15 @@ interface Piece {
 }
 
 /**
- * Reads finished Tutor replies aloud through one hidden audio element, piece
- * by piece: the next piece is asked for while the current one plays, so a long
- * reply starts as soon as its first piece is spoken. Unmounting stops it.
+ * Reads finished Tutor replies aloud piece by piece: the next piece is asked
+ * for and loaded into the other audio element while the current one plays, so
+ * a long reply starts as soon as its first piece is spoken and each piece
+ * follows the last without a gap. Unmounting stops it.
  */
 export function useReadAloud(): ReadAloud {
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const first = useRef<HTMLAudioElement>(null);
+  const second = useRef<HTMLAudioElement>(null);
+  const audioRefs = useRef([first, second] as const).current;
   // Each reading has its own number, so a stopped one never plays late.
   const run = useRef(0);
   const urls = useRef<string[]>([]);
@@ -39,15 +43,16 @@ export function useReadAloud(): ReadAloud {
   // Stable, so a caller can stop the reading from an effect's cleanup.
   const halt = useCallback(() => {
     run.current += 1;
-    const audio = audioRef.current;
-    if (audio) {
+    for (const ref of audioRefs) {
+      const audio = ref.current;
+      if (!audio) continue;
       audio.onended = null;
       if (!audio.paused) audio.pause();
       audio.removeAttribute("src");
     }
     urls.current.forEach((url) => revokeManagedMediaObjectUrl(url));
     urls.current = [];
-  }, []);
+  }, [audioRefs]);
 
   useEffect(() => halt, [halt]);
 
@@ -79,15 +84,29 @@ export function useReadAloud(): ReadAloud {
       setTurnId(null);
     };
 
-    const play = (index: number, piece: Promise<Piece>) => {
+    // Pieces alternate between the two elements, so the one that plays next
+    // can load while the other is still speaking.
+    const element = (index: number) => (index % 2 === 0 ? first : second).current;
+
+    const load = (index: number, piece: Promise<Piece>): Promise<Piece> =>
       piece.then((ready) => {
-        const audio = audioRef.current;
+        const audio = element(index);
+        if (current() && audio && audio.getAttribute("src") !== ready.url) {
+          audio.src = ready.url;
+          audio.load();
+        }
+        return ready;
+      });
+
+    const play = (index: number, piece: Promise<Piece>) => {
+      load(index, piece).then((ready) => {
+        const audio = element(index);
         if (!current() || !audio) return;
-        const next = index + 1 < ready.pieces ? fetchPiece(index + 1) : null;
+        const next = index + 1 < ready.pieces ? load(index + 1, fetchPiece(index + 1)) : null;
         // A failed next piece is reported when it is due, not while this one plays.
         next?.catch(() => undefined);
-        audio.src = ready.url;
         audio.onended = () => {
+          audio.onended = null;
           if (next) play(index + 1, next);
           else stop();
         };
@@ -103,5 +122,5 @@ export function useReadAloud(): ReadAloud {
     else read(id);
   };
 
-  return { audioRef, turnId, error, toggle, stop };
+  return { audioRefs, turnId, error, toggle, stop };
 }

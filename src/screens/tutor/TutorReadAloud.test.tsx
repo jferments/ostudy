@@ -25,8 +25,8 @@ const piece = (index: number, pieces: number) => ({
   segment: { assetId: `audio-${index}`, characters: 10 }, pieces, made: true,
 });
 
-function audio(): HTMLAudioElement {
-  return document.querySelector("audio") as HTMLAudioElement;
+function audio(index = 0): HTMLAudioElement {
+  return document.querySelectorAll("audio")[index] as HTMLAudioElement;
 }
 
 beforeEach(() => {
@@ -39,22 +39,33 @@ beforeEach(() => {
   }] };
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
 });
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("Tutor replies read aloud", () => {
-  it("plays each piece in turn, asking for the next while one plays", async () => {
-    speech.speakTutorReply.mockImplementation((_turn: string, index: number) => Promise.resolve(piece(index, 2)));
+  it("plays each piece in turn, loading the next in the other player while one plays", async () => {
+    const played: string[] = [];
+    vi.mocked(HTMLMediaElement.prototype.play).mockImplementation(function (this: HTMLMediaElement) {
+      played.push(this.getAttribute("src") ?? "");
+      return Promise.resolve();
+    });
+    speech.speakTutorReply.mockImplementation((_turn: string, index: number) => Promise.resolve(piece(index, 3)));
     render(<TutorWorkspace />);
     fireEvent.click(screen.getByRole("button", { name: "Read aloud" }));
-    await waitFor(() => expect(audio().getAttribute("src")).toBe("blob:audio-0"));
+    await waitFor(() => expect(played).toEqual(["blob:audio-0"]));
     expect(speech.speakTutorReply).toHaveBeenCalledWith("b".repeat(32), 1);
+    // The next piece waits, loaded, in the second player.
+    await waitFor(() => expect(audio(1).getAttribute("src")).toBe("blob:audio-1"));
     expect(screen.getByRole("button", { name: "Stop reading" }).getAttribute("aria-pressed")).toBe("true");
-    act(() => { audio().onended?.(new Event("ended")); });
-    await waitFor(() => expect(audio().getAttribute("src")).toBe("blob:audio-1"));
-    expect(speech.speakTutorReply).toHaveBeenCalledTimes(2);
-    act(() => { audio().onended?.(new Event("ended")); });
+    await act(async () => { audio(0).onended?.(new Event("ended")); });
+    await waitFor(() => expect(played).toEqual(["blob:audio-0", "blob:audio-1"]));
+    await waitFor(() => expect(audio(0).getAttribute("src")).toBe("blob:audio-2"));
+    await act(async () => { audio(1).onended?.(new Event("ended")); });
+    await waitFor(() => expect(played).toEqual(["blob:audio-0", "blob:audio-1", "blob:audio-2"]));
+    expect(speech.speakTutorReply).toHaveBeenCalledTimes(3);
+    act(() => { audio(0).onended?.(new Event("ended")); });
     expect(screen.getByRole("button", { name: "Read aloud" })).toBeTruthy();
   });
 

@@ -6,7 +6,9 @@
 //! say it: marks are dropped, a link says its words, a table says its cells,
 //! and code is left out. Long replies are spoken piece by piece through the
 //! lesson narration, which keeps each piece's audio, so listening again costs
-//! nothing.
+//! nothing. Math is said in words (see [`math`]).
+
+mod math;
 
 use rusqlite::{params, OptionalExtension};
 use serde::Deserialize;
@@ -22,8 +24,11 @@ use crate::{
 
 /// The operation a reply's speech is accounted under.
 const PURPOSE: &str = "tutor_speech";
+/// The longest piece a reply is spoken in. A voice asked for long passages
+/// skips sentences and falters, and a short piece starts playing sooner.
+const LONGEST_PIECE: usize = 400;
 /// More pieces than a saved reply can hold; it bounds a bad request.
-const MAX_PIECE: usize = 64;
+const MAX_PIECE: usize = 240;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -69,6 +74,7 @@ pub(crate) async fn speak_tutor_reply(
         runtime,
         &text,
         input.piece,
+        LONGEST_PIECE,
         format!("tutor:{}", input.turn_id),
         PURPOSE,
     )
@@ -79,8 +85,20 @@ pub(crate) async fn speak_tutor_reply(
 pub(crate) fn spoken_reply(markdown: &str) -> String {
     let mut spoken = Vec::new();
     let mut fence: Option<&str> = None;
+    // Display math written over several lines, gathered until it closes.
+    let mut display: Option<(&str, String)> = None;
     for line in markdown.lines() {
         let trimmed = line.trim();
+        if let Some((close, mut gathered)) = display.take() {
+            gathered.push(' ');
+            gathered.push_str(trimmed);
+            if trimmed.contains(close) {
+                spoken.push(sentence(&inline_text(&math::with_spoken_math(&gathered))));
+            } else {
+                display = Some((close, gathered));
+            }
+            continue;
+        }
         if let Some(marker) = fence {
             if trimmed.starts_with(marker) {
                 fence = None;
@@ -97,14 +115,32 @@ pub(crate) fn spoken_reply(markdown: &str) -> String {
             }
             continue;
         }
+        if let Some(close) = opens_display(trimmed) {
+            display = Some((close, trimmed.to_string()));
+            continue;
+        }
         let (block, ends_sentence) = block_text(trimmed);
-        let text = inline_text(block);
+        let text = inline_text(&math::with_spoken_math(block));
         if text.is_empty() {
             continue;
         }
-        spoken.push(if ends_sentence { sentence(&text) } else { text });
+        // Display math on a line of its own is said as a sentence too.
+        let stands_alone = ends_sentence || trimmed.starts_with("$$") || trimmed.starts_with("\\[");
+        spoken.push(if stands_alone { sentence(&text) } else { text });
+    }
+    if let Some((_, gathered)) = display {
+        spoken.push(inline_text(&math::with_spoken_math(&gathered)));
     }
     spoken.join(" ")
+}
+
+/// The closing mark of display math that opens on this line and closes on a
+/// later one.
+fn opens_display(line: &str) -> Option<&'static str> {
+    [("$$", "$$"), ("\\[", "\\]")]
+        .into_iter()
+        .find(|(open, close)| line.starts_with(open) && !line[open.len()..].contains(close))
+        .map(|(_, close)| close)
 }
 
 /// A line without its block marks, and whether it stands alone (a heading or
@@ -147,7 +183,7 @@ fn table_row(line: &str) -> Option<String> {
     let cells: Vec<String> = line
         .trim_matches('|')
         .split('|')
-        .map(|cell| inline_text(cell.trim()))
+        .map(|cell| inline_text(&math::with_spoken_math(cell.trim())))
         .filter(|cell| !cell.is_empty())
         .collect();
     if cells.iter().all(|cell| {
@@ -160,7 +196,8 @@ fn table_row(line: &str) -> Option<String> {
 }
 
 /// Text without inline marks: links say their words, images and addresses
-/// are left out, and emphasis, code and math marks are dropped.
+/// are left out, and emphasis and code marks are dropped. Math has already
+/// been said in words, so a `$` left is a price.
 fn inline_text(text: &str) -> String {
     let mut out = String::new();
     let characters: Vec<char> = text.chars().collect();
@@ -196,14 +233,19 @@ fn inline_text(text: &str) -> String {
                 .is_some_and(|neighbor| neighbor.is_alphanumeric())
         };
         match character {
-            '*' | '`' | '$' => {}
+            '*' | '`' => {}
             // Snake_case keeps its underscores; emphasis loses them.
             '_' if !(word_inside(-1) && word_inside(1)) => {}
             _ => out.push(character),
         }
         index += 1;
     }
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
+    let mut words = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    // Math said in words leaves a space before the punctuation after it.
+    for mark in [",", ".", ";", ":", "!", "?"] {
+        words = words.replace(&format!(" {mark}"), mark);
+    }
+    words
 }
 
 /// `[words](address)` starting at `open`: the words and the index after it.
@@ -332,7 +374,7 @@ mod tests {
             "speech_not_configured"
         );
         assert_eq!(
-            speak(&database, FINISHED, 65).unwrap_err().code,
+            speak(&database, FINISHED, MAX_PIECE + 1).unwrap_err().code,
             "speech_piece_missing"
         );
         assert_eq!(
@@ -358,7 +400,7 @@ mod tests {
                      ![diagram](image.png)\n\n```python\nprint('hi')\n```\nAfter $x^2$, \\(y\\) and snake_case.";
         assert_eq!(
             spoken_reply(reply),
-            "See the guide and now. After x^2, y and snake_case."
+            "See the guide and now. After x squared, y and snake_case."
         );
     }
 
@@ -366,6 +408,17 @@ mod tests {
     fn a_table_says_its_cells_row_by_row() {
         let reply = "| Ion | Charge |\n| --- | :---: |\n| Na⁺ | +1 |\n| Cl⁻ | −1 |";
         assert_eq!(spoken_reply(reply), "Ion, Charge. Na⁺, +1. Cl⁻, −1.");
+    }
+
+    #[test]
+    fn math_is_said_in_words_even_over_several_lines() {
+        let reply =
+            "The ratio is\n$$\n\\frac{[\\text{HCO}_3^-]}{[\\text{CO}_2]}\n$$\nso pH rises.\n\n\
+                     \\[ x^2 \\]\nIt costs $5.";
+        assert_eq!(
+            spoken_reply(reply),
+            "The ratio is HCO3- over CO2. so pH rises. x squared. It costs $5."
+        );
     }
 
     #[test]

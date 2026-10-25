@@ -344,8 +344,10 @@ fn text_is_spoken_piece_by_piece_from_kept_audio() {
     let model = speech::speech_model(KOKORO).unwrap();
     let sentence = "The loop of Henle concentrates urine by moving salt out of the tubule. ";
     let text = sentence.repeat(40);
-    let pieces = segments(&text, model.max_characters);
-    assert!(pieces.len() > 1);
+    // Pieces as short as the caller asks, not as long as the model takes.
+    let longest = 400;
+    let pieces = segments(&text, longest);
+    assert!(pieces.len() > segments(&text, model.max_characters).len());
     let voice = Voice {
         engine: "openrouter",
         model,
@@ -364,6 +366,7 @@ fn text_is_spoken_piece_by_piece_from_kept_audio() {
             &runtime,
             &text,
             index,
+            longest,
             "reply".into(),
             "tutor_speech",
         ))
