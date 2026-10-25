@@ -35,6 +35,11 @@ export interface AppSettings {
    * soon as they are written, when a lesson voice is set up. On by default.
    */
   lectureAudioWithNewLessons?: boolean;
+  /**
+   * Seconds of silence after which a spoken Tutor question is sent by itself;
+   * 0 sends only when the learner stops recording. 2 until changed.
+   */
+  speechAutoSendSeconds?: number;
 }
 
 export interface AppInfo {

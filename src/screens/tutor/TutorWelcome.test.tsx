@@ -14,6 +14,7 @@ import {
   type TutorTurn,
 } from "../../ipc/tutor";
 import { listSubjectLessons } from "../../ipc/lessons";
+import { getSettings, type AppSettings } from "../../ipc/settings";
 import { getSpeechInputStatus, installSpeechInputModel, transcribeSpeech, type SpeechInputStatus } from "../../ipc/speechInput";
 import { microphoneAvailable, startRecording } from "../../platform/microphone";
 import { useOptionalHomeSummary } from "../../controllers/HomeSummaryProvider";
@@ -68,6 +69,7 @@ vi.mock("../../ui/overlays/overlayContext", () => {
   };
 });
 vi.mock("../../ipc/lessons", () => ({ listSubjectLessons: vi.fn() }));
+vi.mock("../../ipc/settings", () => ({ getSettings: vi.fn() }));
 vi.mock("../../ipc/speechInput", () => ({
   getSpeechInputStatus: vi.fn(),
   installSpeechInputModel: vi.fn(),
@@ -132,6 +134,7 @@ beforeEach(() => {
   vi.mocked(getSemanticPreparation).mockResolvedValue(null);
   vi.mocked(getSpeechInputStatus).mockResolvedValue({ ...speechStatus, supported: false });
   vi.mocked(microphoneAvailable).mockReturnValue(true);
+  vi.mocked(getSettings).mockResolvedValue({ speechAutoSendSeconds: 0 } as AppSettings);
   vi.mocked(listSubjectLessons).mockImplementation(async (subjectId: string) => ({ subjectId, lessons: [] }));
   vi.mocked(useOptionalHomeSummary).mockReturnValue({
     summary: {
@@ -300,6 +303,41 @@ describe("Tutor speech input", () => {
     await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Stop and use recording" })); });
     expect(await screen.findByText(/Nothing was heard/)).toBeTruthy();
     expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("sends a spoken question once the learner has been quiet for the chosen pause", async () => {
+    vi.mocked(getSettings).mockResolvedValue({ speechAutoSendSeconds: 2 } as AppSettings);
+    vi.mocked(getSpeechInputStatus).mockResolvedValue(speechStatus);
+    let hear: (level: number) => void = () => undefined;
+    vi.mocked(startRecording).mockImplementation(async (onLevel) => {
+      hear = onLevel;
+      return { stop: vi.fn().mockResolvedValue(recordedAudio), cancel: vi.fn() };
+    });
+    vi.mocked(transcribeSpeech).mockResolvedValue({ text: "why do cells need ATP?", durationMs: 3000, elapsedMs: 400 });
+    vi.mocked(createTutorConversation).mockResolvedValue(conversation("c".repeat(32), "Why", { kind: "general", id: null }));
+    vi.mocked(sendTutorTurn).mockResolvedValue({ ...quizTurn, mode: "explain", pendingQuestion: false, userText: "why do cells need ATP?" });
+    vi.mocked(getTutorConversation).mockResolvedValue({
+      conversation: conversation("c".repeat(32), "Why", { kind: "general", id: null }),
+      turns: [{ ...quizTurn, mode: "explain", pendingQuestion: false, userText: "why do cells need ATP?" }],
+      hasEarlierTurns: false,
+    });
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Speak" })); });
+    await screen.findByRole("button", { name: "Stop and use recording" });
+
+    const listen = (level: number, ms: number) => {
+      for (const end = now + ms; now < end; now += 100) hear(level);
+    };
+    await act(async () => { listen(0.01, 500); listen(0.5, 1000); listen(0.01, 1500); });
+    expect(transcribeSpeech).not.toHaveBeenCalled();
+
+    await act(async () => { listen(0.01, 600); });
+    await waitFor(() => expect(sendTutorTurn).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(sendTutorTurn).mock.calls[0]?.[0]).toMatchObject({ mode: "explain", text: "why do cells need ATP?" });
+    clock.mockRestore();
   });
 
   it("offers no microphone where speech input is not supported", async () => {

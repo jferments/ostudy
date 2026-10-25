@@ -32,7 +32,7 @@ export function microphoneAvailable(): boolean {
  */
 export async function startRecording(onLevel: (level: number) => void): Promise<MicrophoneRecording> {
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   });
   let context: AudioContext;
   try {

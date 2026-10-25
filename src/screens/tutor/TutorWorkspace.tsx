@@ -80,9 +80,19 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const turns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
   const lastTurnId = tutor.detail?.turns.at(-1)?.id;
   const live = useLiveTurn(tutor.liveOperationId);
-  const speech = useSpeechInput((text) => {
-    tutor.setDraft(tutor.draft.trim() ? `${tutor.draft.trimEnd()} ${text}` : text);
-    input.current?.focus();
+  const withDraft = (text: string) => (tutor.draft.trim() ? `${tutor.draft.trimEnd()} ${text}` : text);
+  const speech = useSpeechInput({
+    onText: (text) => {
+      tutor.setDraft(withDraft(text));
+      input.current?.focus();
+    },
+    // A question that ended on a pause is sent as heard; if sending cannot
+    // start now, it waits in the draft.
+    onPause: (text) => {
+      const spoken = withDraft(text);
+      tutor.setDraft(spoken);
+      void tutor.send(hintOnly ? "hint" : question ? "answer" : "explain", spoken);
+    },
   });
   const liveAnswer = (
     <div className={styles.assistantMessage} data-testid="tutor-live-answer">

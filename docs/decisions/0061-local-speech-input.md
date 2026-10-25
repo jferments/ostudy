@@ -35,8 +35,12 @@ transcripts later.
   recording down to 16 kHz and hands Rust mono 16-bit PCM. Rust checks the
   rate and caps the recording at 120 seconds. A recording is held only until
   it has been transcribed.
-- The transcript goes into the composer for the learner to read and edit; it
-  is not sent by itself.
+- A recording the learner stops goes into the composer to read and edit. By
+  default a recording also ends after two seconds of quiet that follow
+  speech, and that transcript is sent as heard. The pause is the
+  `speechAutoSendSeconds` app setting (0 to 10, where 0 turns it off), and
+  Settings offers off, 1, 2, 3 and 5 seconds. Quiet is judged against the
+  quietest moment of the recording, so a steady hum does not count as speech.
 - sherpa-onnx's libraries come from its own release archives, pinned with
   SHA-256 hashes in `scripts/native-deps-manifest.json` and staged by
   `scripts/install-native-deps.sh`. `SHERPA_ONNX_ARCHIVE_DIR` points the
@@ -52,7 +56,8 @@ transcripts later.
 
 ## Consequences
 
-- No migration and no library data change.
+- No migration and no library data change. The pause is one `app_settings`
+  row; a build without it ignores the row.
 - Builds need `install-native-deps.sh` (or `--pdfium-only`) before Cargo,
   which `pnpm desktop`, the Android scripts and the check scripts already run.
 - Spoken Tutor replies, lecture transcripts and diarization build on this

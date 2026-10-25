@@ -69,6 +69,18 @@ pub struct AppSettingsDto {
     /// as soon as they are written, when a lesson voice is set up.
     #[serde(default = "default_true")]
     pub lecture_audio_with_new_lessons: bool,
+    /// Seconds of silence after which a spoken Tutor question is sent by
+    /// itself; 0 sends only when the learner stops the recording.
+    #[serde(default = "default_speech_auto_send_seconds")]
+    pub speech_auto_send_seconds: i64,
+}
+
+/// Jay's starting pause, 2026-10-25.
+pub(crate) const DEFAULT_SPEECH_AUTO_SEND_SECONDS: i64 = 2;
+const MAX_SPEECH_AUTO_SEND_SECONDS: i64 = 10;
+
+fn default_speech_auto_send_seconds() -> i64 {
+    DEFAULT_SPEECH_AUTO_SEND_SECONDS
 }
 
 fn default_guide_pdf_theme() -> String {
@@ -165,6 +177,11 @@ pub(crate) fn load_settings(connection: &mut Connection) -> Result<AppSettingsDt
             connection,
             "lectureAudioWithNewLessons",
             true,
+        )?,
+        speech_auto_send_seconds: get_setting(
+            connection,
+            "speechAutoSendSeconds",
+            DEFAULT_SPEECH_AUTO_SEND_SECONDS,
         )?,
     })
 }
@@ -329,6 +346,10 @@ fn save_settings_in_connection(
             "lectureAudioWithNewLessons",
             serde_json::to_string(&settings.lecture_audio_with_new_lessons),
         ),
+        (
+            "speechAutoSendSeconds",
+            serde_json::to_string(&settings.speech_auto_send_seconds),
+        ),
     ];
     for (key, serialized) in entries {
         let serialized = serialized.map_err(CommandError::serialization)?;
@@ -405,6 +426,14 @@ fn validate_settings(settings: &AppSettingsDto) -> Result<(), CommandError> {
         "invalid_guide_pdf_theme",
         "Select an available study guide PDF theme.",
     )?;
+    if !(0..=MAX_SPEECH_AUTO_SEND_SECONDS).contains(&settings.speech_auto_send_seconds) {
+        return Err(CommandError::new(
+            "invalid_speech_auto_send",
+            format!(
+                "The pause before a spoken question is sent must be between 0 and {MAX_SPEECH_AUTO_SEND_SECONDS} seconds."
+            ),
+        ));
+    }
     validate_new_day_start_hour(settings.new_day_start_hour)?;
     validate_desired_retention(settings.desired_retention)
 }

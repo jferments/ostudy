@@ -192,6 +192,10 @@ const APP_SETTINGS_FIELDS: &[FieldContract] = &[
         name: "lectureAudioWithNewLessons",
         ty: TypeScriptType::Boolean,
     },
+    FieldContract {
+        name: "speechAutoSendSeconds",
+        ty: TypeScriptType::Number,
+    },
 ];
 
 const COMPLETED_RESTORE_FIELDS: &[FieldContract] = &[
@@ -521,6 +525,7 @@ pub fn representative_fixtures() -> Value {
             guide_pdf_theme: "sage".to_string(),
             guide_pdf_include_notes: true,
             lecture_audio_with_new_lessons: true,
+            speech_auto_send_seconds: 2,
         },
         "completedRestore": restore.clone(),
         "librarySession": SessionStatus {
