@@ -152,7 +152,7 @@ fn citable(unit: &KnowledgeUnit, document_id: String, pdf: bool) -> Option<Citab
         Some(reference) => (reference.excerpt.clone(), reference.locator.clone()),
         None => (content.supporting_excerpt.clone(), None),
     };
-    let excerpt = bounded(excerpt.trim());
+    let excerpt = bounded(&readable(&excerpt));
     if excerpt.is_empty() {
         return None;
     }
@@ -242,6 +242,28 @@ fn stems(text: &str) -> HashSet<String> {
         .filter(|word| !STOP_WORDS.contains(&word.as_str()))
         .map(|word| word.chars().take(STEM_CHARS).collect())
         .collect()
+}
+
+/// The passage as one paragraph: the page's line breaks and the typeface's
+/// ligatures are how the PDF stores its text, not how the learner reads it.
+fn readable(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    for word in text.split_whitespace() {
+        if !result.is_empty() {
+            result.push(' ');
+        }
+        for character in word.chars() {
+            match character {
+                '\u{fb00}' => result.push_str("ff"),
+                '\u{fb01}' => result.push_str("fi"),
+                '\u{fb02}' => result.push_str("fl"),
+                '\u{fb03}' => result.push_str("ffi"),
+                '\u{fb04}' => result.push_str("ffl"),
+                other => result.push(other),
+            }
+        }
+    }
+    result
 }
 
 fn bounded(text: &str) -> String {
@@ -353,6 +375,14 @@ mod tests {
         );
         assert_eq!(citations.key_points, [Vec::<usize>::new(), Vec::new()]);
         assert!(citations.is_empty());
+    }
+
+    #[test]
+    fn passages_read_as_one_paragraph_without_ligatures() {
+        assert_eq!(
+            readable("the \u{fb02}at part of the\n  cytoplasm is de\u{fb01}ned"),
+            "the flat part of the cytoplasm is defined"
+        );
     }
 
     #[test]
