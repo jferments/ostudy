@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 
 /**
  * Clicks a Base UI menu trigger until its menu is open, waits for focus to
@@ -22,9 +22,11 @@ export async function openMenu(trigger: HTMLElement): Promise<HTMLElement> {
   }
   const name = trigger.getAttribute("aria-label") ?? trigger.textContent ?? "";
   if (trigger.getAttribute("aria-expanded") !== "true") throw new Error(`The menu for "${name}" did not open.`);
-  const menu = await screen.findByRole("menu", { name });
-  await waitFor(() => {
+  return waitFor(() => {
+    const id = trigger.getAttribute("aria-controls");
+    const menu = id ? document.getElementById(id) : null;
+    if (menu?.getAttribute("role") !== "menu") throw new Error(`The trigger "${name}" controls no menu.`);
     if (!menu.contains(document.activeElement)) throw new Error(`Focus did not move into the menu for "${name}".`);
+    return menu;
   });
-  return menu;
 }

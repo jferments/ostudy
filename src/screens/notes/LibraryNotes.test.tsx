@@ -1,10 +1,11 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as notebooksIpc from "../../ipc/notebooks";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { LibraryNotes } from "./LibraryNotes";
+import { openMenu } from "../../test/menus";
 
 vi.mock("../../ipc/notebooks", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../ipc/notebooks")>(),
@@ -66,12 +67,7 @@ beforeEach(() => {
 
 async function chooseAction(menu: string, name: string): Promise<void> {
   const trigger = await screen.findByRole("button", { name: menu });
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
-  }
-  fireEvent.click(await within(await screen.findByRole("menu")).findByRole("menuitem", { name }));
+  fireEvent.click(await within(await openMenu(trigger)).findByRole("menuitem", { name }));
 }
 
 describe("Library notes", () => {

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HomeSummaryProvider } from "../../controllers/HomeSummaryProvider";
@@ -7,6 +7,7 @@ import * as subjectsIpc from "../../ipc/subjects";
 import { makeHomeSubjectSummary, makeHomeSummary, makeSubject, makeSubjectLibrary } from "../../test/factories";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { LibrarySubjectHeader, useLibrarySubjects } from "./LibrarySubjects";
+import { openMenu } from "../../test/menus";
 
 vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : "Unexpected error"),
@@ -53,12 +54,8 @@ function renderHeader() {
 
 async function chooseAction(name: string): Promise<void> {
   const trigger = await screen.findByRole("button", { name: "Physiology actions" });
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
-  }
-  fireEvent.click(await within(await screen.findByRole("menu")).findByRole("menuitem", { name }));
+  const menu = await openMenu(trigger);
+  fireEvent.click(await within(menu).findByRole("menuitem", { name }));
 }
 
 describe("LibrarySubjectHeader", () => {
