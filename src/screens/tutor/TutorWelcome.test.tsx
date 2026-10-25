@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getAiTaskDefaults, listAiProviderProfiles } from "../../ipc/aiProfiles";
-import { getSemanticPreparation, listSemanticScopeChoices } from "../../ipc/knowledge";
+import { getLearningTaskProgress, getSemanticPreparation, listSemanticScopeChoices } from "../../ipc/knowledge";
 import {
   createTutorConversation,
   getTutorConversation,
@@ -179,6 +179,36 @@ describe("Tutor new chat", () => {
     expect(sendTutorTurn).not.toHaveBeenCalled();
     await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
     await waitFor(() => expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({ mode: "explain", text: "Why?" })));
+  });
+});
+
+describe("Tutor live answers", () => {
+  it("shows the explanation while it is written, then the checked answer", async () => {
+    const id = "c".repeat(32);
+    vi.mocked(createTutorConversation).mockResolvedValue(conversation(id, "Osmosis", { kind: "general", id: null }));
+    let finish: (turn: TutorTurn) => void = () => undefined;
+    vi.mocked(sendTutorTurn).mockImplementation(() => new Promise<TutorTurn>((resolve) => { finish = resolve; }));
+    vi.mocked(getLearningTaskProgress).mockResolvedValue({
+      operationId: "x", phase: "writing response", completed: 2, total: 4, canceled: false, draft: "Osmosis is the movement",
+    });
+    const done = { ...quizTurn, mode: "explain" as const, pendingQuestion: false, userText: "What is osmosis?",
+      assistantText: "Osmosis is the movement of water across a membrane." };
+    vi.mocked(getTutorConversation).mockResolvedValue({
+      conversation: conversation(id, "Osmosis", { kind: "general", id: null }), turns: [done], hasEarlierTurns: false,
+    });
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    const box = screen.getByRole("textbox", { name: "Message" });
+    fireEvent.change(box, { target: { value: "What is osmosis?" } });
+    await act(async () => { fireEvent.keyDown(box, { key: "Enter" }); });
+    const live = await screen.findByTestId("tutor-live-answer");
+    await waitFor(() => expect(live.textContent).toContain("Osmosis is the movement"));
+    expect(within(live).getByRole("status").textContent).toBe("Writing…");
+    const operationId = vi.mocked(sendTutorTurn).mock.calls[0]?.[0].operationId;
+    expect(getLearningTaskProgress).toHaveBeenCalledWith(operationId);
+    await act(async () => { finish(done); });
+    expect(await screen.findByText("Osmosis is the movement of water across a membrane.")).toBeTruthy();
+    expect(screen.queryByTestId("tutor-live-answer")).toBeNull();
   });
 });
 

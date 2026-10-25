@@ -402,3 +402,73 @@ fn write_chunk(stream: &mut TcpStream, body: &[u8]) {
         .write_all(b"\r\n")
         .expect("chunk terminator should write");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_observed_task_stream_reports_its_output_as_it_grows() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("mock listener should bind");
+    let url = Url::parse(&format!(
+        "http://{}/observed",
+        listener.local_addr().expect("mock address should resolve")
+    ))
+    .expect("mock URL should parse");
+    let (first_seen, wait_first) = std::sync::mpsc::channel::<()>();
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("request should arrive");
+        read_http_request(&mut stream);
+        write_sse_headers(&mut stream);
+        write_chunk(
+            &mut stream,
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"text\\\":\\\"Os\"}}]}\n\n",
+        );
+        stream.flush().expect("first chunk should flush");
+        // The second half waits until the first was observed on its own.
+        wait_first
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the first half should be observed");
+        write_chunk(
+            &mut stream,
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"mosis\\\"}\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+        );
+        stream
+            .write_all(b"0\r\n\r\n")
+            .expect("terminal chunk should write");
+        stream.flush().expect("stream should flush");
+    });
+
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let observer: super::super::OutputObserver = {
+        let seen = seen.clone();
+        let first_seen = std::sync::Mutex::new(Some(first_seen));
+        std::sync::Arc::new(move |partial: &str| {
+            seen.lock().unwrap().push(partial.to_string());
+            if let Some(sender) = first_seen.lock().unwrap().take() {
+                let _ = sender.send(());
+            }
+        })
+    };
+    let gateway = AiGateway::new().expect("gateway should initialize");
+    let signal = task_cancellation::CancellationSignal::new();
+    let result = super::super::observe_output(
+        observer,
+        gateway.post_task_json(
+            url,
+            None,
+            &json!({ "model": "test" }),
+            5_000,
+            1_024,
+            &signal,
+        ),
+    )
+    .await
+    .expect("the observed stream should complete");
+    server.join().expect("mock server should finish");
+
+    assert_eq!(
+        result.pointer("/choices/0/message/content"),
+        Some(&json!("{\"text\":\"Osmosis\"}"))
+    );
+    assert_eq!(
+        *seen.lock().unwrap(),
+        ["{\"text\":\"Os", "{\"text\":\"Osmosis\"}"]
+    );
+}

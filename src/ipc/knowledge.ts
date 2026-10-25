@@ -137,6 +137,11 @@ export interface LearningTaskProgress {
   completed: number;
   total: number;
   canceled: boolean;
+  /**
+   * A Tutor explanation as it is being written: unchecked provider text that
+   * the finished, checked turn replaces. Null for every other task.
+   */
+  draft: string | null;
 }
 
 export interface SemanticSearchResult {

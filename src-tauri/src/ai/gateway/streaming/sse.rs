@@ -124,6 +124,15 @@ impl SseChatAccumulator {
             .collect()
     }
 
+    /// The structured output so far: the first tool call's arguments when the
+    /// provider answers through a tool, otherwise the message content.
+    pub(crate) fn partial_output(&self) -> &str {
+        self.tools
+            .values()
+            .next()
+            .map_or(self.content.as_str(), |tool| tool.arguments.as_str())
+    }
+
     pub(crate) fn model_progress_bytes(&self) -> usize {
         self.content
             .len()

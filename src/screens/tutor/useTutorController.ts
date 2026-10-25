@@ -92,6 +92,8 @@ export function useTutorController() {
   const creating = useRef<PendingConversationCreate | null>(null);
   const organizationOperations = useRef(new Map<string, string>());
   const active = useRef<string | null>(null);
+  // The turn whose answer is being written, for its live progress.
+  const [liveOperationId, setLiveOperationId] = useState<string | null>(null);
   const mutating = useRef(false);
   const organizationMutating = useRef(false);
   const alive = useRef(true);
@@ -317,7 +319,13 @@ export function useTutorController() {
 
   async function perform(request: TutorTurnInput): Promise<void> {
     active.current = request.operationId;
-    const turn = await sendTutorTurn(request);
+    setLiveOperationId(request.operationId);
+    let turn: TutorTurn;
+    try {
+      turn = await sendTutorTurn(request);
+    } finally {
+      if (alive.current) setLiveOperationId(null);
+    }
     if (!alive.current) return;
     setPending(turn.state === "running" ? request : null);
     if (turn.state !== "running") {
@@ -622,7 +630,7 @@ export function useTutorController() {
 
   return {
     conversations, projects, profiles, choices, detail, scope, draftProjectId, target, panelOpen, draft, profileId, defaultTutorProfileId,
-    loading, busy, organizing, error, pending, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
+    loading, busy, organizing, error, pending, liveOperationId, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
     initialize, refresh, selectConversation,
     newConversation, newConversationInProject, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
     send, start, retryPending, cancel, loadEarlier,
