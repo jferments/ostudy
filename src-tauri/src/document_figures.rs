@@ -502,7 +502,7 @@ pub(crate) fn set_hidden(
     Ok(saved)
 }
 
-fn validate_figure_id(figure_id: &str) -> Result<(), CommandError> {
+pub(crate) fn validate_figure_id(figure_id: &str) -> Result<(), CommandError> {
     let valid = (1..=32).contains(&figure_id.len())
         && figure_id
             .chars()

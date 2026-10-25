@@ -17,6 +17,7 @@ fn context() -> StudyContext {
         request_text: String::new(),
         notice: String::new(),
         images: vec![],
+        figures: vec![],
         completion_tokens: 3000,
     }
 }
