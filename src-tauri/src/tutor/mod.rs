@@ -5,6 +5,7 @@ pub(crate) mod commands;
 mod context;
 mod contracts;
 mod conversations;
+pub(crate) mod figures;
 mod focus;
 mod history;
 mod memory;

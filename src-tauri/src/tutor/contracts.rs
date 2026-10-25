@@ -9,7 +9,7 @@ use crate::{
     util::validate_entity_id,
 };
 
-pub(crate) const TUTOR_PROMPT_VERSION: i64 = 1;
+pub(crate) const TUTOR_PROMPT_VERSION: i64 = 2;
 pub(crate) const MAX_HISTORY_TURNS: usize = 50;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]

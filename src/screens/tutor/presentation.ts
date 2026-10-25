@@ -70,3 +70,8 @@ export const styles = {
   sourcePanelHeader: "tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-2 tw:[&>h3]:m-0 tw:[&>h3]:text-body tw:[&>h3]:font-semibold",
   sourceCard: "tw:grid tw:min-w-0 tw:gap-2 tw:rounded-xl tw:border tw:border-solid tw:border-border/70 tw:bg-background tw:p-4 tw:[&>strong]:text-small tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground",
 } as const;
+
+/** An answer's text without the figures it shows, which mean nothing pasted elsewhere. */
+export function withoutFigures(text: string): string {
+  return text.replace(/!\[[^\]\n]*\]\(figure:[^)\s]*\)[ \t]*\n?/gu, "").replace(/\n{3,}/gu, "\n\n").trim();
+}
