@@ -94,6 +94,7 @@ fn document_pdf_math_notice_scans_effective_content_not_debug_or_source_filename
         notes: vec![],
         figures: vec![],
         citations: None,
+        terms: vec![],
     });
     assert!(math_source::has_math(&export));
     assert!(!math_source::requires_source_fallback(&export));

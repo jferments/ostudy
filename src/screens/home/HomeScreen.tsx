@@ -21,6 +21,8 @@ import { CheckTheseSheet } from "./CheckTheseSheet";
 import { HomeFirstRun } from "./HomeFirstRun";
 import { ContinuePanel, SuggestionsPanel, useHomeLessons } from "./HomeStudyPanels";
 import { HomeWeekPanel } from "./HomeWeekPanel";
+import { LessonSlidePreview } from "./LessonSlidePreview";
+import { QuestionOfTheDayPanel } from "./QuestionOfTheDayPanel";
 import {
   buildSubjectTiles,
   countLabel,
@@ -59,9 +61,10 @@ interface HomeScreenProps {
 }
 
 /**
- * Home: the Today strip with Start review, then the learner's subjects with
- * what is due in each and how well each is remembered, beside lessons to pick
- * up, suggestions and the week at a glance. A library with nothing in it shows
+ * Home: the question of the day and the Today strip with Start review, then
+ * the learner's subjects with what is due in each and how well each is
+ * remembered and the slide their lesson is on, beside lessons to pick up,
+ * suggestions and the week at a glance. A library with nothing in it shows
  * a welcome instead.
  */
 export function HomeScreen({
@@ -158,6 +161,11 @@ export function HomeScreen({
           />
         ) : (
           <div className="tw:flex tw:flex-col tw:gap-8 tw:compact:gap-6">
+            <QuestionOfTheDayPanel
+              refreshKey={refreshKey}
+              subjects={tiles.subjects}
+              onPracticeSubject={onPracticeSubject}
+            />
             <TodayStrip
               studyDate={summary.studyDate}
               today={summary.today}
@@ -229,6 +237,7 @@ export function HomeScreen({
                     ))}
                   </ul>
                 </Panel>
+                <LessonSlidePreview lessons={lessons} subjects={tiles.subjects} onOpenLesson={onOpenLesson} />
               </div>
               <div className="tw:grid tw:min-w-0 tw:flex-[1_1_22rem] tw:gap-5 tw:compact:gap-4">
                 <ContinuePanel lessons={lessons} subjects={tiles.subjects} onOpenLesson={onOpenLesson} />
