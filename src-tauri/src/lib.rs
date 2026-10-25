@@ -471,6 +471,7 @@ pub fn run() {
             library_session::commands::leased_write_podcast,
             library_session::commands::leased_write_source_notes,
             library_session::commands::leased_narrate_podcast_turn,
+            library_session::commands::leased_speak_tutor_reply,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
             library_session::commands::leased_generate_document_study_guide,

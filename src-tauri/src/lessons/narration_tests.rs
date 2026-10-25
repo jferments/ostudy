@@ -336,6 +336,52 @@ fn kept_audio_is_reused_without_asking_the_voice_again() {
 }
 
 #[test]
+fn text_is_spoken_piece_by_piece_from_kept_audio() {
+    let database = library();
+    let paths = temporary_paths("pieces");
+    add_openrouter(&database, OPENROUTER, 1);
+    save(&database, Some(OPENROUTER), KOKORO, "bm_george", 0).unwrap();
+    let model = speech::speech_model(KOKORO).unwrap();
+    let sentence = "The loop of Henle concentrates urine by moving salt out of the tubule. ";
+    let text = sentence.repeat(40);
+    let pieces = segments(&text, model.max_characters);
+    assert!(pieces.len() > 1);
+    let voice = Voice {
+        engine: "openrouter",
+        model,
+        voice: "bm_george".to_string(),
+        reference: None,
+    };
+    let kept: Vec<_> = pieces
+        .iter()
+        .map(|piece| keep_segment(&database, &paths, &voice, piece, &mp3_bytes()).unwrap())
+        .collect();
+    let runtime = AiRuntimeState::new(crate::platform::unavailable_secret_store()).unwrap();
+    let speak = |index| {
+        tauri::async_runtime::block_on(speak_piece(
+            &database,
+            &paths,
+            &runtime,
+            &text,
+            index,
+            "reply".into(),
+            "tutor_speech",
+        ))
+    };
+    // The host is never reached: each piece is the one kept for it.
+    for (index, segment) in kept.iter().enumerate() {
+        let spoken = speak(index).unwrap();
+        assert_eq!(spoken.segment, *segment);
+        assert_eq!(spoken.pieces, pieces.len());
+        assert!(!spoken.made);
+    }
+    assert_eq!(
+        speak(pieces.len()).unwrap_err().code,
+        "speech_piece_missing"
+    );
+}
+
+#[test]
 fn something_other_than_audio_is_not_kept() {
     let database = library();
     let paths = temporary_paths("not-audio");

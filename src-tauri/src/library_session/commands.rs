@@ -829,6 +829,23 @@ pub(crate) async fn leased_narrate_podcast_turn(
     .await
 }
 
+#[tauri::command(rename = "speak_tutor_reply")]
+pub(crate) async fn leased_speak_tutor_reply(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::tutor::speech::speak_tutor_reply(
+        &app.state::<crate::database::Database>(),
+        &app.state::<crate::paths::AppPaths>(),
+        &app.state::<crate::ai::AiRuntimeState>(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "prepare_library_backup_async")]
 pub(crate) async fn leased_prepare_library_backup_async(
     app: AppHandle,

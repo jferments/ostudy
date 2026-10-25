@@ -323,6 +323,7 @@ export interface NativeCommandGatewayMap {
   "set_tutor_conversation_archived": readonly [typeof GatewayModule45.setTutorConversationArchived];
   "set_tutor_project_archived": readonly [typeof GatewayModule45.setTutorProjectArchived];
   "share_prepared_export": readonly [typeof GatewayModule18.sharePreparedExport];
+  "speak_tutor_reply": readonly [typeof GatewayModule45.speakTutorReply];
   "stage_document_clip": readonly [typeof GatewayModule27.stageDocumentClip];
   "stage_image_collection_file": readonly [typeof GatewayModule21.stageImageCollectionFile];
   "stage_image_collection_file_chunk": readonly [typeof GatewayModule21.stageImageCollectionFileChunk];

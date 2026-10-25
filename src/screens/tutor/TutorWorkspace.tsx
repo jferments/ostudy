@@ -22,6 +22,8 @@ import { TutorMarkdown } from "./TutorMarkdown";
 import { sourcesLabel, TutorSources } from "./TutorSources";
 import { useArtwork } from "../../ui/artwork/Artwork";
 import { useLiveTurn } from "./useLiveTurn";
+import { useReadAloud, type ReadAloud } from "./useReadAloud";
+import { useVoiceAvailable } from "../lessons/useVoiceAvailable";
 import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStarters";
 import { styles } from "./presentation";
 
@@ -53,6 +55,22 @@ function CopyAnswer({ text }: { text: string }) {
   );
 }
 
+/** Reads a finished reply aloud in the lesson voice; a second press stops it. */
+function ReadAloudAnswer({ turnId, reader }: { turnId: string; reader: ReadAloud }) {
+  const reading = reader.turnId === turnId;
+  return (
+    <Button
+      size="small"
+      variant="ghost"
+      aria-pressed={reading}
+      onClick={() => reader.toggle(turnId)}
+    >
+      <Icon name={reading ? "stop" : "listen"} size={16} />
+      {reading ? "Stop reading" : "Read aloud"}
+    </Button>
+  );
+}
+
 export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean }) {
   const tutor = useTutor();
   const id = useId();
@@ -71,6 +89,12 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const followTail = useRef(true);
   const [awayFromTail, setAwayFromTail] = useState(false);
   const starters = useTutorStarters();
+  const voiceAvailable = useVoiceAvailable();
+  const reader = useReadAloud();
+  const conversationId = tutor.detail?.conversation.id;
+  const stopReading = reader.stop;
+  // Another chat's replies are not this one's to keep reading.
+  useEffect(() => stopReading, [conversationId, stopReading]);
   const artwork = useArtwork("tutor.welcome");
   const welcomeArt = artwork.enabled ? artwork.definition.image : undefined;
   const hintOnly = tutor.target?.mode === "hint";
@@ -336,8 +360,10 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
                     </Button>
                   ) : null}
                   <CopyAnswer text={turn.assistantText} />
+                  {voiceAvailable ? <ReadAloudAnswer turnId={turn.id} reader={reader} /> : null}
                 </div>
               ) : null}
+              {reader.error?.turnId === turn.id ? <InlineNotice kind="error">{reader.error.message}</InlineNotice> : null}
               {turn.id === lastTurnId
                 && (turn.mode !== "hint" || hintOnly)
                 && ["failed", "canceled", "interrupted"].includes(turn.state) ? (
@@ -424,6 +450,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
         </div>
         {notices}
         {!welcome ? <div className={styles.composerWrap}>{composerForm}</div> : null}
+        <audio ref={reader.audioRef} hidden />
       </div>
       {sourceBeside && source ? (
         <aside className={styles.sourcePanel} aria-label="Source">

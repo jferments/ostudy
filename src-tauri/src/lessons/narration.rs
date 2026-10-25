@@ -412,33 +412,8 @@ pub(super) async fn speak_text(
     key: String,
     choose: impl FnOnce(&Resolved) -> Result<(&'static SpeechModel, String), CommandError>,
 ) -> Result<LessonStepNarrationDto, CommandError> {
-    // A voice reads HCO₃⁻ as letters and marks; it hears "bicarbonate".
-    let text = &super::spoken::spoken(text);
-    let settings = database.with_connection(|connection| resolved(connection))?;
-    if segments(text, settings.model.max_characters).is_empty() {
-        return Err(CommandError::new(
-            "lesson_step_unnarrated",
-            "There is nothing here to listen to.",
-        ));
-    }
-    let request = speaking_request(database, &settings)?;
-    let engine = speech::engine(request.profile.provider_kind)?;
-    let _narrating = Narrating::begin(key)?;
-    let (model, voice) = choose(&settings)?;
-    let pieces = segments(text, model.max_characters);
-    let narrator = Narrator {
-        database,
-        paths,
-        runtime,
-        request: &request,
-        voice: Voice {
-            engine,
-            model,
-            reference: voices::reference(database, paths, &voice)?,
-            voice,
-        },
-    };
-
+    let (pieces, narrator, _narrating) =
+        prepare(database, paths, runtime, text, key, PURPOSE, choose)?;
     let mut found = database.with_connection(|connection| {
         pieces
             .iter()
@@ -460,6 +435,115 @@ pub(super) async fn speak_text(
     })
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SpokenPieceDto {
+    pub segment: NarrationSegmentDto,
+    /// How many pieces the whole text is spoken in.
+    pub pieces: usize,
+    /// Whether this call had to make the piece.
+    pub made: bool,
+}
+
+/// Speaks one piece of saved text, counted from 0, in the speech setting's
+/// model and voice. Long text is listened to piece by piece, so the first
+/// piece plays while the next is made. `purpose` names the operation the
+/// request is accounted under.
+pub(crate) async fn speak_piece(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &AiRuntimeState,
+    text: &str,
+    index: usize,
+    key: String,
+    purpose: &'static str,
+) -> Result<SpokenPieceDto, CommandError> {
+    let (pieces, narrator, _narrating) = prepare(
+        database,
+        paths,
+        runtime,
+        text,
+        format!("{key}:{index}"),
+        purpose,
+        |settings| Ok((settings.model, settings.voice.clone())),
+    )?;
+    let piece = pieces.get(index).ok_or_else(|| {
+        CommandError::new("speech_piece_missing", "There is no more to listen to.")
+    })?;
+    let kept =
+        database.with_connection(|connection| kept_segment(connection, &narrator.voice, piece))?;
+    if let Some(segment) = kept {
+        return Ok(SpokenPieceDto {
+            segment,
+            pieces: pieces.len(),
+            made: false,
+        });
+    }
+    let mut accounting = generation::Operation::begin(database, None, None, None, purpose)?;
+    let mut found = [None];
+    let result = narrator
+        .make_missing(
+            std::slice::from_ref(piece),
+            &mut found,
+            accounting.context(),
+        )
+        .await;
+    accounting.finish_result(&result);
+    result?;
+    let [Some(segment)] = found else {
+        return Err(CommandError::new(
+            "speech_audio_invalid",
+            "The voice returned something other than audio.",
+        ));
+    };
+    Ok(SpokenPieceDto {
+        segment,
+        pieces: pieces.len(),
+        made: true,
+    })
+}
+
+/// The pieces `text` is spoken in and who speaks them, once the setting has a
+/// connection and nothing else is speaking `key`.
+fn prepare<'a>(
+    database: &'a Database,
+    paths: &'a AppPaths,
+    runtime: &'a AiRuntimeState,
+    text: &str,
+    key: String,
+    stage: &'static str,
+    choose: impl FnOnce(&Resolved) -> Result<(&'static SpeechModel, String), CommandError>,
+) -> Result<(Vec<String>, Narrator<'a>, Narrating), CommandError> {
+    // A voice reads HCO₃⁻ as letters and marks; it hears "bicarbonate".
+    let text = &super::spoken::spoken(text);
+    let settings = database.with_connection(|connection| resolved(connection))?;
+    if segments(text, settings.model.max_characters).is_empty() {
+        return Err(CommandError::new(
+            "lesson_step_unnarrated",
+            "There is nothing here to listen to.",
+        ));
+    }
+    let request = speaking_request(database, &settings)?;
+    let engine = speech::engine(request.profile.provider_kind)?;
+    let narrating = Narrating::begin(key)?;
+    let (model, voice) = choose(&settings)?;
+    let pieces = segments(text, model.max_characters);
+    let narrator = Narrator {
+        database,
+        paths,
+        runtime,
+        request,
+        stage,
+        voice: Voice {
+            engine,
+            model,
+            reference: voices::reference(database, paths, &voice)?,
+            voice,
+        },
+    };
+    Ok((pieces, narrator, narrating))
+}
+
 /// What kept audio is keyed by, and what a request needs to speak it.
 struct Voice {
     engine: &'static str,
@@ -473,7 +557,8 @@ struct Narrator<'a> {
     database: &'a Database,
     paths: &'a AppPaths,
     runtime: &'a AiRuntimeState,
-    request: &'a ProfileRequestSnapshot,
+    request: ProfileRequestSnapshot,
+    stage: &'static str,
     voice: Voice,
 }
 
@@ -493,12 +578,13 @@ impl Narrator<'_> {
             }
             let audio = speech::speak(
                 self.runtime,
-                self.request,
+                &self.request,
                 &speech::Speaker {
                     model: self.voice.model,
                     voice: &self.voice.voice,
                     reference: self.voice.reference.as_ref(),
                 },
+                self.stage,
                 piece,
                 &accounting,
                 &cancellation,
