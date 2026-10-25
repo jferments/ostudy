@@ -9,6 +9,7 @@ export const styles = {
   // A shaded pane, like the side rail, sets the chat list apart from the conversation.
   historyPane: "tw:flex tw:min-h-0 tw:min-w-0 tw:flex-col tw:overflow-y-auto tw:border-0 tw:border-r tw:border-solid tw:border-border/70 tw:bg-foreground/4 tw:p-3",
   chat: "tw:flex tw:min-h-0 tw:min-w-0 tw:flex-1 tw:flex-col tw:text-body",
+  transcriptFrame: "tw:relative tw:flex tw:min-h-0 tw:min-w-0 tw:flex-1 tw:flex-col",
   hintChat: "tw:flex tw:min-h-0 tw:min-w-0 tw:flex-1 tw:flex-col tw:gap-2 tw:text-body",
   chatHeader: "tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-x-2 tw:gap-y-2 tw:border-0 tw:border-b tw:border-solid tw:border-border/70 tw:px-6 tw:py-3 tw:compact:px-3",
   heading: "tw:m-0 tw:min-w-0 tw:flex-[1_1_10rem] tw:truncate tw:text-body tw:font-semibold",
@@ -39,6 +40,15 @@ export const styles = {
   hintTranscript: "tw:flex tw:min-h-32 tw:min-w-0 tw:flex-1 tw:flex-col tw:gap-4 tw:overflow-y-auto tw:overscroll-contain tw:px-1 tw:py-3",
   // A new chat centres its question and its two optional starts.
   empty: "tw:m-auto tw:grid tw:max-w-xl tw:justify-items-center tw:gap-4 tw:px-4 tw:py-8 tw:text-center tw:[&>h3]:m-0 tw:[&>h3]:text-title tw:[&>h3]:font-semibold",
+  // A new full-page chat: the raccoon, the question, the composer and the starters, centred.
+  welcome: "tw:m-auto tw:grid tw:w-full tw:max-w-3xl tw:min-w-0 tw:justify-items-center tw:gap-5 tw:py-6 tw:text-center tw:[&>h3]:m-0 tw:[&>h3]:text-title tw:[&>h3]:font-semibold tw:[&>h3]:tracking-tight tw:compact:gap-4",
+  welcomeArt: "tw:pointer-events-none tw:block tw:size-48 tw:select-none tw:compact:size-36",
+  welcomeComposer: "tw:w-full tw:text-left",
+  starters: "tw:m-0 tw:grid tw:w-full tw:list-none tw:grid-cols-2 tw:gap-3 tw:p-0 tw:compact:grid-cols-1",
+  starter: "tw:h-full tw:w-full tw:items-start tw:gap-3 tw:rounded-2xl tw:border tw:border-solid tw:border-border/70 tw:bg-foreground/3 tw:px-4 tw:py-3 tw:text-left tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:hover:border-primary/60 tw:focus-visible:outline-none tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:reduce-motion:transition-none tw:[&_strong]:block tw:[&_strong]:text-small tw:[&_strong]:font-semibold tw:[&_small]:mt-0.5 tw:[&_small]:block tw:[&_small]:text-caption tw:[&_small]:text-muted-foreground",
+  starterIcon: "tw:grid tw:size-9 tw:shrink-0 tw:place-items-center tw:rounded-lg tw:bg-primary/12 tw:text-primary",
+  // Shown while the reader has scrolled up from the newest message.
+  jump: "tw:absolute tw:bottom-3 tw:left-1/2 tw:-translate-x-1/2 tw:rounded-full tw:shadow-md",
   turn: "tw:mx-auto tw:grid tw:w-full tw:max-w-3xl tw:min-w-0 tw:gap-4",
   userMessage: "tw:ml-auto tw:max-w-[min(85%,36rem)] tw:min-w-0 tw:rounded-2xl tw:bg-primary/12 tw:px-4 tw:py-2.5",
   assistantMessage: "tw:min-w-0 tw:grid tw:gap-2",
