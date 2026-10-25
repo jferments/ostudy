@@ -111,6 +111,7 @@ mod schedule_controls;
 mod scheduler;
 mod settings;
 mod source_notes;
+mod speech_input;
 mod startup;
 mod study_activity;
 mod study_calendar;
@@ -497,6 +498,9 @@ pub fn run() {
             library_backup_commands::prepare_library_restore_async,
             home_summary::get_home_summary,
             question_of_the_day::get_question_of_the_day,
+            speech_input::get_speech_input_status,
+            library_session::commands::leased_install_speech_input_model,
+            library_session::commands::leased_transcribe_speech,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,

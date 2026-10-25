@@ -18,4 +18,5 @@ if (( ${#OSTUDY_DIAGNOSTIC_REMAINDER[@]} > 0 )); then
   exit 2
 fi
 cd "$ROOT_DIR"
+"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
 exec pnpm tauri dev --config src-tauri/tauri.dev.conf.json -- --locked

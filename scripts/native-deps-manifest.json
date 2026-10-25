@@ -30,6 +30,23 @@
       "ios-catalyst-x64": { "archive": "pdfium-ios-catalyst-x64.tgz", "sha256": "6dd91de184adbd3e9c659e4305badfdb8199c8e4a7337097d1f83faa25d292df", "library": "lib/libpdfium.dylib" }
     }
   },
+  "sherpaOnnx": {
+    "version": "2.0.0",
+    "bindingCrateVersion": "2.0.0",
+    "binarySource": {
+      "repository": "k2-fsa/sherpa-onnx",
+      "release": "v2.0.0",
+      "releaseBaseUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0",
+      "note": "Prebuilt speech-recognition libraries (with ONNX Runtime) that the sherpa-onnx-sys build script links. They are staged here, SHA-256 verified, and handed to the build through SHERPA_ONNX_ARCHIVE_DIR in .cargo/config.toml, so the build never downloads them itself. Windows is not linked yet: its static libraries use the static C runtime."
+    },
+    "artifacts": {
+      "linux-x64": { "archive": "sherpa-onnx-v2.0.0-linux-x64-static-lib.tar.bz2", "sha256": "d9879a4b8b6abc6ad4168887d7428776c2eb04646b19b744e1307a597555bc17" },
+      "linux-arm64": { "archive": "sherpa-onnx-v2.0.0-linux-aarch64-static-lib.tar.bz2", "sha256": "fdf78b8f1869d0068b047dcc76d6c13bbaea2bec29ac3c9803a01486d339c7ba" },
+      "macos-x64": { "archive": "sherpa-onnx-v2.0.0-osx-x64-static-lib.tar.bz2", "sha256": "a6096bb89cb92e071f5fca4a9a869f7251587b707dd52852adc1a8ad6ace9051" },
+      "macos-arm64": { "archive": "sherpa-onnx-v2.0.0-osx-arm64-static-lib.tar.bz2", "sha256": "5e5bdce1d7fc834857278d8bb26f878de6a55c7085e589ed1e41a00baca643ec" },
+      "android": { "archive": "sherpa-onnx-v2.0.0-android.tar.bz2", "sha256": "578650d0221255566bd7c88bd3a0deeb974b8562a332a6a875b35bd00b7e0f5d" }
+    }
+  },
   "tesseract": {
     "minimumMajor": 5,
     "language": "eng",

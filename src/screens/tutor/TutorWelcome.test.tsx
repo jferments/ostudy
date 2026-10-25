@@ -14,6 +14,8 @@ import {
   type TutorTurn,
 } from "../../ipc/tutor";
 import { listSubjectLessons } from "../../ipc/lessons";
+import { getSpeechInputStatus, installSpeechInputModel, transcribeSpeech, type SpeechInputStatus } from "../../ipc/speechInput";
+import { microphoneAvailable, startRecording } from "../../platform/microphone";
 import { useOptionalHomeSummary } from "../../controllers/HomeSummaryProvider";
 import { TutorContext } from "./TutorContext";
 import { TutorWorkspace } from "./TutorWorkspace";
@@ -66,6 +68,12 @@ vi.mock("../../ui/overlays/overlayContext", () => {
   };
 });
 vi.mock("../../ipc/lessons", () => ({ listSubjectLessons: vi.fn() }));
+vi.mock("../../ipc/speechInput", () => ({
+  getSpeechInputStatus: vi.fn(),
+  installSpeechInputModel: vi.fn(),
+  transcribeSpeech: vi.fn(),
+}));
+vi.mock("../../platform/microphone", () => ({ microphoneAvailable: vi.fn(), startRecording: vi.fn() }));
 vi.mock("../../controllers/HomeSummaryProvider", () => ({ useOptionalHomeSummary: vi.fn() }));
 vi.mock("./TutorMemoryControls", () => ({ TutorMemoryControls: () => null }));
 vi.mock("../../ui/overlays/Dialog", () => ({
@@ -98,6 +106,12 @@ const quizTurn: TutorTurn = {
   totalTokens: null, createdAt: 1,
 };
 
+const speechStatus: SpeechInputStatus = {
+  supported: true, modelLabel: "Moonshine v2 (English)", downloadBytes: 141_300_566, installed: true,
+  installingBytes: null, installError: null,
+};
+const recordedAudio = { samplesBase64: "AAAA", sampleRate: 16_000, seconds: 3 };
+
 let controller: TutorController;
 function Harness() {
   controller = useTutorController();
@@ -116,6 +130,8 @@ beforeEach(() => {
   vi.mocked(listTutorConversations).mockResolvedValue([]);
   vi.mocked(listTutorProjects).mockResolvedValue([]);
   vi.mocked(getSemanticPreparation).mockResolvedValue(null);
+  vi.mocked(getSpeechInputStatus).mockResolvedValue({ ...speechStatus, supported: false });
+  vi.mocked(microphoneAvailable).mockReturnValue(true);
   vi.mocked(listSubjectLessons).mockImplementation(async (subjectId: string) => ({ subjectId, lessons: [] }));
   vi.mocked(useOptionalHomeSummary).mockReturnValue({
     summary: {
@@ -229,5 +245,66 @@ describe("Tutor chat list", () => {
     expect(screen.queryByText("Heart sounds")).toBeNull();
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzz" } });
     expect(screen.getByText("No chats match.")).toBeTruthy();
+  });
+});
+
+describe("Tutor speech input", () => {
+  it("asks before downloading the speech model, then puts what was said in the message box", async () => {
+    vi.mocked(getSpeechInputStatus).mockResolvedValue({ ...speechStatus, installed: false });
+    vi.mocked(installSpeechInputModel).mockResolvedValue(speechStatus);
+    const stop = vi.fn().mockResolvedValue(recordedAudio);
+    vi.mocked(startRecording).mockResolvedValue({ stop, cancel: vi.fn() });
+    vi.mocked(transcribeSpeech).mockResolvedValue({ text: "why do cells need ATP?", durationMs: 3000, elapsedMs: 400 });
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    const box = screen.getByRole("textbox", { name: "Message" });
+    fireEvent.change(box, { target: { value: "Quick one:" } });
+
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Speak" })); });
+    expect(installSpeechInputModel).toHaveBeenCalledTimes(1);
+    expect(startRecording).not.toHaveBeenCalled();
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Speak" })); });
+    const recording = await screen.findByRole("button", { name: "Stop and use recording" });
+    expect(recording.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
+
+    await act(async () => { fireEvent.click(recording); });
+    await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe("Quick one: why do cells need ATP?"));
+    expect(transcribeSpeech).toHaveBeenCalledWith("AAAA", 16_000);
+    expect(installSpeechInputModel).toHaveBeenCalledTimes(1);
+    expect(sendTutorTurn).not.toHaveBeenCalled();
+  });
+
+  it("drops a recording on Escape without turning it into text", async () => {
+    vi.mocked(getSpeechInputStatus).mockResolvedValue(speechStatus);
+    const cancel = vi.fn();
+    vi.mocked(startRecording).mockResolvedValue({ stop: vi.fn(), cancel });
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Speak" })); });
+    const recording = await screen.findByRole("button", { name: "Stop and use recording" });
+    fireEvent.keyDown(recording, { key: "Escape" });
+    expect(cancel).toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Speak" })).toBeTruthy();
+    expect(transcribeSpeech).not.toHaveBeenCalled();
+  });
+
+  it("says so when nothing was heard and leaves the message box as it was", async () => {
+    vi.mocked(getSpeechInputStatus).mockResolvedValue(speechStatus);
+    vi.mocked(startRecording).mockResolvedValue({ stop: vi.fn().mockResolvedValue(recordedAudio), cancel: vi.fn() });
+    vi.mocked(transcribeSpeech).mockResolvedValue({ text: "", durationMs: 3000, elapsedMs: 200 });
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Speak" })); });
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Stop and use recording" })); });
+    expect(await screen.findByText(/Nothing was heard/)).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("offers no microphone where speech input is not supported", async () => {
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    expect(screen.queryByRole("button", { name: "Speak" })).toBeNull();
   });
 });
