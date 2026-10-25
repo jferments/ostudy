@@ -104,3 +104,10 @@ fn prompt_distinguishes_general_knowledge_from_explicit_source_only_requests() {
     assert!(prompt.contains("instead of silently substituting general knowledge"));
     assert!(prompt.contains("Never invent an ID"));
 }
+
+#[test]
+fn prompt_answers_past_unusable_sources_without_remarking_on_them() {
+    let prompt = system_prompt(TutorMode::Explain);
+    assert!(prompt.contains("never comment on how supplied material looks or was prepared"));
+    assert!(prompt.contains("answer from your general knowledge as if it had not been supplied"));
+}
