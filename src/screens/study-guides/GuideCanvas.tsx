@@ -41,6 +41,7 @@ import { useTextFormat } from "../documents/annotator/textFormat";
 import { useDocumentAnnotator, type DocumentAnnotatorController } from "../documents/annotator/useDocumentAnnotator";
 import { inkMaterialKey, materialInkSource, type InkPage } from "../ink/materialInkSource";
 import { LinkDialog, type LinkChoice } from "../notes/LinkDialog";
+import { GuideSourcesSheet } from "./GuideSources";
 
 /** Where links on the guide's pages lead outside it. Each is optional: a link with nowhere to go says so. */
 export interface GuideCanvasLinkActions {
@@ -152,6 +153,7 @@ function GuideCanvasSession({
     return () => { if (leaveRef.current === leave) leaveRef.current = null; };
   }, [leave, leaveRef]);
   const [passage, setPassage] = useState<SourcePassage | null>(null);
+  const [cited, setCited] = useState<{ topicId: string; number: number } | null>(null);
   const [showPage, setShowPage] = useState<((pageNumber: number, top?: number) => void) | null>(null);
 
   const follow = useCallback((annotation: Annotation) => {
@@ -224,11 +226,22 @@ function GuideCanvasSession({
           controller={controller} unavailable={unavailable} busy={closing} readTopicIds={readTopicIds}
           openAtTopicId={openAtTopicId} contentsOpen={contentsOpen} onContentsClose={onContentsClose}
           sectionMenu={sectionMenu} onPractice={onPractice} onCurrentSection={onCurrentSection}
-          onFollow={follow} onShowPage={setShowPage} />
+          onFollow={follow} onShowPage={setShowPage} onCite={(topicId, number) => setCited({ topicId, number })} />
       )}
+      {cited ? (
+        <GuideSourcesSheet sources={canvas.sources.filter((source) => source.topicId === cited.topicId)}
+          current={cited.number} sectionTitle={sectionTitle(canvas, cited.topicId)}
+          documentId={documentId} documentTitle={title} onOpen={setPassage} onClose={() => setCited(null)} />
+      ) : null}
       {passage ? <SourcePassageDialog passage={passage} onClose={() => setPassage(null)} showToast={showToast} /> : null}
     </>
   );
+}
+
+/** "1.2 Afterload", as the contents list it. */
+function sectionTitle(canvas: StudyGuideCanvas, topicId: string): string {
+  const entry = canvas.contents.find((item) => item.kind === "section" && item.key === topicId);
+  return entry ? `${entry.number} ${entry.title}`.trim() : "This section";
 }
 
 function linkOf(annotation: Annotation | null): NoteLink | null {
@@ -239,7 +252,7 @@ const MAX_LINK_WIDTH = 320;
 
 function ReadyGuide({
   documentId, title, canvas, inkPages, pages, controller, unavailable, busy, readTopicIds, openAtTopicId, contentsOpen,
-  onContentsClose, sectionMenu, onPractice, onCurrentSection, onFollow, onShowPage,
+  onContentsClose, sectionMenu, onPractice, onCurrentSection, onFollow, onShowPage, onCite,
 }: {
   documentId: string;
   title: string;
@@ -258,6 +271,8 @@ function ReadyGuide({
   onCurrentSection: (topicId: string) => void;
   onFollow: (annotation: Annotation) => void;
   onShowPage: (show: (pageNumber: number, top?: number) => void) => void;
+  /** A key point's source number was chosen. */
+  onCite: (topicId: string, number: number) => void;
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -283,7 +298,7 @@ function ReadyGuide({
           className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full tw:select-none" />
       ) : null;
     },
-    foreground: (page, scale) => canvas.practice
+    foreground: (page, scale) => [...canvas.practice
       .filter((button) => button.pageIndex === page.pageNumber - 1)
       .map((button) => (
         // Fills the room the heading keeps for it; on a touch screen it reaches past that room.
@@ -302,9 +317,25 @@ function ReadyGuide({
           <Icon name="practice" size={Math.max(10, 9 * scale)} />
           Practice
         </ItemTrigger>
-      )),
+      )), ...canvas.citations
+      .filter((mark) => mark.pageIndex === page.pageNumber - 1)
+      .map((mark) => (
+        // Lies over the printed number; on a touch screen it reaches well past it.
+        <ItemTrigger key={`cite:${mark.topicId}:${mark.number}:${mark.x}:${mark.y}`}
+          data-guide-citation={`${mark.topicId}:${mark.number}`}
+          aria-label={`Source ${mark.number} for ${titles.get(mark.topicId) ?? "this section"}`}
+          className="tw:absolute tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:outline-none tw:hover:bg-primary/15 tw:focus-visible:ring-2 tw:focus-visible:ring-ring/60 tw:coarse:min-h-0 tw:coarse:after:absolute tw:coarse:after:-inset-2.5 tw:coarse:after:content-['']"
+          style={{
+            left: (mark.x - 1) * scale,
+            top: (mark.y - 1) * scale,
+            width: (mark.width + 2) * scale,
+            height: (mark.height + 2) * scale,
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => onCite(mark.topicId, mark.number)} />
+      ))],
     unavailableLinks: unavailable,
-  }), [canvas.practice, inkPages, onPractice, titles, unavailable]);
+  }), [canvas.citations, canvas.practice, inkPages, onCite, onPractice, titles, unavailable]);
 
   const { measured, showPage } = viewport;
   useEffect(() => { onShowPage(() => showPage); }, [onShowPage, showPage]);

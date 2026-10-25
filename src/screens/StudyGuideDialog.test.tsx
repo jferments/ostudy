@@ -775,6 +775,29 @@ describe("StudyGuideDialog", () => {
       .toEqual(["Practice this section's flashcards", "Mark as read", "Edit or rewrite this section"]);
   });
 
+  it("shows a key point's source beside the pages when its number is chosen", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "sage");
+    vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
+    vi.mocked(readMaterialInk).mockResolvedValue({ marks: [], unavailableLinkIds: [] });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+    mockedGetGuide.mockResolvedValue(twoSectionGuide());
+    renderGuide();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Source 2 for 1.1 Preload" }));
+    const sources = await screen.findByRole("list", { name: "Sources for 1.1 Preload" });
+    const items = within(sources).getAllByRole("article");
+    expect(items.map((item) => item.textContent)).toEqual([
+      expect.stringContaining("Preload is the stretch of the ventricle"),
+      expect.stringContaining("End-diastolic volume sets preload."),
+    ]);
+    // The chosen number is marked; a page of the PDF opens, a slide reference stays text.
+    expect(items[1]?.getAttribute("aria-current")).toBe("true");
+    expect(items[0]?.getAttribute("aria-current")).toBeNull();
+    expect(within(required(items[0], "first source")).getByRole("button", { name: "Open page 3" })).toBeTruthy();
+    expect(within(required(items[1], "second source")).queryByRole("button")).toBeNull();
+  });
+
   it("opens the guide in the system's PDF reader in the chosen theme", async () => {
     window.localStorage.setItem("ostudy.guidePageStyle", "plum");
     vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
@@ -1336,6 +1359,14 @@ function guideCanvas(): StudyGuideCanvas {
     practice: [
       { topicId, pageIndex: 1, x: 450, y: 118, width: 68, height: 18.4 },
       { topicId: afterloadTopicId, pageIndex: 1, x: 450, y: 418, width: 68, height: 18.4 },
+    ],
+    citations: [
+      { topicId, number: 1, pageIndex: 1, x: 300, y: 160, width: 4.2, height: 7 },
+      { topicId, number: 2, pageIndex: 1, x: 320, y: 180, width: 4.2, height: 7 },
+    ],
+    sources: [
+      { topicId, number: 1, documentId, label: "p. 3", pageNumber: 3, excerpt: "Preload is the stretch of the ventricle before it contracts." },
+      { topicId, number: 2, documentId, label: "slide 4", pageNumber: null, excerpt: "End-diastolic volume sets preload." },
     ],
   };
 }
