@@ -13,6 +13,7 @@ mod organization;
 mod output;
 mod projects;
 mod service;
+pub(crate) mod speech;
 mod turns;
 
 #[cfg(test)]
