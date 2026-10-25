@@ -179,6 +179,7 @@ export interface NativeCommandGatewayMap {
   "get_progress_topics": readonly [typeof GatewayModule32.getProgressTopics];
   "get_question_generation_policy": readonly [typeof GatewayModule34.getQuestionGenerationPolicy];
   "get_question_note": readonly [typeof GatewayModule35.getQuestionNote];
+  "get_question_of_the_day": readonly [typeof GatewayModule20.getQuestionOfTheDay];
   "get_recent_practice_reviews": readonly [typeof GatewayModule2.getRecentPracticeReviews];
   "get_review_log": readonly [typeof GatewayModule32.getReviewLog];
   "get_semantic_preparation": readonly [typeof GatewayModule23.getSemanticPreparation];
