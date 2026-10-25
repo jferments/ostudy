@@ -15,6 +15,7 @@ import { StudyGuidesScreen } from "./StudyGuidesScreen";
 import { TutorContext } from "./tutor/TutorContext";
 import type { TutorController } from "./tutor/useTutorController";
 import { matchesLayoutQuery, layoutWidths } from "../test/viewport";
+import { openMenu } from "../test/menus";
 
 vi.mock("../ipc/studyGuides", async () => {
   const actual = await vi.importActual<typeof import("../ipc/studyGuides")>(
@@ -423,15 +424,5 @@ function setLayoutMode(layoutMode: "wide" | "medium" | "compact"): void {
 async function openGuideActions(title: string): Promise<HTMLElement> {
   const label = `More actions for ${title}`;
   const trigger = screen.getByRole("button", { name: label });
-  // Base UI wires a menu trigger in a passive effect, so a click before it runs
-  // is dropped; clicking until the menu reports open never toggles it shut.
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
-  }
-  await waitFor(() => {
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-  });
-  return screen.findByRole("menu", { name: label });
+  return openMenu(trigger);
 }

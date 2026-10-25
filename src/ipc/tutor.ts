@@ -1,5 +1,6 @@
 import { invoke } from "./transport";
 
+import type { FigureBox } from "./documentFigures";
 import type { SourceCitation, StudyScope } from "./knowledge";
 import type { NarrationSegment } from "./lessons";
 
@@ -180,6 +181,22 @@ export async function setTutorConversationArchived(input: {
   archived: boolean;
 }): Promise<ConversationSummary> {
   return invoke<ConversationSummary>("set_tutor_conversation_archived", { input });
+}
+
+/** Where a figure an answer shows sits on its document's page. */
+export interface TutorFigure {
+  documentId: string;
+  figureId: string;
+  title: string;
+  pageNumber: number;
+  pageWidth: number;
+  pageHeight: number;
+  bounds: FigureBox;
+}
+
+/** A figure a finished answer shows; fails once the learner hides it. */
+export async function getTutorFigure(turnId: string, documentId: string, figureId: string): Promise<TutorFigure> {
+  return invoke<TutorFigure>("get_tutor_figure", { input: { turnId, documentId, figureId } });
 }
 
 export async function getTutorConversation(input: {
