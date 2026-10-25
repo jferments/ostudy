@@ -106,6 +106,7 @@ mod practice;
 mod practice_resume;
 mod practice_selection;
 mod projections;
+mod question_of_the_day;
 mod schedule_controls;
 mod scheduler;
 mod settings;
@@ -495,6 +496,7 @@ pub fn run() {
             library_session::commands::leased_prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
             home_summary::get_home_summary,
+            question_of_the_day::get_question_of_the_day,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,

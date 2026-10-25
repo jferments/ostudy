@@ -10,6 +10,7 @@ import * as progressIpc from "../../ipc/progress";
 import * as practiceIpc from "../../ipc/practice";
 import * as subjectsIpc from "../../ipc/subjects";
 import {
+  makeCardPresentation,
   makeDeck,
   makeHomeSubjectSummary,
   makeHomeSummary,
@@ -26,7 +27,7 @@ vi.mock("../../ipc/common", () => ({
   getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : "Unexpected error"),
   createOperationId: () => "operation-1",
 }));
-vi.mock("../../ipc/home", () => ({ getHomeSummary: vi.fn() }));
+vi.mock("../../ipc/home", () => ({ getHomeSummary: vi.fn(), getQuestionOfTheDay: vi.fn() }));
 vi.mock("../../ipc/subjects", () => ({
   getSubjectLibrary: vi.fn(),
   createSubject: vi.fn(),
@@ -34,7 +35,11 @@ vi.mock("../../ipc/subjects", () => ({
   dismissSubjectFilingReview: vi.fn(),
 }));
 vi.mock("../../ipc/practice", () => ({ getPracticeWorkload: vi.fn() }));
-vi.mock("../../ipc/lessons", () => ({ listSubjectLessons: vi.fn() }));
+vi.mock("../../ipc/lessons", () => ({
+  listSubjectLessons: vi.fn(),
+  getLessonLecture: vi.fn(),
+  getLessonSlideDesigns: vi.fn(),
+}));
 vi.mock("../../ipc/progress", () => ({
   getProgressOverview: vi.fn(),
   getProgressActivity: vi.fn(),
@@ -190,6 +195,9 @@ describe("HomeScreen", () => {
       makeSubjectLibrary({ subjects: [cardiac, pharmacology, spanish, renal] }),
     );
     vi.mocked(lessonsIpc.listSubjectLessons).mockImplementation(async (subjectId) => ({ subjectId, lessons: [] }));
+    vi.mocked(lessonsIpc.getLessonLecture).mockRejectedValue(new Error("not needed"));
+    vi.mocked(lessonsIpc.getLessonSlideDesigns).mockRejectedValue(new Error("not needed"));
+    vi.mocked(homeIpc.getQuestionOfTheDay).mockResolvedValue(null);
     vi.mocked(progressIpc.getProgressOverview).mockRejectedValue(new Error("not needed"));
     vi.mocked(progressIpc.getProgressActivity).mockRejectedValue(new Error("not needed"));
     vi.mocked(progressIpc.getProgressSubjects).mockResolvedValue([]);
@@ -537,6 +545,59 @@ describe("HomeScreen", () => {
     ]);
     expect(within(panel).getByText("Lesson · Cardiac physiology · step 3 of 8")).toBeTruthy();
     expect(within(panel).queryByText("Finished one")).toBeNull();
+    fireEvent.click(within(panel).getByRole("button", { name: "Resume The cardiac cycle" }));
+    expect(onOpenLesson).toHaveBeenCalledWith("cardiac", "lesson-new");
+  });
+
+  it("asks the question of the day, turns it over without a review and offers its subject's practice", async () => {
+    vi.mocked(homeIpc.getQuestionOfTheDay).mockResolvedValue({
+      studyDate: "2026-10-05",
+      card: makeCardPresentation({ cardId: "card-q", frontText: "What opens the mitral valve?", backText: "Atrial pressure" }),
+      deckName: "Valves",
+      subjectId: "cardiac",
+      reason: "struggled",
+    });
+    const { onPracticeSubject } = renderHome();
+    const panel = await screen.findByTestId("home-question");
+    expect(within(panel).getByRole("heading", { name: "Question of the day" })).toBeTruthy();
+    expect(within(panel).getByText("Cardiac physiology · One you've found hard")).toBeTruthy();
+    expect(within(panel).queryByRole("button", { name: "Practice Cardiac physiology" })).toBeNull();
+    fireEvent.click(within(panel).getByRole("button", { name: "Show answer" }));
+    expect(within(panel).queryByRole("button", { name: "Show answer" })).toBeNull();
+    expect(within(panel).getAllByText("Answer").length).toBeGreaterThan(0);
+    fireEvent.click(within(panel).getByRole("button", { name: "Practice Cardiac physiology" }));
+    expect(onPracticeSubject).toHaveBeenCalledWith("cardiac");
+  });
+
+  it("hides the question of the day when no card can be studied", async () => {
+    renderHome();
+    await screen.findByTestId("home-today");
+    await waitFor(() => expect(homeIpc.getQuestionOfTheDay).toHaveBeenCalled());
+    expect(screen.queryByTestId("home-question")).toBeNull();
+  });
+
+  it("shows the slide the latest lesson is on under Your subjects", async () => {
+    vi.mocked(lessonsIpc.listSubjectLessons).mockImplementation(async (subjectId) => ({
+      subjectId,
+      lessons: subjectId === "cardiac" ? [lessonSummary("lesson-new", "cardiac", "The cardiac cycle", { currentStep: 1, updatedAt: 20 })] : [],
+    }));
+    vi.mocked(lessonsIpc.getLessonLecture).mockResolvedValue({
+      lessonId: "lesson-new",
+      revisionNumber: 1,
+      title: "The cardiac cycle",
+      slides: [
+        { key: "title", kind: "title", stepKey: null, title: "The cardiac cycle", points: [], notes: "" },
+        { key: "step:a", kind: "step", stepKey: "a", title: "Systole", points: ["The ventricles contract"], notes: "" },
+        { key: "step:b", kind: "step", stepKey: "b", title: "Diastole", points: ["The ventricles fill"], notes: "" },
+      ],
+    });
+    const { onOpenLesson } = renderHome();
+    const panel = await screen.findByTestId("home-lesson-slide");
+    expect(within(panel).getByText("Cardiac physiology · step 2 of 8")).toBeTruthy();
+    // The slide's own design could not be laid out, so its text shows.
+    expect(within(panel).getByText("Diastole")).toBeTruthy();
+    expect(within(panel).getByText("The ventricles fill")).toBeTruthy();
+    expect(lessonsIpc.getLessonLecture).toHaveBeenCalledWith("lesson-new", 1);
     fireEvent.click(within(panel).getByRole("button", { name: "Resume The cardiac cycle" }));
     expect(onOpenLesson).toHaveBeenCalledWith("cardiac", "lesson-new");
   });

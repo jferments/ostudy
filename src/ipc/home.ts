@@ -1,3 +1,4 @@
+import type { CardPresentation } from "./cards";
 import { invoke } from "./transport";
 
 /**
@@ -74,4 +75,27 @@ export interface HomeSummary {
 
 export async function getHomeSummary(): Promise<HomeSummary> {
   return invoke<HomeSummary>("get_home_summary");
+}
+
+/** Why the question of the day was likely to come up. */
+export type QuestionReason = "new" | "struggled" | "review";
+
+/**
+ * One flashcard a study day for Home, chosen natively: random, but weighted
+ * toward cards not tried yet and cards the learner has struggled with.
+ * Showing it is not a review.
+ */
+export interface QuestionOfTheDay {
+  /** The study date the question belongs to, as YYYY-MM-DD. */
+  studyDate: string;
+  card: CardPresentation;
+  deckName: string;
+  /** The card's subject; null is No subject. */
+  subjectId: string | null;
+  reason: QuestionReason;
+}
+
+/** Today's question, or null when no card can be studied. */
+export async function getQuestionOfTheDay(): Promise<QuestionOfTheDay | null> {
+  return invoke<QuestionOfTheDay | null>("get_question_of_the_day");
 }
