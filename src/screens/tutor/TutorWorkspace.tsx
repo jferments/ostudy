@@ -20,6 +20,8 @@ import { RenameConversationDialog, TutorHistory } from "./TutorHistory";
 import { useTutor } from "./TutorContext";
 import { TutorMarkdown } from "./TutorMarkdown";
 import { sourcesLabel, TutorSources } from "./TutorSources";
+import { useArtwork } from "../../ui/artwork/Artwork";
+import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStarters";
 import { styles } from "./presentation";
 
 function SourceDetails({ source }: { source: SourceCitation }) {
@@ -64,7 +66,12 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const [sourceBusy, setSourceBusy] = useState(false);
   const sourceLane = useRequestLane();
   const transcript = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const followTail = useRef(true);
+  const [awayFromTail, setAwayFromTail] = useState(false);
+  const starters = useTutorStarters();
+  const artwork = useArtwork("tutor.welcome");
+  const welcomeArt = artwork.enabled ? artwork.definition.image : undefined;
   const hintOnly = tutor.target?.mode === "hint";
   const locked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
   const question = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
@@ -75,6 +82,10 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   // Only the wide, full-page chat has room to keep a source open beside it.
   const sourceBeside = inlineHistory && layoutMode === "wide";
   const canQuiz = !locked && !tutor.needsRefresh && (tutor.scope.kind !== "general" || Boolean(tutor.target) || Boolean(tutor.draft.trim()));
+  // A new full-page chat puts its composer in the middle, under the raccoon.
+  const welcome = !hintOnly && showHistory && !turns.length && !tutor.detail?.hasEarlierTurns && !tutor.busy && !tutor.pending;
+  // Phones keep Enter for new lines; the send button sends.
+  const enterSends = layoutMode !== "compact";
 
   useEffect(() => {
     sourceLane.invalidate();
@@ -82,11 +93,32 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     setSourceError(null);
     setSourceBusy(false);
     followTail.current = true;
+    setAwayFromTail(false);
   }, [sourceLane, tutor.detail?.conversation.id, hintOnly]);
 
   useEffect(() => {
     if (followTail.current && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
   }, [tutor.detail, tutor.busy]);
+
+  // The composer grows with its text up to its CSS maximum, then scrolls.
+  useEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, [tutor.draft, welcome]);
+
+  function jumpToLatest(): void {
+    const element = transcript.current;
+    if (!element) return;
+    followTail.current = true;
+    setAwayFromTail(false);
+    element.scrollTop = element.scrollHeight;
+  }
+
+  function startFrom(starter: TutorStarter): void {
+    void tutor.start(starter.scope, starter.mode, starter.text, starter.chatTitle);
+  }
 
   async function showSource(citation: SourceCitation): Promise<void> {
     if (hintOnly) return;
@@ -168,6 +200,48 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     );
   }
 
+  const messageLabel = hintOnly ? "Hint request" : question ? "Your answer" : "Message";
+  const composerInput = (className: string, rows: number) => (
+    <>
+      <label className={styles.composerLabel} htmlFor={`${id}-message`}>{messageLabel}</label>
+      <Textarea
+        ref={input}
+        className={className}
+        id={`${id}-message`}
+        rows={rows}
+        maxLength={8000}
+        value={tutor.draft}
+        placeholder={question ? "Your answer" : turns.length ? "Ask a follow-up" : "Ask anything"}
+        autoFocus={welcome && layoutMode !== "compact"}
+        disabled={locked || tutor.needsRefresh}
+        onChange={(event) => tutor.setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+          if (event.ctrlKey || event.metaKey || (enterSends && !hintOnly && !event.shiftKey && !event.altKey)) {
+            event.preventDefault();
+            submit();
+          }
+        }}
+      />
+    </>
+  );
+  const submitLabel = hintOnly ? "Request hint" : question ? "Submit answer" : "Send";
+  const sendDisabled = locked || tutor.needsRefresh || !tutor.draft.trim();
+
+  const composerForm = (
+    <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); submit(); }}>
+      {composerInput(styles.composerInput, 1)}
+      {question ? (
+        <Button size="small" variant="ghost" className="tw:mb-1" disabled={sendDisabled} onClick={() => { void tutor.send("explain"); }}>Ask instead</Button>
+      ) : null}
+      {tutor.busy || tutor.pending ? (
+        <IconButton icon="stop" label="Stop response" className={styles.stop} onClick={() => { void tutor.cancel(); }} />
+      ) : (
+        <IconButton icon="arrow-up" type="submit" label={submitLabel} className={styles.send} disabled={sendDisabled} />
+      )}
+    </form>
+  );
+
   const transcriptView = (
     <div
       ref={transcript}
@@ -177,10 +251,34 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
       aria-relevant="additions"
       onScroll={() => {
         const element = transcript.current;
-        if (element) followTail.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+        if (!element) return;
+        followTail.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+        setAwayFromTail(!followTail.current);
       }}
     >
-      {!turns.length ? (
+      {welcome ? (
+        <div className={styles.welcome}>
+          {welcomeArt ? (
+            <img
+              src={welcomeArt.src}
+              srcSet={welcomeArt.srcSet}
+              alt=""
+              draggable={false}
+              data-artwork-slot="tutor.welcome"
+              className={styles.welcomeArt}
+            />
+          ) : null}
+          <h3>What are we studying today?</h3>
+          <div className={styles.welcomeComposer}>{composerForm}</div>
+          <div className={styles.toolbar}>
+            {scopePicker}
+            <Button size="small" variant="secondary" className={styles.scope} disabled={!canQuiz} onClick={() => { void tutor.send("quiz"); }}>
+              <Icon name="help" size={16} /> Quiz me
+            </Button>
+          </div>
+          <TutorStarters starters={starters} disabled={locked || tutor.needsRefresh} onStart={startFrom} />
+        </div>
+      ) : !turns.length && !tutor.busy ? (
         <div className={styles.empty}>
           <h3>{hintOnly ? "Work toward the answer" : "What would you like to understand?"}</h3>
           {!hintOnly ? (
@@ -266,31 +364,6 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     </div>
   );
 
-  const messageLabel = hintOnly ? "Hint request" : question ? "Your answer" : "Message";
-  const composerInput = (className: string, rows: number) => (
-    <>
-      <label className={styles.composerLabel} htmlFor={`${id}-message`}>{messageLabel}</label>
-      <Textarea
-        className={className}
-        id={`${id}-message`}
-        rows={rows}
-        maxLength={8000}
-        value={tutor.draft}
-        placeholder={question ? "Your answer" : turns.length ? "Ask a follow-up" : "Ask anything"}
-        disabled={locked || tutor.needsRefresh}
-        onChange={(event) => tutor.setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
-            event.preventDefault();
-            submit();
-          }
-        }}
-      />
-    </>
-  );
-  const submitLabel = hintOnly ? "Request hint" : question ? "Submit answer" : "Send";
-  const sendDisabled = locked || tutor.needsRefresh || !tutor.draft.trim();
-
   if (hintOnly) {
     return (
       <section className={styles.panelWorkspace} aria-label="Flashcard hints">
@@ -333,21 +406,16 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
       {inlineHistory ? <aside className={styles.historyPane}><TutorHistory tutor={tutor} /></aside> : null}
       <div className={styles.chat}>
         {header}
-        {transcriptView}
-        {notices}
-        <div className={styles.composerWrap}>
-          <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); submit(); }}>
-            {composerInput(styles.composerInput, 1)}
-            {question ? (
-              <Button size="small" variant="ghost" className="tw:mb-1" disabled={sendDisabled} onClick={() => { void tutor.send("explain"); }}>Ask instead</Button>
-            ) : null}
-            {tutor.busy || tutor.pending ? (
-              <IconButton icon="stop" label="Stop response" className={styles.stop} onClick={() => { void tutor.cancel(); }} />
-            ) : (
-              <IconButton icon="arrow-up" type="submit" label={submitLabel} className={styles.send} disabled={sendDisabled} />
-            )}
-          </form>
+        <div className={styles.transcriptFrame}>
+          {transcriptView}
+          {awayFromTail && turns.length ? (
+            <Button size="small" className={styles.jump} onClick={jumpToLatest}>
+              <Icon name="arrow-down" size={16} /> Jump to latest
+            </Button>
+          ) : null}
         </div>
+        {notices}
+        {!welcome ? <div className={styles.composerWrap}>{composerForm}</div> : null}
       </div>
       {sourceBeside && source ? (
         <aside className={styles.sourcePanel} aria-label="Source">

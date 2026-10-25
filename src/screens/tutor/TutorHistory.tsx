@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 
-import type { StudyScope } from "../../ipc/knowledge";
+import { sameStudyScope, type ScopeChoice, type StudyScope } from "../../ipc/knowledge";
 import type { ConversationSummary, TutorProject } from "../../ipc/tutor";
 import { Icon } from "../../ui/icons/Icon";
 import { IconButton } from "../../ui/icons/IconButton";
@@ -16,6 +16,38 @@ import { styles } from "./presentation";
 import type { TutorController, TutorProjectValues } from "./useTutorController";
 
 const GENERAL: StudyScope = { kind: "general", id: null };
+
+interface SubjectGroup {
+  key: string;
+  /** The subject's name; null for chats on no single subject. */
+  title: string | null;
+  conversations: ConversationSummary[];
+}
+
+/**
+ * Chats outside a project, grouped by the one subject they study, newest group
+ * first; chats on no single subject come last under Other chats.
+ */
+function subjectGroups(conversations: ConversationSummary[], choices: ScopeChoice[]): SubjectGroup[] {
+  const groups = new Map<string, SubjectGroup>();
+  const other: SubjectGroup = { key: "other", title: null, conversations: [] };
+  for (const conversation of conversations) {
+    const scope = conversation.scope;
+    const title = scope.kind === "collection"
+      ? choices.find((choice) => sameStudyScope(choice.scope, scope))?.title ?? null
+      : null;
+    if (scope.kind !== "collection" || !title) {
+      other.conversations.push(conversation);
+      continue;
+    }
+    const key = `subject-${scope.id}`;
+    const group = groups.get(key) ?? { key, title, conversations: [] };
+    group.conversations.push(conversation);
+    groups.set(key, group);
+  }
+  const ordered = [...groups.values()];
+  return other.conversations.length ? [...ordered, other] : ordered;
+}
 
 function ProjectEditor({
   tutor,
@@ -272,6 +304,7 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
   const [projectEditor, setProjectEditor] = useState<TutorProject | "new" | null>(null);
   const [renameTarget, setRenameTarget] = useState<ConversationSummary | null>(null);
   const [moveTarget, setMoveTarget] = useState<ConversationSummary | null>(null);
+  const [query, setQuery] = useState("");
   const switchLocked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked || tutor.organizing;
   const organizationLocked = tutor.loading || tutor.organizing;
   const activeProjects = tutor.projects.filter((project) => project.archivedAt === null);
@@ -279,9 +312,12 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
   const conversations = tutor.detail && !tutor.conversations.some((saved) => saved.id === tutor.detail?.conversation.id)
     ? [tutor.detail.conversation, ...tutor.conversations]
     : tutor.conversations;
-  const activeConversations = conversations.filter((conversation) => conversation.archivedAt === null);
-  const archivedConversations = conversations.filter((conversation) => conversation.archivedAt !== null);
+  const needle = query.trim().toLocaleLowerCase();
+  const shown = needle ? conversations.filter((conversation) => conversation.title.toLocaleLowerCase().includes(needle)) : conversations;
+  const activeConversations = shown.filter((conversation) => conversation.archivedAt === null);
+  const archivedConversations = shown.filter((conversation) => conversation.archivedAt !== null);
   const ungrouped = activeConversations.filter((conversation) => conversation.projectId === null);
+  const bySubject = subjectGroups(ungrouped, tutor.choices);
 
   function conversationsFor(projectId: string): ConversationSummary[] {
     return activeConversations.filter((conversation) => conversation.projectId === projectId);
@@ -304,6 +340,7 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
 
   function ProjectGroup({ project }: { project: TutorProject }) {
     const conversations = conversationsFor(project.id);
+    if (needle && !conversations.length) return null;
     return (
       <section className={styles.historyGroup} aria-label={`${project.title} project`}>
         <div className={styles.historyGroupHeader}>
@@ -362,13 +399,21 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
           </Button>
           <IconButton icon="folder" label="New project" disabled={organizationLocked} onClick={() => setProjectEditor("new")} />
         </div>
+        <label className="tw:relative tw:flex tw:min-w-0 tw:items-center" role="search">
+          <span className="tw:sr-only">Search chats</span>
+          <Icon name="search" size={16} className="tw:pointer-events-none tw:absolute tw:left-3 tw:text-muted-foreground" />
+          <TextField type="search" value={query} placeholder="Search chats" className="tw:w-full tw:pl-9"
+            onChange={(event) => setQuery(event.currentTarget.value)} />
+        </label>
 
         {activeProjects.map((project) => <ProjectGroup key={project.id} project={project} />)}
 
-        {ungrouped.length ? (
-          <section className={styles.historyGroup} aria-label="Ungrouped conversations">
-            {activeProjects.length ? <div className={styles.historyGroupHeader}><strong>Other chats</strong></div> : null}
-            {ungrouped.map((conversation) => (
+        {bySubject.map((group) => (
+          <section key={group.key} className={styles.historyGroup} aria-label={group.title ? `${group.title} chats` : "Other chats"}>
+            {group.title || activeProjects.length || bySubject.length > 1
+              ? <div className={styles.historyGroupHeader}><strong>{group.title ?? "Other chats"}</strong></div>
+              : null}
+            {group.conversations.map((conversation) => (
               <ConversationRow
                 key={conversation.id}
                 tutor={tutor}
@@ -381,7 +426,10 @@ export function TutorHistory({ tutor, onSelected }: { tutor: TutorController; on
               />
             ))}
           </section>
-        ) : null}
+        ))}
+        {needle && !activeConversations.length && !archivedConversations.length
+          ? <p className={styles.muted}>No chats match.</p>
+          : null}
 
         {archivedProjects.length || archivedConversations.length ? (
           <div className={styles.historyArchive}>
