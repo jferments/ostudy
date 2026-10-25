@@ -46,20 +46,59 @@ const LESSON_NAME_FIELDS: &[&str] = &["kind", "callout", "timing", "style", "kno
 /// rules. Narration is printed too; speech reads it aloud as names.
 pub(super) fn print_lesson_notation(source_text: &str, answer: &mut Value) {
     let words = printed_words(source_text);
-    visit_strings(answer, &mut |text| {
-        let (printed, _) = apply(text, &words);
-        *text = chemistry::printed(&printed);
-    });
+    visit_strings(
+        answer,
+        &|key| LESSON_NAME_FIELDS.contains(&key),
+        &mut |text| *text = print(text, &words),
+    );
 }
 
-fn visit_strings(value: &mut Value, visit: &mut impl FnMut(&mut String)) {
+/// Prints the formulas in a generated card as a lesson's are, before the
+/// card is checked, so its question and its graded answers agree. A cloze
+/// blank must still be found in its text; when printing would part them, the
+/// card keeps its own spelling.
+pub(super) fn print_card_notation(source_text: &str, card: &mut Value) {
+    let words = printed_words(source_text);
+    let mut printed = card.clone();
+    visit_strings(&mut printed, &card_name_field, &mut |text| {
+        *text = print(text, &words)
+    });
+    let blanks_found = match (printed.get("text"), printed.get("blanks")) {
+        (Some(Value::String(text)), Some(Value::Array(blanks))) => blanks
+            .iter()
+            .all(|blank| blank.as_str().is_some_and(|blank| text.contains(blank))),
+        _ => true,
+    };
+    if blanks_found {
+        *card = printed;
+    }
+}
+
+/// Card fields that identify, type or tag rather than say anything.
+fn card_name_field(key: &str) -> bool {
+    matches!(key, "type" | "kind" | "mode" | "id" | "key" | "tags")
+        || key.ends_with("Id")
+        || key.ends_with("Ids")
+}
+
+fn print(text: &str, words: &BTreeMap<String, String>) -> String {
+    chemistry::outside_math(text, |prose| chemistry::printed(&apply(prose, words).0))
+}
+
+fn visit_strings(
+    value: &mut Value,
+    skip: &impl Fn(&str) -> bool,
+    visit: &mut impl FnMut(&mut String),
+) {
     match value {
         Value::String(text) => visit(text),
-        Value::Array(items) => items.iter_mut().for_each(|item| visit_strings(item, visit)),
+        Value::Array(items) => items
+            .iter_mut()
+            .for_each(|item| visit_strings(item, skip, visit)),
         Value::Object(fields) => fields
             .iter_mut()
-            .filter(|(key, _)| !LESSON_NAME_FIELDS.contains(&key.as_str()))
-            .for_each(|(_, field)| visit_strings(field, visit)),
+            .filter(|(key, _)| !skip(key))
+            .for_each(|(_, field)| visit_strings(field, skip, visit)),
         _ => {}
     }
 }
@@ -348,5 +387,38 @@ mod tests {
         assert_eq!(step["knowledgeUnitIds"][0], "K3");
         assert_eq!(step["check"]["prompt"], "What carries H⁺?");
         assert_eq!(step["blocks"][0]["kind"], "keyPoints");
+    }
+
+    #[test]
+    fn prints_a_generated_card_and_keeps_its_blanks_and_names() {
+        let knowledge = "Parietal cells return HCO₃⁻ to the blood.";
+        let mut basic = serde_json::json!({
+            "type": "basic",
+            "front": "What do parietal cells return with HCO3-?",
+            "back": "Cl−-HCO3− exchange moves Ca2+? No: it moves HCO₃⁻; $CO_2$ stays.",
+            "tags": ["HCO3-"]
+        });
+        print_card_notation(knowledge, &mut basic);
+        assert_eq!(basic["front"], "What do parietal cells return with HCO₃⁻?");
+        assert_eq!(
+            basic["back"],
+            "Cl⁻-HCO₃⁻ exchange moves Ca²⁺? No: it moves HCO₃⁻; $CO_2$ stays."
+        );
+        assert_eq!(basic["tags"][0], "HCO3-");
+
+        let mut cloze = serde_json::json!({
+            "type": "cloze", "text": "CO2 and H2O form H2CO3.", "blanks": ["H2CO3"]
+        });
+        print_card_notation(knowledge, &mut cloze);
+        assert_eq!(cloze["text"], "CO₂ and H₂O form H₂CO₃.");
+        assert_eq!(cloze["blanks"][0], "H₂CO₃");
+
+        // "H2" alone reads as hydrogen, but in the text it names a receptor.
+        let mut parted = serde_json::json!({
+            "type": "cloze", "text": "H2 receptor blockers cut CO2 output.", "blanks": ["H2"]
+        });
+        let original = parted.clone();
+        print_card_notation(knowledge, &mut parted);
+        assert_eq!(parted, original);
     }
 }
