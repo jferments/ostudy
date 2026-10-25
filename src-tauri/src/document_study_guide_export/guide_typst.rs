@@ -22,10 +22,13 @@ use typst::{
 use typst_layout::PagedDocument;
 
 use super::{
-    math_layout, math_source, source_label, EffectiveExportSection, EffectiveGuideExport,
-    ExportBlock,
+    citations, math_layout, math_source, source_label, EffectiveExportSection,
+    EffectiveGuideExport, ExportBlock,
 };
-use crate::error::CommandError;
+use crate::{
+    document_domain::{SourceLocator, SourceUnitKind},
+    error::CommandError,
+};
 
 const TEMPLATE: &str = include_str!("typst/guide.typ");
 const THEMES: &str = include_str!("typst/themes.typ");
@@ -478,15 +481,39 @@ fn section_data(
         .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
         .map_or(0, |heading| heading + 1)
         .min(section.body_lines.len().saturating_sub(1));
+    let key_points = section
+        .body_lines
+        .iter()
+        .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
+        .map(|heading| heading + 1);
+    let citations = section.citations.as_ref().filter(|cited| !cited.is_empty());
     let blocks = section
         .body_lines
         .iter()
-        .map(|block| {
+        .enumerate()
+        .map(|(index, block)| {
             let lead = !lead_used && matches!(block, ExportBlock::Paragraph(_));
             lead_used = true;
-            block_data(block, lead)
+            match (block, citations) {
+                (ExportBlock::Bullets(items), Some(cited)) if Some(index) == key_points => {
+                    json!({ "kind": "bullets", "items": cited_items(&section.key, items, cited) })
+                }
+                _ => block_data(block, lead),
+            }
         })
         .collect::<Vec<_>>();
+    let sources = citations.map_or_else(Vec::new, |cited| {
+        cited
+            .sources
+            .iter()
+            .map(|source| {
+                json!({
+                    "number": source.number,
+                    "label": source.locator.as_ref().map(short_source_label).unwrap_or_default(),
+                })
+            })
+            .collect()
+    });
     let figures = section
         .figures
         .iter()
@@ -511,8 +538,52 @@ fn section_data(
         "blocks": blocks,
         "figures": figures,
         "figureAfter": figure_after,
+        "sources": sources,
         "notes": run_list(&section.notes),
     })
+}
+
+/// Key points with their source numbers after them, as footnote marks are.
+fn cited_items(key: &str, items: &[String], cited: &citations::SectionCitations) -> Value {
+    Value::Array(
+        items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let mut item_runs = runs(item);
+                if let (Value::Array(list), Some(numbers)) =
+                    (&mut item_runs, cited.key_points.get(index))
+                {
+                    if !numbers.is_empty() {
+                        list.push(json!({ "cite": numbers, "key": key }));
+                    }
+                }
+                item_runs
+            })
+            .collect(),
+    )
+}
+
+/// "p. 12", "pp. 12–14" or "slide 3": what a source number points at, short
+/// enough to sit in a line under the section.
+pub(super) fn short_source_label(locator: &SourceLocator) -> String {
+    let (Some(first), Some(last)) = (
+        locator.unit_numbers.iter().min(),
+        locator.unit_numbers.iter().max(),
+    ) else {
+        return String::new();
+    };
+    let span = if first == last {
+        first.to_string()
+    } else {
+        format!("{first}–{last}")
+    };
+    match (locator.unit_kind, first == last) {
+        (SourceUnitKind::Page, true) => format!("p. {span}"),
+        (SourceUnitKind::Page, false) => format!("pp. {span}"),
+        (kind, true) => format!("{} {span}", kind.singular_label()),
+        (kind, false) => format!("{} {span}", kind.plural_label()),
+    }
 }
 
 fn block_data(block: &ExportBlock, lead: bool) -> Value {

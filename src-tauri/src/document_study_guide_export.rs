@@ -32,6 +32,7 @@ use crate::{
 };
 
 mod canvas;
+mod citations;
 pub(crate) mod figures;
 mod guide_typst;
 mod math_layout;
@@ -128,6 +129,8 @@ struct EffectiveExportSection {
     body_lines: Vec<ExportBlock>,
     notes: Vec<String>,
     figures: Vec<ExportFigure>,
+    /// Where each key point comes from; only generated document sections cite.
+    citations: Option<citations::SectionCitations>,
 }
 
 #[derive(Clone, Debug)]
@@ -517,6 +520,7 @@ fn compose_effective_export(
     }
 
     let editorial_titles = editorial_topic_titles(guide.editorial.as_ref());
+    let mut cited = citations::load(database, &guide.id, &guide.sections);
     let mut sections = Vec::with_capacity(guide.sections.len());
     let mut annotation_count = guide_notes.len();
     for section in &guide.sections {
@@ -564,6 +568,12 @@ fn compose_effective_export(
         } else {
             Vec::new()
         };
+        // A section the learner rewrote is theirs; its key points are gone.
+        let citations = if body_override.is_none() {
+            cited.remove(&section.topic_id)
+        } else {
+            None
+        };
         sections.push(EffectiveExportSection {
             key: section.topic_id.clone(),
             title,
@@ -574,6 +584,7 @@ fn compose_effective_export(
             ),
             notes,
             figures,
+            citations,
         });
     }
 
@@ -725,6 +736,7 @@ fn compose_effective_collection_export(
             ),
             notes,
             figures,
+            citations: None,
         });
     }
     let export = EffectiveGuideExport {
@@ -987,6 +999,7 @@ mod tests {
                 )],
                 notes: vec!["Compare with afterload.".to_string()],
                 figures: Vec::new(),
+                citations: None,
             }],
             annotation_count: 2,
         }
@@ -1056,6 +1069,7 @@ mod tests {
             ],
             notes: Vec::new(),
             figures: Vec::new(),
+            citations: None,
         }
     }
 
@@ -1264,6 +1278,7 @@ mod tests {
             )],
             notes: Vec::new(),
             figures: Vec::new(),
+            citations: None,
         });
         export.chapters = vec![EffectiveExportChapter {
             key: "chapter-hemodynamics".to_string(),
@@ -1445,6 +1460,7 @@ mod tests {
                 ],
                 notes: Vec::new(),
                 figures,
+                citations: None,
             });
         }
         export.sections = sections;

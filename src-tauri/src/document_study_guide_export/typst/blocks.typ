@@ -15,12 +15,39 @@
 #let eyebrow(body, color: T.accent) = text(font: ui, size: 7pt, weight: 700, tracking: 0.12em, fill: color, upper(body))
 #let hairline = line(length: 100%, stroke: 0.5pt + T.rule)
 
+// The reader's canvas finds chapters, sections, their Practice buttons and
+// citations from these marks; they draw nothing.
+#let anchor(kind, key) = context {
+  let p = here().position()
+  [#metadata((kind: kind, key: key, page: p.page, x: p.x.pt(), y: p.y.pt())) <canvas-anchor>]
+}
+
+// A key point's source numbers, set like footnote marks. Each number is a
+// mark the canvas puts a button on; `key` is the section's.
+#let cite-mark(key, numbers) = {
+  for (i, n) in numbers.enumerate() {
+    if i > 0 { super(size: 0.72em, text(font: ui, fill: T.muted, ",")) }
+    box[#anchor("cite", key + ":" + str(n))#super(size: 0.72em, text(font: ui, weight: 700, fill: T.accent, str(n)))]
+  }
+}
+
+// A section's sources, under its text: each number with the page it names.
+#let sources-view(sources) = block(above: 2.5mm, below: 1mm, breakable: false, {
+  set par(justify: false)
+  text(font: ui, size: 7pt, fill: T.muted)[
+    #text(weight: 700, tracking: 0.08em, upper("Sources")) #h(2mm)
+    #sources.map(source => [#text(weight: 700, fill: T.accent, str(source.number)) #source.label]).join(h(3mm))]
+})
+
 // Rich text: a list of runs, each plain text (t), translated math (m, with
-// block) or LaTeX kept as source (src) when it is outside the native subset.
+// block), LaTeX kept as source (src) when it is outside the native subset, or
+// a key point's citation (cite).
 #let rt(runs) = {
   for run in runs {
     if "t" in run {
       run.t
+    } else if "cite" in run {
+      cite-mark(run.key, run.cite)
     } else if "m" in run {
       math.equation(block: run.block, eval(run.m, mode: "math"))
     } else if "src" in run {

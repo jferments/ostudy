@@ -93,6 +93,7 @@ fn document_pdf_math_notice_scans_effective_content_not_debug_or_source_filename
         body_lines: vec![ExportBlock::Terms(vec![("Term".into(), "$$x$$".into())])],
         notes: vec![],
         figures: vec![],
+        citations: None,
     });
     assert!(math_source::has_math(&export));
     assert!(!math_source::requires_source_fallback(&export));
