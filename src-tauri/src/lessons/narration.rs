@@ -412,6 +412,8 @@ pub(super) async fn speak_text(
     key: String,
     choose: impl FnOnce(&Resolved) -> Result<(&'static SpeechModel, String), CommandError>,
 ) -> Result<LessonStepNarrationDto, CommandError> {
+    // A voice reads HCO₃⁻ as letters and marks; it hears "bicarbonate".
+    let text = &super::spoken::spoken(text);
     let settings = database.with_connection(|connection| resolved(connection))?;
     if segments(text, settings.model.max_characters).is_empty() {
         return Err(CommandError::new(

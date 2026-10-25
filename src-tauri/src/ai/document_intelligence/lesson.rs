@@ -257,9 +257,14 @@ struct WireCheck {
 
 /// Turn the model's answer into validated lesson content.
 pub(super) fn decode(
-    value: Value,
+    mut value: Value,
     knowledge: &KnowledgeCatalog,
 ) -> Result<LessonContent, CommandError> {
+    // Models write formulas flat (HCO3-), and lessons have no layout that
+    // sets them later, so they are printed here as the knowledge prints them.
+    if let Ok(source) = knowledge.prompt() {
+        super::notation::print_lesson_notation(&source, &mut value);
+    }
     let mut wire: WireLesson = serde_json::from_value(value).map_err(|error| {
         output_error(format!(
             "The lesson does not match its schema: {}",
