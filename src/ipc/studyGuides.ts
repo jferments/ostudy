@@ -435,6 +435,30 @@ export interface StudyGuideCanvasButton {
   height: number;
 }
 
+/** Where a key point's source number landed, in points. */
+export interface StudyGuideCanvasCitation {
+  topicId: string;
+  number: number;
+  pageIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A passage a section cites, numbered as its key points name it. */
+export interface StudyGuideCanvasSource {
+  topicId: string;
+  number: number;
+  documentId: string;
+  /** "p. 12", as the section's Sources line prints it. */
+  label: string;
+  /** The first cited page, when it can be opened: a page of a PDF. */
+  pageNumber: number | null;
+  /** The passage as the document says it. */
+  excerpt: string;
+}
+
 /** A document's whole study guide laid out as the PDF export sets it. */
 export interface StudyGuideCanvas {
   documentId: string;
@@ -444,6 +468,9 @@ export interface StudyGuideCanvas {
   /** In page order. */
   contents: StudyGuideCanvasEntry[];
   practice: StudyGuideCanvasButton[];
+  /** Each key point's source numbers. */
+  citations: StudyGuideCanvasCitation[];
+  sources: StudyGuideCanvasSource[];
 }
 
 export async function getDocumentStudyGuideCanvas(
