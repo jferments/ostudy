@@ -34,6 +34,7 @@ pub(super) fn build(
         request_text,
         notice: "This hint uses only the displayed question; private keys, source answers, images and prior answers were not supplied.".to_string(),
         images: Vec::new(),
+        figures: Vec::new(),
         completion_tokens,
     })
 }

@@ -387,6 +387,7 @@ pub fn run() {
             tutor::commands::move_tutor_conversation,
             tutor::commands::set_tutor_conversation_archived,
             tutor::commands::get_tutor_conversation,
+            tutor::commands::get_tutor_figure,
             tutor::commands::delete_tutor_conversation,
             library_session::commands::leased_send_tutor_turn,
             tutor::commands::get_tutor_memory,
