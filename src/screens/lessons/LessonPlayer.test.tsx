@@ -120,12 +120,18 @@ describe("LessonPlayer", () => {
     expect(lessonsIpc.saveLessonProgress).toHaveBeenCalledWith("lesson-1", 2, 0, false);
   });
 
-  it("opens a finished lesson at its start and finishing saves then closes", async () => {
+  it("opens a new lesson on its cover slide", async () => {
+    vi.mocked(lessonsIpc.getLesson).mockResolvedValue(makeLesson(null));
+    renderPlayer();
+    expect(await screen.findByText("Opens at the title")).toBeTruthy();
+  });
+
+  it("opens a finished lesson on its cover and finishing saves then closes", async () => {
     vi.mocked(lessonsIpc.getLesson).mockResolvedValue(
       makeLesson(makeProgress({ currentStep: 1, furthestStep: 1, finishedAt: 5 })),
     );
     const props = renderPlayer();
-    expect(await screen.findByText("Opens at rate")).toBeTruthy();
+    expect(await screen.findByText("Opens at the title")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Finish lesson" }));
     await vi.waitFor(() => expect(props.onClose).toHaveBeenCalledOnce());
     expect(lessonsIpc.saveLessonProgress).toHaveBeenLastCalledWith("lesson-1", 2, 1, true);
