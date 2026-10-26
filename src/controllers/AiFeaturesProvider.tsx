@@ -8,6 +8,21 @@ import { listAiProviderProfiles } from "../ipc/aiProfiles";
  */
 export const AI_FEATURES_BUILT = import.meta.env.VITE_OSTUDY_AI !== "off";
 
+/**
+ * Set by the native WebDriver automation profile, whose disposable library
+ * has no AI service but whose smokes still drive the Tutor and the other
+ * AI-only pages offline. A learner never sets it.
+ */
+export const AI_FEATURES_WITHOUT_SERVICE_STORAGE_KEY = "ostudy.aiFeaturesWithoutService.v1";
+
+function shownWithoutService(): boolean {
+  try {
+    return window.localStorage.getItem(AI_FEATURES_WITHOUT_SERVICE_STORAGE_KEY) === "shown";
+  } catch {
+    return false;
+  }
+}
+
 export interface AiFeatures {
   /**
    * Whether AI features show: the Tutor, lessons, study guides, podcasts,
@@ -55,7 +70,7 @@ export function useAiFeaturesSource(section: string): AiFeatures {
         if (!live) return;
         setState({
           known: true,
-          enabled: profiles.some((profile) => profile.enabled),
+          enabled: shownWithoutService() || profiles.some((profile) => profile.enabled),
           hasServices: profiles.length > 0,
         });
       },
