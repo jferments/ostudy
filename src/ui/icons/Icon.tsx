@@ -57,6 +57,7 @@ export const ICON_NAMES = [
   "maximize",
   "media",
   "menu",
+  "mic",
   "minimize",
   "minus",
   "monitor",
@@ -761,6 +762,14 @@ function iconPath(name: IconName): ReactNode {
         <>
           <path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z" />
           <path d="M15 3v5a1 1 0 0 0 1 1h5" />
+        </>
+      );
+    case "mic": // Lucide: mic
+      return (
+        <>
+          <path d="M12 19v3" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          <rect x="9" y="2" width="6" height="13" rx="3" />
         </>
       );
     case "stop": // Lucide: circle-stop

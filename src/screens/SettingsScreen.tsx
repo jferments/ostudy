@@ -22,6 +22,7 @@ import { BuiltInTemplates } from "./settings/BuiltInTemplates";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { DefaultAiModelSettings } from "./settings/DefaultAiModelSettings";
 import { LessonVoiceSettings } from "./settings/LessonVoiceSettings";
+import { SpeechInputSettings } from "./settings/SpeechInputSettings";
 import { DiagnosticsSettings } from "./settings/DiagnosticsSettings";
 import { ReviewSchedulingSettings } from "./settings/ReviewSchedulingSettings";
 import { StorageBackupSettings } from "./settings/StorageBackupSettings";
@@ -221,7 +222,7 @@ export function SettingsScreen({
           <AiLlmSettings
             controller={aiController}
             setupRequest={aiSetup}
-            defaultBlock={
+            defaultBlock={<>
               <DefaultAiModelSettings
                 controller={aiController}
                 onAddOpenRouter={addOpenRouter}
@@ -236,7 +237,11 @@ export function SettingsScreen({
                   />
                 }
               />
-            }
+              <SpeechInputSettings
+                seconds={draft.speechAutoSendSeconds ?? 2}
+                onChange={(speechAutoSendSeconds) => update({ speechAutoSendSeconds })}
+              />
+            </>}
           />
         );
       case "storage":

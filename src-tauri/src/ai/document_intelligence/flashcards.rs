@@ -304,7 +304,13 @@ fn parse_observed_cards(
     let mut rejected_count = 0_usize;
     let mut first_rejection = None;
     report.boundary = "candidate_admission";
-    for (index, item) in response.cards.into_iter().enumerate() {
+    // Models write formulas flat (HCO3-); each card is printed as its
+    // knowledge prints them before anything about it is checked or hashed.
+    let notation_source = knowledge.prompt().ok();
+    for (index, mut item) in response.cards.into_iter().enumerate() {
+        if let (Some(source), Some(card)) = (&notation_source, item.get_mut("card")) {
+            super::notation::print_card_notation(source, card);
+        }
         let mut rule = "unclassified";
         match admit_knowledge_card(item, knowledge, policy, &mut rule) {
             Ok(card) => {

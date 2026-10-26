@@ -66,7 +66,18 @@ export const styles = {
   // The filled send arrow is the composer's one primary action.
   send: "tw:rounded-full tw:bg-primary tw:text-primary-foreground tw:hover:bg-primary/90 tw:disabled:bg-muted tw:disabled:text-muted-foreground",
   stop: "tw:rounded-full tw:bg-foreground tw:text-background tw:hover:bg-foreground/85",
+  // A recording microphone stays visibly on until it is tapped again.
+  micRecording: "tw:rounded-full tw:bg-destructive-soft tw:text-destructive tw:hover:bg-destructive/20",
+  recordingTime: "tw:self-center tw:text-small tw:tabular-nums tw:text-muted-foreground",
+  level: "tw:mb-4 tw:h-1.5 tw:w-12 tw:shrink-0 tw:overflow-hidden tw:rounded-full tw:bg-muted tw:[&>span]:block tw:[&>span]:h-full tw:[&>span]:bg-destructive tw:[&>span]:transition-[width] tw:motion-reduce:[&>span]:transition-none",
+  speechStatus: "tw:mx-auto tw:mt-1 tw:min-h-5 tw:w-full tw:max-w-3xl tw:px-4 tw:text-small tw:text-muted-foreground tw:empty:hidden",
+  speechError: "tw:mx-auto tw:mt-1 tw:w-full tw:max-w-3xl tw:px-4 tw:text-small tw:text-destructive",
   sourcePanel: "tw:flex tw:min-h-0 tw:min-w-0 tw:flex-col tw:gap-3 tw:overflow-y-auto tw:border-0 tw:border-l tw:border-solid tw:border-border/70 tw:bg-foreground/4 tw:p-4",
   sourcePanelHeader: "tw:flex tw:min-w-0 tw:items-center tw:justify-between tw:gap-2 tw:[&>h3]:m-0 tw:[&>h3]:text-body tw:[&>h3]:font-semibold",
   sourceCard: "tw:grid tw:min-w-0 tw:gap-2 tw:rounded-xl tw:border tw:border-solid tw:border-border/70 tw:bg-background tw:p-4 tw:[&>strong]:text-small tw:[&>small]:text-caption tw:[&>small]:text-muted-foreground",
 } as const;
+
+/** An answer's text without the figures it shows, which mean nothing pasted elsewhere. */
+export function withoutFigures(text: string): string {
+  return text.replace(/!\[[^\]\n]*\]\(figure:[^)\s]*\)[ \t]*\n?/gu, "").replace(/\n{3,}/gu, "\n\n").trim();
+}

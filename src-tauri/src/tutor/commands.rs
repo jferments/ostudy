@@ -11,7 +11,7 @@ use super::{
         CreateProjectConversationInput, DeleteConversationInput, MoveConversationInput,
         RenameConversationInput, SetConversationArchivedInput, TutorTurn, TutorTurnInput,
     },
-    conversations, memory, projects, service,
+    conversations, figures, memory, projects, service,
 };
 
 #[tauri::command]
@@ -106,6 +106,14 @@ pub fn get_tutor_conversation(
     input: ConversationPageInput,
 ) -> Result<ConversationDetail, CommandError> {
     conversations::get(database.inner(), input)
+}
+
+#[tauri::command]
+pub fn get_tutor_figure(
+    database: State<'_, Database>,
+    input: figures::TutorFigureInput,
+) -> Result<figures::TutorFigureDto, CommandError> {
+    figures::tutor_figure(database.inner(), input)
 }
 
 #[tauri::command]

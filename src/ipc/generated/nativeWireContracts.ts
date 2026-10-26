@@ -39,6 +39,7 @@ export interface NativeAppSettings {
   guidePdfTheme: "navy" | "sage" | "slate" | "plum";
   guidePdfIncludeNotes: boolean;
   lectureAudioWithNewLessons: boolean;
+  speechAutoSendSeconds: number;
 }
 
 export interface NativeCompletedLibraryRestore {

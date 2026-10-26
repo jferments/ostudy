@@ -20,8 +20,14 @@ for (const path of rustFiles) {
   for (const match of text.matchAll(staleSuppression)) {
     failures.push(`${displayPath}:${lineNumber(text, match.index ?? 0)}: stale-code diagnostics are suppressed`);
   }
-  if (/\breqwest\b/u.test(text) && !displayPath.startsWith("src-tauri/src/ai/gateway/")) {
+  // The speech model download is the one other HTTP client: it fetches pinned
+  // files over HTTPS and sends nothing of the learner's (ADR 0061).
+  const speechModelDownload = displayPath === "src-tauri/src/speech_input/install.rs";
+  if (/\breqwest\b/u.test(text) && !displayPath.startsWith("src-tauri/src/ai/gateway/") && !speechModelDownload) {
     failures.push(`${displayPath}: provider HTTP is confined to the native AI gateway transport`);
+  }
+  if (speechModelDownload && (!/\.https_only\(!cfg!\(test\)\)/u.test(text) || /\.(?:post|put|body|json|form)\(/u.test(text))) {
+    failures.push(`${displayPath}: the speech model download must be HTTPS-only GET requests`);
   }
   if (
     /\bkeyring\b/u.test(text)
