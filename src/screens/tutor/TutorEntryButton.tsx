@@ -1,9 +1,10 @@
+import { useAiFeatures } from "../../controllers/AiFeaturesProvider";
 import type { TutorTarget } from "../../ipc/tutor";
 import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
 import { useOptionalTutor } from "./TutorContext";
 
-/** The same contextual entry works in Practice and the study-guide reader. */
+/** The same contextual entry works in Practice and the study-guide reader; it hides while AI is off. */
 export function TutorEntryButton({ target, disabled = false, className, showLabel = false, variant = "secondary" }: {
   target: TutorTarget;
   disabled?: boolean;
@@ -14,7 +15,8 @@ export function TutorEntryButton({ target, disabled = false, className, showLabe
   variant?: "secondary" | "ghost";
 }) {
   const tutor = useOptionalTutor();
-  if (!tutor) return null;
+  const ai = useAiFeatures().enabled;
+  if (!tutor || !ai) return null;
   const label = target.mode === "hint" ? "Get a flashcard hint" : "Ask tutor about this material";
   // The visible words stay inside the accessible name, so speech input finds the button by them.
   const shortLabel = target.mode === "hint" ? "Flashcard hint" : "Ask Tutor";

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { useAiFeatures } from "../../controllers/AiFeaturesProvider";
 import { useDocumentJobs } from "../../controllers/DocumentJobsProvider";
 import { getErrorMessage } from "../../ipc/common";
 import type { DocumentSummary } from "../../ipc/documents";
@@ -61,6 +62,8 @@ interface NewStudySetSheetProps {
  */
 export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose, onCreated }: NewStudySetSheetProps) {
   const jobs = useDocumentJobs();
+  // Without AI a set is a subject and its documents; nothing is made from them.
+  const ai = useAiFeatures().enabled;
   const [name, setName] = useState("");
   const [sources, setSources] = useState<Source[]>([]);
   const [browsing, setBrowsing] = useState(false);
@@ -98,9 +101,9 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
   const trimmedName = name.trim();
   const promptTooLong = trimmedPrompt.length > SOURCE_NOTES_PROMPT_MAX_CHARS;
   const nothingChosen = !kinds.flashcards && !kinds.studyGuide && !kinds.lessons;
-  const hasMaterial = sources.length > 0 || trimmedPrompt !== "";
+  const hasMaterial = sources.length > 0 || (ai && trimmedPrompt !== "");
   const blocked = (adding ? !hasMaterial : trimmedName === "")
-    || (hasMaterial && nothingChosen)
+    || (ai && hasMaterial && nothingChosen)
     || promptTooLong
     || busy !== null
     || !jobs;
@@ -170,7 +173,7 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
         if (source.kind === "library") {
           await fileInSubject(source.document.id, inSubject);
           // A library document that has no cards yet makes its first ones now.
-          if (source.document.generatedDeckId === null && source.document.lifecycleState !== "processing") {
+          if (ai && source.document.generatedDeckId === null && source.document.lifecycleState !== "processing") {
             await jobs.retry(source.document, instructions);
           }
           documentIds.push(source.document.id);
@@ -180,7 +183,7 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
         if (documentId) documentIds.push(documentId);
       }
       if (documentIds.length === 0) throw new Error("No document could be added, so nothing was made.");
-      queueStudySet(inSubject, {
+      if (ai) queueStudySet(inSubject, {
         flashcards: kinds.flashcards,
         studyGuide: kinds.studyGuide,
         lessons: kinds.lessons,
@@ -198,7 +201,7 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
   const disabled = busy !== null;
   return (
     <Sheet
-      title={addingTo ? `Add to ${addingTo}` : "New study set"}
+      title={addingTo ? `Add to ${addingTo}` : ai ? "New study set" : "New subject"}
       width="large"
       onClose={onClose}
       busy={disabled}
@@ -208,7 +211,7 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
         <>
           <Button disabled={disabled} onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" loading={disabled} disabled={blocked} data-testid="new-study-set-create">
-            {adding ? "Add materials" : "Make study set"}
+            {adding ? (ai ? "Add materials" : "Add documents") : ai ? "Make study set" : "Create subject"}
           </Button>
         </>
       }
@@ -292,6 +295,7 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
           </div>
         </fieldset>
 
+        {ai ? <>
         <FormField
           label="Prompt"
           description={sources.length > 0
@@ -338,6 +342,7 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
             })}
           </div>
         </fieldset>
+        </> : null}
         {busy ? <InlineNotice kind="info">{busy}</InlineNotice> : null}
         {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
       </div>

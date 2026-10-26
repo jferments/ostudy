@@ -163,6 +163,57 @@ pub async fn run_document_flashcard_generation(
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrepareDocumentInput {
+    pub document_id: String,
+}
+
+/// Read, render and chunk a newly imported document without contacting any AI
+/// service, then mark it ready to open and annotate. Used while AI features
+/// are off; like Start, it returns once the processing state and cancellation
+/// identity exist, and Stop ends it.
+#[tauri::command]
+pub fn start_document_preparation(
+    app: AppHandle,
+    database: State<'_, Database>,
+    input: PrepareDocumentInput,
+) -> Result<(), CommandError> {
+    validate_entity_id(&input.document_id, "document")?;
+    let document_id = input.document_id;
+    let reservation = reserve_document_task(&document_id)?;
+    if let Err(error) = document_store::mark_document_processing(database.inner(), &document_id) {
+        drop(reservation);
+        return Err(error);
+    }
+
+    let task_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let database = task_app.state::<Database>();
+        let paths = task_app.state::<AppPaths>();
+        let render_runtime = task_app.state::<PdfRenderRuntime>();
+        let result = run_reserved_document_task(
+            reservation,
+            documents::prepare_reserved_document(
+                database.inner(),
+                paths.inner(),
+                render_runtime.inner().clone(),
+                document_id.clone(),
+            ),
+        )
+        .await;
+        if let Err(error) = result {
+            crate::logging::warn_target(
+                "documents.preparation",
+                "document_preparation_stopped",
+                "Reading a document without AI ended before it was ready.",
+                serde_json::json!({ "document": document_id, "code": error.code }),
+            );
+        }
+    });
+    Ok(())
+}
+
 #[tauri::command]
 pub fn cancel_document_flashcard_generation(document_id: String) -> Result<(), CommandError> {
     validate_entity_id(&document_id, "document")?;

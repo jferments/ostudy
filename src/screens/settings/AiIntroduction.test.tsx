@@ -1,34 +1,38 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as aiProfilesIpc from "../../ipc/aiProfiles";
-import type { AiProviderProfileSummary } from "../../ipc/aiProfiles";
+import { AiFeaturesProvider, type AiFeatures } from "../../controllers/AiFeaturesProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { AI_INTRODUCTION_STORAGE_KEY, AiIntroduction } from "./AiIntroduction";
 
-vi.mock("../../ipc/aiProfiles", () => ({ listAiProviderProfiles: vi.fn() }));
+const NO_SERVICE: AiFeatures = { enabled: false, known: true, hasServices: false, refresh: () => undefined };
 
-function renderIntroduction(ready = true) {
-  const onSetUpAi = vi.fn();
-  const view = render(
-    <OverlayProvider>
-      <AiIntroduction ready={ready} onSetUpAi={onSetUpAi} />
-    </OverlayProvider>,
+function introduction(ai: AiFeatures, ready: boolean, onSetUpAi: () => void) {
+  return (
+    <AiFeaturesProvider value={ai}>
+      <OverlayProvider>
+        <AiIntroduction ready={ready} onSetUpAi={onSetUpAi} />
+      </OverlayProvider>
+    </AiFeaturesProvider>
   );
+}
+
+function renderIntroduction(ai: AiFeatures = NO_SERVICE, ready = true) {
+  const onSetUpAi = vi.fn();
+  const view = render(introduction(ai, ready, onSetUpAi));
   return { ...view, onSetUpAi };
 }
 
 describe("AiIntroduction", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     window.localStorage.clear();
-    vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockResolvedValue([]);
   });
 
-  it("explains what AI adds on a first start and opens setup", async () => {
+  it("says what oStudy does on its own and what AI adds, then opens setup", async () => {
     const { onSetUpAi } = renderIntroduction();
     const dialog = await screen.findByRole("dialog", { name: "Welcome to oStudy" });
-    expect(within(dialog).getByText(/Without one, oStudy is a flashcard and\s+note-taking app/u)).toBeTruthy();
+    expect(within(dialog).getByText(/oStudy is a complete flashcard and note-taking app on its own/u)).toBeTruthy();
+    expect(within(dialog).getByText(/Many of oStudy's features also use an AI\s+service/u)).toBeTruthy();
     const added = within(within(dialog).getByRole("list", { name: "What AI adds" })).getAllByRole("listitem");
     expect(added.map((item) => item.textContent)).toEqual([
       "A Tutor that answers questions from your own material",
@@ -43,39 +47,35 @@ describe("AiIntroduction", () => {
     expect(window.localStorage.getItem(AI_INTRODUCTION_STORAGE_KEY)).not.toBeNull();
   });
 
-  it("closes with Not now and does not return", async () => {
+  it("shows where AI waits in Settings after Not now, and does not return", async () => {
     const { onSetUpAi, unmount } = renderIntroduction();
     const dialog = await screen.findByRole("dialog", { name: "Welcome to oStudy" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Not now" }));
+    const later = await screen.findByRole("dialog", { name: "AI is in Settings" });
+    const picture = within(later).getByRole("figure", { name: "Settings, with the AI section highlighted" });
+    expect(within(picture).getByText("AI").closest("li")?.getAttribute("aria-current")).toBe("true");
+    fireEvent.click(within(later).getByRole("button", { name: "Got it" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(onSetUpAi).not.toHaveBeenCalled();
     unmount();
     renderIntroduction();
     await Promise.resolve();
-    expect(aiProfilesIpc.listAiProviderProfiles).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("stays away when a service is already set up", async () => {
-    vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockResolvedValue([
-      { id: "profile-1" } as AiProviderProfileSummary,
-    ]);
-    renderIntroduction();
+    renderIntroduction({ ...NO_SERVICE, enabled: true, hasServices: true });
     await waitFor(() => expect(window.localStorage.getItem(AI_INTRODUCTION_STORAGE_KEY)).not.toBeNull());
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("waits until the app is ready, and asks again next start when services cannot be read", async () => {
-    const { rerender } = renderIntroduction(false);
-    expect(aiProfilesIpc.listAiProviderProfiles).not.toHaveBeenCalled();
-    vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockRejectedValue(new Error("offline"));
-    rerender(
-      <OverlayProvider>
-        <AiIntroduction ready onSetUpAi={vi.fn()} />
-      </OverlayProvider>,
-    );
-    await waitFor(() => expect(aiProfilesIpc.listAiProviderProfiles).toHaveBeenCalledTimes(1));
+  it("waits until the app is ready and the services are known", async () => {
+    const onSetUpAi = vi.fn();
+    const { rerender } = render(introduction({ ...NO_SERVICE, known: false }, true, onSetUpAi));
+    rerender(introduction(NO_SERVICE, false, onSetUpAi));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(window.localStorage.getItem(AI_INTRODUCTION_STORAGE_KEY)).toBeNull();
+    rerender(introduction(NO_SERVICE, true, onSetUpAi));
+    expect(await screen.findByRole("dialog", { name: "Welcome to oStudy" })).toBeTruthy();
   });
 });

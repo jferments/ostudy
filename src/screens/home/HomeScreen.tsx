@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 
 import type { ShowToast } from "../../components/Toast";
+import { useAiFeatures } from "../../controllers/AiFeaturesProvider";
 import { useDocumentJobs } from "../../controllers/DocumentJobsProvider";
 import { useHomeSummary } from "../../controllers/HomeSummaryProvider";
 import type { DeckSummary } from "../../ipc/decks";
@@ -18,9 +19,11 @@ import { DeckTransferDialog } from "../flashcards/DeckTransferDialog";
 import { ChooseSubjectsSheet } from "./ChooseSubjectsSheet";
 import { CheckTheseSheet } from "./CheckTheseSheet";
 import { HomeFirstRun } from "./HomeFirstRun";
+import { HomeGettingStarted } from "./HomeGettingStarted";
 import { ContinuePanel, SuggestionsPanel, useHomeLessons } from "./HomeStudyPanels";
 import { HomeWeekPanel } from "./HomeWeekPanel";
 import { LessonSlidePreview } from "./LessonSlidePreview";
+import { ProgramTour } from "./ProgramTour";
 import { QuestionOfTheDayPanel } from "./QuestionOfTheDayPanel";
 import {
   buildSubjectTiles,
@@ -56,6 +59,8 @@ interface HomeScreenProps {
   onOpenDeck: (deckId: string) => void;
   refreshDecks: () => Promise<DeckSummary[]>;
   showToast: ShowToast;
+  /** Opens Settings → AI with its setup wizard. */
+  onOpenAiSetup: () => void;
 }
 
 /**
@@ -75,6 +80,7 @@ export function HomeScreen({
   onOpenDeck,
   refreshDecks,
   showToast,
+  onOpenAiSetup,
 }: HomeScreenProps) {
   const {
     summary,
@@ -91,6 +97,8 @@ export function HomeScreen({
   const compact = layoutMode === "compact";
   const [sort, setSortState] = useState<SubjectSort>(sessionSort);
   const [sheet, setSheet] = useState<HomeSheet>(null);
+  const [touring, setTouring] = useState(false);
+  const ai = useAiFeatures().enabled;
   const todayHeadingId = useId();
   const subjectsHeadingId = useId();
 
@@ -124,7 +132,9 @@ export function HomeScreen({
   );
   // Home rereads lessons and the week whenever today's summary changes.
   const refreshKey = summary ? summary.today.reviewsRemaining + summary.today.newRemaining * 100_000 : 0;
-  const lessons = useHomeLessons(subjectIds, refreshKey);
+  // Lessons are made by AI, so without it Home reads none and their panels hide.
+  const noSubjects = useMemo<string[]>(() => [], []);
+  const lessons = useHomeLessons(ai ? subjectIds : noSubjects, refreshKey);
   const remembered = useSubjectsRemembered(refreshKey);
   const openSubjectPage = (subjectId: string) => onOpenSubject(subjectId);
 
@@ -152,6 +162,8 @@ export function HomeScreen({
             onImportDocument={() => setSheet("new-study-set")}
             onImportDeck={() => setSheet("import-deck")}
             onOpenLibrary={onOpenLibrary}
+            onSetUpAi={onOpenAiSetup}
+            onTakeTour={() => setTouring(true)}
           />
         ) : (
           <div className="tw:flex tw:flex-col tw:gap-8 tw:compact:gap-6">
@@ -167,6 +179,7 @@ export function HomeScreen({
               onStartReview={() => onStartReview(summary.today.deckIds)}
               onChooseSubjects={() => setSheet("choose-subjects")}
             />
+            <HomeGettingStarted onSetUpAi={onOpenAiSetup} />
             {readError ? (
               <InlineNotice kind="warning">
                 Home may be out of date: {readError}{" "}
@@ -249,6 +262,7 @@ export function HomeScreen({
           </div>
         )
       ) : null}
+      {touring ? <ProgramTour onClose={() => setTouring(false)} onSetUpAi={onOpenAiSetup} /> : null}
       {sheet === "new-study-set" && library ? (
         <NewStudySetSheet
           subjects={library.subjects}

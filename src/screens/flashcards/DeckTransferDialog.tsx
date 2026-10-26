@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import type { ShowToast } from "../../components/Toast";
 import { useOptionalHomeSummary } from "../../controllers/HomeSummaryProvider";
 import { DeckTransferController, type DeckImportOutcome } from "../../controllers/deckTransferController";
+import {
+  detectQuizletSeparators,
+  parseQuizletText,
+  type QuizletRowSeparator,
+  type QuizletSeparators,
+  type QuizletTermSeparator,
+} from "../../controllers/quizletImport";
 import { getErrorMessage } from "../../ipc/common";
 import type { DeckSummary } from "../../ipc/decks";
 import type { OperationProgress } from "../../ipc/operationProgress";
@@ -12,6 +19,8 @@ import { Dialog } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
 import { Badge } from "../../ui/primitives/Badge";
 import { FormField } from "../../ui/primitives/FormField";
+import { Textarea } from "../../ui/primitives/FormControls";
+import { TextField } from "../../ui/primitives/TextField";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Panel } from "../../ui/primitives/Panel";
 import { InlineNotice, InlineProgress } from "../../ui/primitives/InlineNotice";
@@ -37,6 +46,11 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
   const controller = controllerRef.current;
   const capabilities = usePlatformCapabilities();
   const [busy, setBusy] = useState<"import" | "export" | "share" | null>(null);
+  const [pasting, setPasting] = useState(false);
+  const [pastedName, setPastedName] = useState("");
+  const [pastedText, setPastedText] = useState("");
+  const [separators, setSeparators] = useState<QuizletSeparators>({ term: "tab", row: "newline" });
+  const pasted = parseQuizletText(pastedText, separators);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [importedOutcome, setImportedOutcome] = useState<DeckImportOutcome | null>(null);
   const [importProgress, setImportProgress] = useState<OperationProgress | null>(null);
@@ -64,30 +78,43 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
     try {
       const outcome = await controller.importFromFile(setImportProgress);
       if (!outcome) { setImportProgress(null); return; }
-      // Filing the deck follows the committed import; a refused move leaves it under No subject.
-      let filingError: string | null = null;
-      if (intoSubjectId !== null) {
-        try {
-          const current = await getSubjectLibrary();
-          const next = await moveDeckToSubject({ deckId: outcome.deckId, subjectId: intoSubjectId, expectedLibraryRevision: current.libraryRevision });
-          acceptLibrary?.(next);
-        } catch (error: unknown) { filingError = getErrorMessage(error); }
-      }
-      let refreshError: string | null = null;
-      try { await refreshDecks(); } catch (error: unknown) { refreshError = getErrorMessage(error); }
-      const message = [
-        outcome.message,
-        filingError ? `It stays under No subject: ${filingError}` : null,
-        refreshError ? `The library could not refresh immediately: ${refreshError}` : null,
-      ].filter(Boolean).join(" ");
-      showToast(refreshError || filingError ? "info" : "success", message);
-      // A post-commit report, never an import preview or a request to repeat the write.
-      if (outcome.ankiReport) setImportedOutcome({ ...outcome, message });
-      else await openImportedDeck(outcome);
+      await fileImportedDeck(outcome);
     } catch (error: unknown) {
       setImportProgress(null);
       setErrorMessage(getErrorMessage(error));
     } finally { setBusy(null); }
+  }
+  async function importPasted(): Promise<void> {
+    if (busy || pasted.cards.length === 0 || pastedName.trim() === "") return;
+    setBusy("import");
+    setErrorMessage(null);
+    try {
+      await fileImportedDeck(await controller.importPastedCards(pastedName, pasted.cards));
+    } catch (error: unknown) {
+      setErrorMessage(getErrorMessage(error));
+    } finally { setBusy(null); }
+  }
+  async function fileImportedDeck(outcome: DeckImportOutcome): Promise<void> {
+    // Filing the deck follows the committed import; a refused move leaves it under No subject.
+    let filingError: string | null = null;
+    if (intoSubjectId !== null) {
+      try {
+        const current = await getSubjectLibrary();
+        const next = await moveDeckToSubject({ deckId: outcome.deckId, subjectId: intoSubjectId, expectedLibraryRevision: current.libraryRevision });
+        acceptLibrary?.(next);
+      } catch (error: unknown) { filingError = getErrorMessage(error); }
+    }
+    let refreshError: string | null = null;
+    try { await refreshDecks(); } catch (error: unknown) { refreshError = getErrorMessage(error); }
+    const message = [
+      outcome.message,
+      filingError ? `It stays under No subject: ${filingError}` : null,
+      refreshError ? `The library could not refresh immediately: ${refreshError}` : null,
+    ].filter(Boolean).join(" ");
+    showToast(refreshError || filingError ? "info" : "success", message);
+    // A post-commit report, never an import preview or a request to repeat the write.
+    if (outcome.ankiReport) setImportedOutcome({ ...outcome, message });
+    else await openImportedDeck(outcome);
   }
   async function saveDecks(): Promise<void> {
     if (busy || exportDecks.length === 0) return;
@@ -125,17 +152,23 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
 
   const importing = request.kind === "import";
   const activeAnkiProgress = importing && busy === "import" && importProgress?.operationKind === "anki_import" ? importProgress : null;
-  const title = importedOutcome ? "Anki import complete" : importing ? "Import deck"
+  const title = importedOutcome ? "Anki import complete" : importing && pasting ? "Import from Quizlet" : importing ? "Import deck"
     : exportDecks.length === 1 ? `Export “${exportDecks[0]?.name ?? "deck"}”` : `Export ${exportDecks.length} selected decks`;
   const description = importedOutcome ? "The deck has been saved. Review conversion details before studying."
-    : importing ? undefined
+    : importing && pasting ? "In Quizlet, open the set, choose ⋯ then Export, copy the text and paste it here."
+      : importing ? undefined
       : exportDecks.length === 1 ? "Save a portable .studydeck file, or share it through the operating system when available."
         : "Each selected deck is saved as its own portable .studydeck file.";
 
   return <Dialog title={title} description={description} width="medium" busy={busy !== null} dismissible={busy === null} onClose={onClose}
     actions={<>
-      <Button variant="ghost" disabled={busy !== null} onClick={onClose}>{importedOutcome ? "Close" : "Cancel"}</Button>
+      {importing && pasting && !importedOutcome
+        ? <Button variant="ghost" disabled={busy !== null} onClick={() => { setPasting(false); setErrorMessage(null); }}>Back</Button>
+        : <Button variant="ghost" disabled={busy !== null} onClick={onClose}>{importedOutcome ? "Close" : "Cancel"}</Button>}
       {importedOutcome ? <Button variant="primary" onClick={() => void openImportedDeck(importedOutcome)}>{onImportedDeck ? "Open imported deck" : "Done"}</Button>
+        : importing && pasting ? <Button variant="primary" loading={busy === "import"} disabled={busy !== null || pasted.cards.length === 0 || pastedName.trim() === ""} onClick={() => void importPasted()}>
+          <Icon name="import" size={18} />Import {pasted.cards.length} {pasted.cards.length === 1 ? "card" : "cards"}
+        </Button>
         : importing ? null
           : <>
             {canShare ? <Button variant="secondary" loading={busy === "share"} disabled={busy !== null} onClick={() => void shareDeck()}><Icon name="export" size={18} /> Share</Button> : null}
@@ -146,13 +179,58 @@ export function DeckTransferDialog({ request, refreshDecks, onImportedDeck, onCl
       {errorMessage ? <InlineNotice kind="error">{errorMessage}</InlineNotice> : null}
       {importedOutcome?.ankiReport ? <AnkiImportReportView report={importedOutcome.ankiReport} message={importedOutcome.message} />
         : activeAnkiProgress ? <AnkiProgressView progress={activeAnkiProgress} />
-          : importing ? <>
+          : importing && pasting ? <>
+            <FormField label="Deck name" required>
+              <TextField value={pastedName} disabled={busy !== null} placeholder="Spanish verbs" onChange={(event) => setPastedName(event.currentTarget.value)} />
+            </FormField>
+            <FormField label="Quizlet text" description="Any list with a term and a definition on each line works too.">
+              <Textarea rows={8} value={pastedText} disabled={busy !== null} placeholder={"hablar\tto speak\ncomer\tto eat"} data-testid="quizlet-text"
+                onChange={(event) => {
+                  const text = event.currentTarget.value;
+                  if (pastedText.trim() === "") setSeparators(detectQuizletSeparators(text));
+                  setPastedText(text);
+                }} />
+            </FormField>
+            <div className="tw:grid tw:gap-3 tw:medium:grid-cols-2">
+              <FormField label="Between term and definition">
+                <NativeSelect value={separators.term} disabled={busy !== null} onChange={(event) => setSeparators({ ...separators, term: event.currentTarget.value as QuizletTermSeparator })}>
+                  <option value="tab">Tab</option>
+                  <option value="comma">Comma</option>
+                </NativeSelect>
+              </FormField>
+              <FormField label="Between cards">
+                <NativeSelect value={separators.row} disabled={busy !== null} onChange={(event) => setSeparators({ ...separators, row: event.currentTarget.value as QuizletRowSeparator })}>
+                  <option value="newline">New line</option>
+                  <option value="semicolon">Semicolon</option>
+                </NativeSelect>
+              </FormField>
+            </div>
+            {pastedText.trim() !== "" ? (
+              <p className="tw:m-0 tw:text-small tw:text-muted-foreground" aria-live="polite">
+                {pasted.cards.length} {pasted.cards.length === 1 ? "card" : "cards"} found
+                {pasted.skipped > 0 ? `; ${pasted.skipped} ${pasted.skipped === 1 ? "line has" : "lines have"} no definition and will be left out` : ""}.
+                {pasted.cards[0] ? ` First: “${pasted.cards[0].question}” → “${pasted.cards[0].answer}”.` : ""}
+              </p>
+            ) : null}
+            {subjects.length > 0 ? (
+              <FormField label="Into subject">
+                <NativeSelect value={intoSubjectId ?? ""} disabled={busy !== null} onChange={(event) => setIntoSubjectId(event.currentTarget.value || null)}>
+                  <option value="">No subject</option>
+                  {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+                </NativeSelect>
+              </FormField>
+            ) : null}
+          </> : importing ? <>
             <ItemTrigger data-testid="deck-import-choose" disabled={busy !== null} onClick={() => void importDeck()}
               className="tw:grid tw:min-h-36 tw:w-full tw:place-content-center tw:justify-items-center tw:gap-1.5 tw:rounded-lg tw:border-2 tw:border-dashed tw:border-border tw:bg-muted/40 tw:p-6 tw:text-center tw:text-foreground tw:outline-none tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:hover:bg-muted tw:focus-visible:ring-3 tw:focus-visible:ring-ring/50 tw:disabled:cursor-default tw:disabled:opacity-60 tw:reduce-motion:transition-none">
               <Icon name="import" size={24} className="tw:text-muted-foreground" />
               <span className="tw:text-body tw:font-semibold">{busy === "import" ? "Importing…" : "Choose a file"}</span>
               <span className="tw:text-small tw:text-muted-foreground">.studydeck · Anki .apkg · .ostudy.json</span>
             </ItemTrigger>
+            <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-between tw:gap-3">
+              <span className="tw:text-small tw:text-muted-foreground">Coming from Quizlet? Copy a set&apos;s Export text.</span>
+              <Button variant="secondary" disabled={busy !== null} onClick={() => { setPasting(true); setErrorMessage(null); }}>Paste from Quizlet</Button>
+            </div>
             {subjects.length > 0 ? (
               <FormField label="Into subject">
                 <NativeSelect value={intoSubjectId ?? ""} disabled={busy !== null} onChange={(event) => setIntoSubjectId(event.currentTarget.value || null)}>
