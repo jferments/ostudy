@@ -248,6 +248,7 @@ vi.mock("./screens/StudyGuidesRoute", () => ({
     </section>
   ),
 }));
+vi.mock("./screens/settings/AiIntroduction", () => ({ AiIntroduction: () => null }));
 vi.mock("./screens/SettingsScreen", () => ({
   SettingsScreen: () => <h1>Settings mock</h1>,
 }));

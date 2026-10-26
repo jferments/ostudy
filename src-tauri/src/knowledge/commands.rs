@@ -214,7 +214,11 @@ pub async fn prepare_collection_synthesis(
         "collection_synthesis",
     )?;
     let context = diagnostics.context();
-    let mut task = document_intelligence::load_document_task_context(database.inner())?;
+    let mut task = document_intelligence::load_verified_document_task_context(
+        database.inner(),
+        runtime.inner(),
+    )
+    .await?;
     task.diagnostics = Some(context);
     let state = collection_view::ensure_reduced(
         database.inner(),

@@ -18,7 +18,7 @@ use crate::{
     ai::{
         concurrency::{run_bounded_provider_queue, QueueControl},
         document_intelligence::{
-            generate_collection_study_guide_topic_section, load_document_task_context,
+            generate_collection_study_guide_topic_section, load_verified_document_task_context,
             CollectionStudyGuideAuthoring,
         },
         document_provider, generation, AiRuntimeState,
@@ -502,7 +502,7 @@ async fn compose_collection_guide(
         ));
     }
 
-    let mut task = load_document_task_context(database)?;
+    let mut task = load_verified_document_task_context(database, runtime).await?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,

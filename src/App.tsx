@@ -26,6 +26,7 @@ import { HomeScreen } from "./screens/home/HomeScreen";
 import { LibraryLessons } from "./screens/library/LibraryLessons";
 import { LibraryHome } from "./screens/library/LibraryHome";
 import { LibraryFrame } from "./screens/library/LibraryFrame";
+import { AiIntroduction } from "./screens/settings/AiIntroduction";
 import { workbenchLaunchFor } from "./screens/library/workbench/workbenchLaunch";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
@@ -391,6 +392,10 @@ function App() {
                       </RouteTransition>
                     </AppContent>
 
+                    <AiIntroduction
+                      ready={controller.practiceWorkflow === null}
+                      onSetUpAi={() => void controller.openAiSetup()}
+                    />
                     <Toast toast={controller.toast} onDismiss={() => controller.setToast(null)} />
                   </AppFrame>
                 </TutorProvider>
