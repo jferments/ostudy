@@ -78,6 +78,8 @@ fn conversational_question_publication_preserves_request_identity_and_private_ru
         include_conversations: false,
         question_id: None,
         replaces_turn_id: None,
+        after_question_id: None,
+        choice: None,
     };
     let identity = TurnIdentity {
         id: "c".repeat(32),
@@ -148,6 +150,8 @@ fn organization_changes_do_not_invalidate_an_admitted_response() {
         include_conversations: false,
         question_id: None,
         replaces_turn_id: None,
+        after_question_id: None,
+        choice: None,
     };
     let identity = TurnIdentity {
         id: "f".repeat(32),

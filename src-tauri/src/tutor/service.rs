@@ -19,7 +19,7 @@ use crate::{
 
 use super::{
     context,
-    contracts::{TutorMode, TutorTurn, TutorTurnInput},
+    contracts::{QuizSeries, TutorMode, TutorTurn, TutorTurnInput},
     focus, history, output, turns,
 };
 
@@ -53,7 +53,59 @@ pub(crate) async fn send(
             })
         })
         .transpose()?;
+    // A choose-one answer must be one of its question's options, word for word.
+    let picked = match (&quiz, input.choice) {
+        (Some(fixed), Some(chosen)) if !fixed.choices.is_empty() => {
+            if fixed.choices.get(chosen).map(|choice| choice.trim()) != Some(input.text.trim()) {
+                return Err(crate::knowledge::contracts::invalid(
+                    "Pick one of the question's options.",
+                ));
+            }
+            Some((fixed, chosen))
+        }
+        (Some(fixed), None) if !fixed.choices.is_empty() => {
+            return Err(crate::knowledge::contracts::invalid(
+                "Pick one of the question's options.",
+            ))
+        }
+        (_, Some(_)) => {
+            return Err(crate::knowledge::contracts::invalid(
+                "This question has no options to pick from.",
+            ))
+        }
+        _ => None,
+    };
+    // Next question takes the place after the one it follows; a quiz of a
+    // set length ends with its last question.
+    let previous = input
+        .after_question_id
+        .as_ref()
+        .map(|id| {
+            database.with_connection(|connection| {
+                turns::load_asked(connection, &input.conversation_id, id)
+            })
+        })
+        .transpose()?;
+    let series = previous
+        .as_ref()
+        .map(|previous| QuizSeries::next(Some(previous), None))
+        .transpose()?;
     let identity = turns::begin(database, &input, &task)?;
+    if let Some((fixed, chosen)) = picked {
+        guard.progress("checking answer", 3, 4);
+        let graded = output::grade_choice(fixed, chosen);
+        let question_id = input.question_id.as_deref().unwrap_or_default();
+        return match turns::complete(
+            database,
+            &identity,
+            &graded,
+            &context::StudyContext::graded(question_id),
+            None,
+        ) {
+            Ok(turn) => Ok(turn),
+            Err(error) => turns::fail(database, &identity, &error, None),
+        };
+    }
     let outcome = async {
         let focused = focus::resolve(
             database,
@@ -98,6 +150,7 @@ pub(crate) async fn send(
                 input: &input,
                 focus: &focused,
                 quiz: quiz.as_ref(),
+                series,
                 history: remembered,
                 project_instructions: identity.project_instructions.as_deref(),
             },
@@ -142,6 +195,12 @@ pub(crate) async fn send(
             &context,
             quiz.as_ref(),
         )?;
+        if let Some(asked) = answer.quiz.as_mut() {
+            asked.series = Some(match &previous {
+                Some(previous) => QuizSeries::next(Some(previous), None)?,
+                None => QuizSeries::next(None, asked.question_count)?,
+            });
+        }
         if input.mode == TutorMode::Hint {
             guard.progress("checking hint for spoilers", 3, 4);
             answer.text = if focused.question_hint.is_some() {

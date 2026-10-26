@@ -300,7 +300,14 @@ export function useTutorController() {
     // become answers to a newer pending quiz. A failed new version of an answer
     // is tried again as that version, so the question is not asked twice.
     const version = current.current?.turns.some((entry) => entry.replacedByTurnId === saved.id);
-    await send(saved.mode, saved.userText, undefined, version ? saved.id : undefined);
+    const asked = saved.mode === "answer"
+      ? current.current?.turns.find((entry) => entry.id === saved.questionId)?.question
+      : null;
+    const choice = asked?.choices.length ? asked.choices.indexOf(saved.userText) : -1;
+    await send(saved.mode, saved.userText, undefined, {
+      ...(version ? { replacesTurnId: saved.id } : {}),
+      ...(choice >= 0 ? { choice } : {}),
+    });
   }
 
   /**
@@ -314,7 +321,23 @@ export function useTutorController() {
       setError("Only the latest answer can be asked again. Send a new message instead.");
       return;
     }
-    await send("explain", text, undefined, saved.id);
+    await send("explain", text, undefined, { replacesTurnId: saved.id });
+  }
+
+  /** Asks the question after `question` in its quiz. */
+  async function nextQuestion(question: TutorTurn): Promise<void> {
+    await send("quiz", "", undefined, { afterQuestionId: question.id });
+  }
+
+  /** Answers the open choose-one question with its option at `choice`. */
+  async function answerChoice(question: TutorTurn, choice: number): Promise<void> {
+    const pending = [...(current.current?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
+    const option = question.question?.choices[choice];
+    if (!pending || pending.id !== question.id || option === undefined) {
+      setError("This question was answered or replaced. Ask for a new question.");
+      return;
+    }
+    await send("answer", option, undefined, { choice });
   }
 
   function openContext(next: TutorTarget): void {
@@ -347,7 +370,7 @@ export function useTutorController() {
     if (turn.state !== "running") {
       active.current = null;
       // A new version of an answer was never in the draft.
-      if (!request.replacesTurnId) settleDraft(turn.state, request.text);
+      if (!request.replacesTurnId && request.choice === undefined) settleDraft(turn.state, request.text);
     }
     const previous = current.current;
     if (previous?.conversation.id === request.conversationId) {
@@ -386,7 +409,7 @@ export function useTutorController() {
     mode: TutorMode,
     text = draft,
     fresh?: { scope: StudyScope; title: string },
-    replacesTurnId?: string,
+    extra: Pick<TutorTurnInput, "replacesTurnId" | "afterQuestionId" | "choice"> = {},
   ): Promise<void> {
     if (mutating.current || loading || pendingRef.current || needsRefresh || preparation.locked) return;
     if (!text.trim() && mode !== "quiz") return;
@@ -437,7 +460,7 @@ export function useTutorController() {
         focus: fresh ? null : target?.focus ?? null, profileId,
         includeConversations: !fresh && includeConversations && conversationRetrievalAllowed && mode !== "hint",
         questionId: question?.id ?? null,
-        ...(replacesTurnId ? { replacesTurnId } : {}),
+        ...extra,
       };
       await perform(request);
     } catch (failure: unknown) {
@@ -656,7 +679,7 @@ export function useTutorController() {
     loading, busy, organizing, error, pending, liveOperationId, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
     initialize, refresh, selectConversation,
     newConversation, newConversationInProject, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
-    send, start, regenerate, retryPending, cancel, loadEarlier,
+    send, start, regenerate, nextQuestion, answerChoice, retryPending, cancel, loadEarlier,
     createProject, updateProject, setProjectArchived, removeProject,
     renameConversation, moveConversation, setConversationArchived, removeConversation,
   };

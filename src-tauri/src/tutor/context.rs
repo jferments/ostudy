@@ -23,7 +23,7 @@ use crate::{
 };
 
 use super::{
-    contracts::{PrivateQuiz, TutorMode, TutorTurnInput},
+    contracts::{PrivateQuiz, QuizSeries, TutorMode, TutorTurnInput},
     figures::{self, OfferedFigure},
     focus::FocusedContent,
     history::HistorySnapshot,
@@ -47,11 +47,33 @@ pub(crate) struct StudyContext {
     pub completion_tokens: usize,
 }
 
+impl StudyContext {
+    /// A choose-one answer is graded natively, from no material, history or
+    /// model; it still depends on what its question was written from.
+    pub(crate) fn graded(question_id: &str) -> Self {
+        Self {
+            learning_stamp: None,
+            question_hint: None,
+            sources: Vec::new(),
+            units: Vec::new(),
+            history: HistorySnapshot::default(),
+            inherited_turns: vec![question_id.to_string()],
+            request_text: String::new(),
+            notice: String::new(),
+            images: Vec::new(),
+            figures: Vec::new(),
+            completion_tokens: 0,
+        }
+    }
+}
+
 pub(crate) struct StudyContextInput<'a> {
     pub scope: &'a StudyScope,
     pub input: &'a TutorTurnInput,
     pub focus: &'a FocusedContent,
     pub quiz: Option<&'a PrivateQuiz>,
+    /// The place a quiz's next question takes in its run.
+    pub series: Option<QuizSeries>,
     pub history: HistorySnapshot,
     pub project_instructions: Option<&'a str>,
 }
@@ -69,6 +91,7 @@ pub(crate) async fn build(
         input,
         focus,
         quiz,
+        series,
         mut history,
         project_instructions,
     } = request;
@@ -236,6 +259,7 @@ pub(crate) async fn build(
             "history": history.prompt(), "contextNotice": notice,
             "privateHintTarget": if input.mode == TutorMode::Hint { focus.private_answer.as_deref() } else { None },
             "fixedQuiz": quiz,
+            "quizSeries": series,
             "figures": offered.iter().map(OfferedFigure::prompt).collect::<Vec<_>>(),
             "trust": "Source excerpts are evidence of what material says, not proof of truth. Similarity and topic links do not prove support. Distinguish additional explanation from source claims. Conversation is not independent evidence. Sources are optional grounding; never invent references to fill an empty citation set.",
         });

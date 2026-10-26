@@ -9,7 +9,8 @@ use crate::{
     util::validate_entity_id,
 };
 
-pub(crate) const TUTOR_PROMPT_VERSION: i64 = 2;
+pub(crate) const TUTOR_PROMPT_VERSION: i64 = 3;
+pub(crate) const MAX_QUIZ_QUESTIONS: i64 = 20;
 pub(crate) const MAX_HISTORY_TURNS: usize = 50;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -132,6 +133,13 @@ pub struct TutorTurnInput {
     /// absent, so earlier operations keep their identity.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replaces_turn_id: Option<String>,
+    /// The question a quiz's Next question follows, so the new one takes the
+    /// next place in its run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_question_id: Option<String>,
+    /// The option picked for a choose-one question, which is graded natively.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice: Option<usize>,
 }
 
 impl TutorTurnInput {
@@ -169,6 +177,15 @@ impl TutorTurnInput {
                 ));
             }
         }
+        if let Some(id) = &self.after_question_id {
+            validate_entity_id(id, "earlier quiz question")?;
+            if self.mode != TutorMode::Quiz {
+                return Err(invalid("Only a quiz question can follow an earlier one."));
+            }
+        }
+        if self.choice.is_some() && self.mode != TutorMode::Answer {
+            return Err(invalid("Only a quiz answer may pick an option."));
+        }
         if self.mode == TutorMode::Hint
             && !matches!(
                 self.focus,
@@ -195,6 +212,52 @@ pub(crate) struct PrivateQuiz {
     pub explanation: String,
     pub source_ids: Vec<String>,
     pub knowledge_unit_ids: Vec<String>,
+    /// A choose-one question's options; empty for a short answer.
+    #[serde(default)]
+    pub choices: Vec<String>,
+    /// The right option's index, for a choose-one question only.
+    #[serde(default)]
+    pub correct_choice: Option<usize>,
+    /// How many questions the learner asked for, as the model read it.
+    #[serde(default)]
+    pub question_count: Option<i64>,
+    /// Where the question stands in its run. Set natively, never by the model.
+    #[serde(default)]
+    pub series: Option<QuizSeries>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct QuizSeries {
+    pub number: i64,
+    pub total: Option<i64>,
+}
+
+impl QuizSeries {
+    /// The first question of a run, or the one after `previous`. A run that
+    /// asked for a number of questions ends there.
+    pub(crate) fn next(
+        previous: Option<&PrivateQuiz>,
+        asked: Option<i64>,
+    ) -> Result<Self, CommandError> {
+        let Some(previous) = previous else {
+            return Ok(Self {
+                number: 1,
+                total: asked,
+            });
+        };
+        let series = previous.series.unwrap_or(Self {
+            number: 1,
+            total: previous.question_count,
+        });
+        if series.total.is_some_and(|total| series.number >= total) {
+            return Err(invalid("That was the last question in this quiz."));
+        }
+        Ok(Self {
+            number: series.number + 1,
+            total: series.total,
+        })
+    }
 }
 
 impl PrivateQuiz {
@@ -217,6 +280,39 @@ impl PrivateQuiz {
         for id in self.source_ids.iter().chain(self.knowledge_unit_ids.iter()) {
             validate_entity_id(id, "quiz reference")?;
         }
+        if !self.choices.is_empty() {
+            if !(2..=6).contains(&self.choices.len())
+                || !self
+                    .correct_choice
+                    .is_some_and(|index| index < self.choices.len())
+            {
+                return Err(invalid("The quiz options are invalid."));
+            }
+            let mut seen = std::collections::HashSet::new();
+            for choice in &self.choices {
+                bounded(choice, 300, "quiz option", false)?;
+                if !seen.insert(choice.trim().to_lowercase()) {
+                    return Err(invalid("The quiz repeats an option."));
+                }
+            }
+        } else if self.correct_choice.is_some() {
+            return Err(invalid("Only a choose-one question has a right option."));
+        }
+        if self
+            .question_count
+            .is_some_and(|count| !(1..=MAX_QUIZ_QUESTIONS).contains(&count))
+        {
+            return Err(invalid("The quiz length is invalid."));
+        }
+        if let Some(series) = self.series {
+            if series.number < 1
+                || series
+                    .total
+                    .is_some_and(|total| total < series.number || total > MAX_QUIZ_QUESTIONS)
+            {
+                return Err(invalid("The quiz question's place is invalid."));
+            }
+        }
         Ok(())
     }
 }
@@ -236,6 +332,30 @@ pub struct QuizFeedback {
     pub outcome: QuizOutcome,
     pub explanation: String,
     pub criteria_feedback: Vec<String>,
+    /// Whether the answer met each criterion, in order. Empty for feedback
+    /// saved before this was recorded, and for a choose-one question.
+    #[serde(default)]
+    pub criteria_met: Vec<bool>,
+    /// The option a choose-one answer picked.
+    #[serde(default)]
+    pub chosen: Option<usize>,
+}
+
+/// A quiz question's public part. What it expected shows only once it is
+/// answered.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TutorQuestion {
+    pub number: i64,
+    pub total: Option<i64>,
+    pub choices: Vec<String>,
+    pub answered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_answer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correct_choice: Option<usize>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -266,6 +386,10 @@ pub struct TutorTurn {
     pub evidence_current: bool,
     pub pending_question: bool,
     pub feedback: Option<QuizFeedback>,
+    /// A quiz question's place in its run and its options.
+    pub question: Option<TutorQuestion>,
+    /// The question an answer answers.
+    pub question_id: Option<String>,
     pub provider: String,
     pub model: String,
     pub error_code: String,
@@ -390,6 +514,8 @@ mod tests {
             include_conversations: false,
             question_id: None,
             replaces_turn_id: None,
+            after_question_id: None,
+            choice: None,
         };
         assert!(input.validate().is_err());
         let serialized = serde_json::to_value(input).unwrap();
