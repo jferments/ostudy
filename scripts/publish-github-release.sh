@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# The ostudy repository is private, so public release files go to a separate
-# public repository (OSTUDY_RELEASES_REPO, default jferments/ostudy-releases)
-# as a draft GitHub release. The maintainer reads it there and presses
+# Uploads the release files as a draft GitHub release in OSTUDY_RELEASES_REPO
+# (default jferments/ostudy). The maintainer reads it there and presses
 # Publish; nothing here makes a release public.
 
 usage() {
@@ -11,7 +10,7 @@ usage() {
 Usage: ./scripts/publish-github-release.sh TAG DIRECTORY
 
 Create a draft release TAG in OSTUDY_RELEASES_REPO (default
-jferments/ostudy-releases) and upload every file DIRECTORY/SHA256SUMS.txt
+jferments/ostudy) and upload every file DIRECTORY/SHA256SUMS.txt
 lists, plus SHA256SUMS.txt itself. It uses OSTUDY_RELEASES_TOKEN if set, or
 else the gh login (gh auth token); either needs Contents read and write on
 that repository. Refuses a tag that already has a release there.
@@ -21,7 +20,7 @@ USAGE
 [[ $# -eq 2 ]] || { usage >&2; exit 2; }
 TAG="$1"
 DIR="$2"
-REPO="${OSTUDY_RELEASES_REPO:-jferments/ostudy-releases}"
+REPO="${OSTUDY_RELEASES_REPO:-jferments/ostudy}"
 TOKEN="${OSTUDY_RELEASES_TOKEN:-}"
 [[ -n "$TOKEN" ]] || TOKEN="$(gh auth token 2>/dev/null || true)"
 [[ -n "$TOKEN" ]] || { printf 'ERROR: set OSTUDY_RELEASES_TOKEN or log in with gh auth login.\n' >&2; exit 1; }
