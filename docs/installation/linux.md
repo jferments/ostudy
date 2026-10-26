@@ -165,7 +165,7 @@ The AppImage carries WebKitGTK and GStreamer but, like every AppImage, expects t
 
 ### Flatpak
 
-`./scripts/build-flatpak.sh` turns the verified `.deb` into a Flatpak on the GNOME runtime and writes a single-file bundle to `.artifacts/flatpak/`; `--install` also installs it for your user. It needs `flatpak` and `flatpak-builder` and downloads the runtime from Flathub the first time. With `--container` it builds inside a privileged Ubuntu 24.04 container (Docker or Podman) instead, caching the runtime in the `ostudy-flatpak-cache` volume; releases build it that way.
+`./scripts/build-flatpak.sh` turns the verified `.deb` into a Flatpak on the GNOME runtime and writes a single-file bundle to `.artifacts/flatpak/`; `--install` also installs it for your user. It needs `flatpak` and `flatpak-builder` and downloads the runtime from Flathub the first time. With `--container` it builds inside a privileged Ubuntu 24.04 container (Docker or Podman) instead, caching the runtime in the `ostudy-flatpak-cache` volume.
 
 ```bash
 ./scripts/ostudy-dev package-deb

@@ -12,9 +12,9 @@ Usage: ./scripts/publish-github-release.sh TAG DIRECTORY
 
 Create a draft release TAG in OSTUDY_RELEASES_REPO (default
 jferments/ostudy-releases) and upload every file DIRECTORY/SHA256SUMS.txt
-lists, plus SHA256SUMS.txt itself. OSTUDY_RELEASES_TOKEN must be a token with
-Contents read and write on that repository. Refuses a tag that already has a
-release there.
+lists, plus SHA256SUMS.txt itself. It uses OSTUDY_RELEASES_TOKEN if set, or
+else the gh login (gh auth token); either needs Contents read and write on
+that repository. Refuses a tag that already has a release there.
 USAGE
 }
 
@@ -23,7 +23,8 @@ TAG="$1"
 DIR="$2"
 REPO="${OSTUDY_RELEASES_REPO:-jferments/ostudy-releases}"
 TOKEN="${OSTUDY_RELEASES_TOKEN:-}"
-[[ -n "$TOKEN" ]] || { printf 'ERROR: OSTUDY_RELEASES_TOKEN is not set.\n' >&2; exit 1; }
+[[ -n "$TOKEN" ]] || TOKEN="$(gh auth token 2>/dev/null || true)"
+[[ -n "$TOKEN" ]] || { printf 'ERROR: set OSTUDY_RELEASES_TOKEN or log in with gh auth login.\n' >&2; exit 1; }
 [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] || { printf 'ERROR: %s is not a release tag like v0.1.0.\n' "$TAG" >&2; exit 2; }
 [[ -f "$DIR/SHA256SUMS.txt" ]] || { printf 'ERROR: %s has no SHA256SUMS.txt.\n' "$DIR" >&2; exit 1; }
 (cd "$DIR" && sha256sum --check --strict --quiet SHA256SUMS.txt) || {

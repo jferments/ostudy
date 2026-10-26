@@ -11,9 +11,39 @@ ostudy_activate_node_toolchain
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
 cd "$ROOT_DIR"
 
+usage() {
+  cat <<'USAGE'
+Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate]
+
+Qualify and package a tagged release. With no option it runs the complete
+gate in a clean source copy, then builds the Linux files.
+
+--gate-only   only the gate. The tag's Release gate workflow runs this on the
+              CI runner, which deliberately has no Docker.
+--skip-gate   only the files, on a maintainer machine with Podman or Docker
+              and flatpak-builder. HEAD must be the tag, and the tag's Release
+              gate run must have passed (checked with gh).
+
+The files go to artifacts/TAG/linux-x86_64; publish them with
+./scripts/publish-github-release.sh and ostudy-io's tools/publish-release.sh.
+USAGE
+}
+
+MODE=all
+REQUESTED_TAG=""
+while (($#)); do
+  case "$1" in
+    --gate-only) MODE=gate; shift ;;
+    --skip-gate) MODE=packages; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+    *) [[ -z "$REQUESTED_TAG" ]] || { usage >&2; exit 2; }; REQUESTED_TAG="$1"; shift ;;
+  esac
+done
+
 VERSION="$(node -p "require('./package.json').version")"
 EXPECTED_TAG="v$VERSION"
-REQUESTED_TAG="${1:-$EXPECTED_TAG}"
+REQUESTED_TAG="${REQUESTED_TAG:-$EXPECTED_TAG}"
 [[ "$REQUESTED_TAG" == "$EXPECTED_TAG" ]] || {
   printf 'ERROR: release tag %s does not match manifest version %s.\n' "$REQUESTED_TAG" "$VERSION" >&2
   exit 1
@@ -26,7 +56,36 @@ git diff --quiet && git diff --cached --quiet || {
 }
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
 
-"$SCRIPT_DIR/release-check.sh"
+if [[ "$MODE" == packages ]]; then
+  tag_commit="$(git rev-parse --verify --quiet "refs/tags/$EXPECTED_TAG^{commit}")" || {
+    printf 'ERROR: there is no tag %s here; fetch tags first.\n' "$EXPECTED_TAG" >&2
+    exit 1
+  }
+  [[ "$(git rev-parse HEAD)" == "$tag_commit" ]] || {
+    printf 'ERROR: HEAD is not %s; run git checkout --detach %s first.\n' "$EXPECTED_TAG" "$EXPECTED_TAG" >&2
+    exit 1
+  }
+  command -v gh >/dev/null 2>&1 || { printf 'ERROR: --skip-gate checks the Release gate run with gh; install and log in to gh.\n' >&2; exit 1; }
+  gate="$(gh run list --repo "${OSTUDY_REPO:-jferments/ostudy}" --workflow release.yml --commit "$tag_commit" \
+    --json conclusion --jq 'map(select(.conclusion == "success")) | length')"
+  [[ "$gate" -ge 1 ]] || {
+    printf 'ERROR: the Release gate for %s (%s) has not passed yet.\n' "$EXPECTED_TAG" "${tag_commit:0:12}" >&2
+    exit 1
+  }
+else
+  "$SCRIPT_DIR/release-check.sh"
+fi
+
+if [[ "$MODE" == gate ]]; then
+  mkdir -p "$ROOT_DIR/artifacts/$EXPECTED_TAG"
+  {
+    printf 'tag=%s\n' "$EXPECTED_TAG"
+    printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
+    printf 'gate=passed\n'
+  } > "$ROOT_DIR/artifacts/$EXPECTED_TAG/GATE.txt"
+  printf '\nRelease gate passed for %s.\n' "$EXPECTED_TAG"
+  exit 0
+fi
 
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;
@@ -51,7 +110,7 @@ DEB="$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.deb"
 printf '\n==> Building the Flatpak bundle from the portable .deb\n'
 FLATPAK_DIR="$(mktemp -d -t ostudy-release-flatpak.XXXXXXXX)"
 trap 'rm -rf -- "$FLATPAK_DIR"' EXIT
-"$SCRIPT_DIR/build-flatpak.sh" --container --deb "$DEB" --output "$FLATPAK_DIR"
+"$SCRIPT_DIR/build-flatpak.sh" --deb "$DEB" --output "$FLATPAK_DIR"
 cp "$FLATPAK_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.flatpak" "$OUT_DIR/"
 
 git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \

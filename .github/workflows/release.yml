@@ -1,4 +1,4 @@
-name: Release artifacts
+name: Release gate
 
 on:
   push:
@@ -34,21 +34,13 @@ jobs:
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
 
-      - name: Generate qualified Linux artifacts
-        run: ./scripts/release.sh "$GITHUB_REF_NAME"
+      # Only the gate runs here: the runner deliberately has no Docker, so the
+      # maintainer builds the Linux files on his own machine with
+      # ./scripts/release.sh TAG --skip-gate, which checks that this run passed.
+      - name: Run the release gate
+        run: ./scripts/release.sh "$GITHUB_REF_NAME" --gate-only
 
       - name: Persist release artifacts on runner
         run: |
           bash ./scripts/persist-runner-output.sh linux-release \
             "artifacts/${GITHUB_REF_NAME}"
-
-      # A draft in the public releases repository; the maintainer publishes it
-      # there, and puts the same files on ostudy.io with ostudy-io's
-      # tools/publish-release.sh.
-      - name: Draft the public GitHub release
-        env:
-          OSTUDY_RELEASES_TOKEN: ${{ secrets.OSTUDY_RELEASES_TOKEN }}
-          OSTUDY_RELEASES_REPO: ${{ vars.OSTUDY_RELEASES_REPO }}
-        run: |
-          ./scripts/publish-github-release.sh "$GITHUB_REF_NAME" \
-            "artifacts/${GITHUB_REF_NAME}/linux-x86_64"

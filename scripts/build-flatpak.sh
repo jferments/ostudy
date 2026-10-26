@@ -25,8 +25,8 @@ single-file bundle (.flatpak). Without --deb it uses the package from
 installs it for the current user.
 
 --container builds inside a privileged Ubuntu 24.04 container (Docker or
-Podman, chosen by OSTUDY_CONTAINER_ENGINE) instead of on the host. The release
-runner uses it because its service sandbox stops flatpak-builder's bubblewrap
+Podman, chosen by OSTUDY_CONTAINER_ENGINE) instead of on the host, for a
+machine without flatpak-builder or one whose service sandbox stops bubblewrap
 from setting up a network namespace. The runtime is cached in the container
 volume ostudy-flatpak-cache.
 USAGE
