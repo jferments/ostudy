@@ -96,8 +96,8 @@
 #set page(paper: "a4", fill: paper, margin: (top: 18mm, bottom: 15mm, x: 16mm),
   header: context [
     #set text(font: ui, size: 7pt, fill: T.muted)
-    #text(weight: 600, fill: T.primary, data.title) #h(1fr) #data.source
-    #v(-2mm) #hairline
+    #block(below: 1.6mm, [#text(weight: 600, fill: T.primary, data.title) #h(1fr) #data.source])
+    #hairline
   ],
   footer: context [#set text(font: ui, size: 7.5pt, fill: T.muted)
     #h(1fr) #counter(page).display() #h(1fr)])
@@ -128,7 +128,7 @@
   let start = if s.blocks.len() == 0 { 0 } else if s.blocks.at(at).kind == "bullets" { at } else { at + 1 }
   for b in s.blocks.slice(0, start) { block-view(b) }
   flow(units-of(s.blocks.slice(start)), s.figures, number)
-  if s.sources.len() > 0 { sources-view(s.sources) }
+  if s.sources.len() > 0 { sources-view(s.key, s.sources) }
   if s.notes.len() > 0 {
     tile(fill: T.highlight-soft)[#eyebrow("My notes", color: T.highlight-ink) #v(1mm) #bullets(s.notes)]
   }

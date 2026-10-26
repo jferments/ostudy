@@ -57,6 +57,15 @@ const CAPTION_REACH: f64 = 48.0;
 /// than this, brings in the pages on either side.
 const PAGE_FILLING_SHARE: f64 = 0.45;
 const SPARSE_PAGE_CHARS: usize = 400;
+/// On a scanned page, the running header's band, as a share of the page height.
+const SCANNED_HEADER_BAND: f64 = 0.09;
+/// A line of at least this many words, about as wide as the caption, is
+/// running text rather than a label inside a figure.
+const PROSE_WORDS: usize = 7;
+/// The narrowest figure on a scanned page, as a share of the page width.
+const SCANNED_MIN_WIDTH_SHARE: f64 = 0.2;
+/// The widest gap, in points, between a caption's label and the words beside it.
+const CAPTION_ROW_GAP: f64 = 12.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Rect {
@@ -227,6 +236,9 @@ pub(crate) struct PageFigures {
     pieces: Vec<Rect>,
     lines: Vec<Line>,
     text: String,
+    /// The page is one picture of itself, as a scanned book is, so its
+    /// figures are parts of that picture rather than objects of their own.
+    scanned: bool,
 }
 
 /// A box on one page that may be a figure.
@@ -303,6 +315,127 @@ fn gathered_figures(
     gathered
 }
 
+/// Figures within a scanned page's picture, found from their captions: the
+/// part of the page between a caption and the running text above it, as wide
+/// as the caption and the figure's own labels. A line of prose (a long line of
+/// many words), another caption or the page's header ends the figure.
+fn scanned_figures(
+    page: &PageFigures,
+    found: &[(FigureKind, Rect, Option<Caption>)],
+) -> Vec<(FigureKind, Rect, Option<Caption>)> {
+    let mut figures = Vec::new();
+    for (index, line) in page.lines.iter().enumerate() {
+        if caption_label(line.text.trim()).is_none()
+            || found.iter().any(|(_, bounds, caption)| {
+                bounds.intersection_area(&line.bounds) > 0.0
+                    || caption
+                        .as_ref()
+                        .is_some_and(|caption| caption.bounds.intersection_area(&line.bounds) > 0.0)
+            })
+        {
+            continue;
+        }
+        // A caption starts its row; a label after other words on the row is
+        // the running text naming the figure.
+        let middle = line.bounds.top + line.bounds.height / 2.0;
+        let named_in_text = page.lines.iter().any(|other| {
+            other.bounds.top < middle
+                && other.bounds.bottom() > middle
+                && other.bounds.right() <= line.bounds.left + 1.0
+                && line.bounds.left - other.bounds.right() < CAPTION_ROW_GAP
+        });
+        if named_in_text {
+            continue;
+        }
+        // The caption as it reads from this line down.
+        let above_line = Rect {
+            top: line.bounds.top - MIN_SIDE - 2.0,
+            height: MIN_SIDE,
+            ..line.bounds
+        };
+        let Some(mut caption) = find_caption(above_line, &page.lines[index..]) else {
+            continue;
+        };
+        // The label is a line of its own when a gap follows it; the words
+        // beside it, on the caption's lines, belong to the caption's width.
+        loop {
+            let beside = page.lines.iter().find(|other| {
+                let middle = other.bounds.top + other.bounds.height / 2.0;
+                middle > caption.bounds.top
+                    && middle < caption.bounds.bottom()
+                    && other.bounds.left > caption.bounds.left
+                    && other.bounds.left - caption.bounds.right() < CAPTION_ROW_GAP
+                    && other.bounds.right() > caption.bounds.right()
+            });
+            let Some(beside) = beside else {
+                break;
+            };
+            caption.bounds = caption.bounds.union(&beside.bounds);
+        }
+        let header = page.height * SCANNED_HEADER_BAND;
+        let mut region = Rect {
+            top: header,
+            height: (caption.bounds.top - 2.0 - header).max(0.0),
+            ..caption.bounds
+        };
+        let prose = |other: &Line| {
+            other.text.split_whitespace().count() >= PROSE_WORDS
+                && other.bounds.width >= caption.bounds.width.min(page.width / 2.0) * 0.6
+        };
+        let in_column = |other: &Line| {
+            other.bounds.right() > caption.bounds.left && other.bounds.left < caption.bounds.right()
+        };
+        // Running text is two lines of prose in a row; a figure's title can
+        // be one long line.
+        let column = page.lines[..index]
+            .iter()
+            .filter(|other| other.bounds.bottom() <= caption.bounds.top + 1.0 && in_column(other))
+            .collect::<Vec<_>>();
+        for (position, other) in column.iter().enumerate().rev() {
+            let paragraph = prose(other)
+                && position > 0
+                && prose(column[position - 1])
+                && other.bounds.top - column[position - 1].bounds.bottom() < other.bounds.height;
+            if paragraph || other.bounds.top < header || caption_label(other.text.trim()).is_some()
+            {
+                let top = (other.bounds.bottom() + 2.0).max(header);
+                region.height = (region.bottom() - top).max(0.0);
+                region.top = top;
+                break;
+            }
+        }
+        // A caption across most of the page heads a figure across it, whose
+        // labels may reach past the caption's ends; a narrower one keeps to
+        // its column, beside which other text may run.
+        let wide = caption.bounds.width >= page.width * 0.5;
+        let labels = page
+            .lines
+            .iter()
+            .filter(|other| {
+                other.bounds.top >= region.top
+                    && other.bounds.bottom() <= region.bottom() + 1.0
+                    && (wide || in_column(other))
+                    && !prose(other)
+            })
+            .map(|other| other.bounds)
+            .reduce(|a, b| a.union(&b));
+        if let Some(labels) = labels {
+            let left = region.left.min(labels.left);
+            region.width = region.right().max(labels.right()) - left;
+            region.left = left;
+        }
+        // A sliver beside a caption, as a "continued" caption leaves, is not
+        // a figure to study.
+        let big_enough = region.area() >= page.width * page.height * MIN_AREA_SHARE
+            && region.width >= (page.width * SCANNED_MIN_WIDTH_SHARE).max(MIN_SIDE)
+            && region.height >= MIN_SIDE;
+        if big_enough {
+            figures.push((FigureKind::Image, region, Some(caption)));
+        }
+    }
+    figures
+}
+
 /// Every figure in a document, in page and reading order.
 pub(crate) fn detect(mut candidates: Vec<PageFigures>) -> Vec<DetectedFigure> {
     drop_furniture(&mut candidates);
@@ -344,6 +477,9 @@ pub(crate) fn detect(mut candidates: Vec<PageFigures>) -> Vec<DetectedFigure> {
         }
         let mut on_page = joined;
         on_page.extend(gathered_figures(page, &on_page));
+        if page.scanned {
+            on_page.extend(scanned_figures(page, &on_page));
+        }
         on_page.sort_by(|a, b| {
             a.1.top
                 .total_cmp(&b.1.top)
@@ -385,6 +521,7 @@ impl PageFigures {
         let mut pieces = Vec::<Rect>::new();
         let mut paths = Vec::<Rect>::new();
         let mut boxy = Vec::<bool>::new();
+        let mut scanned = false;
         for graphic in &page.graphics {
             let Some(rect) = Rect::from_bounds(graphic.bounds).clipped(page.width, page.height)
             else {
@@ -405,6 +542,8 @@ impl PageFigures {
                         });
                     } else if rect.area() < page_area * PAGE_COVER_SHARE {
                         pieces.push(rect);
+                    } else if graphic.kind == PageGraphicKind::Image {
+                        scanned = true;
                     }
                 }
                 PageGraphicKind::Path | PageGraphicKind::Shading => {
@@ -500,6 +639,7 @@ impl PageFigures {
             pieces,
             lines: lines(&page.text_runs),
             text: page.text.clone(),
+            scanned,
         }
     }
 }
@@ -691,15 +831,25 @@ fn figure_number(text: &str) -> Option<(String, usize)> {
     loop {
         let rest = &text[consumed..];
         let trimmed = rest.trim_start();
+        // A PDF whose font map is broken can print the dot as another
+        // letter ("27ú2"); a lone non-ASCII letter between digits stands for it.
         let Some(separator) = trimmed
             .chars()
             .next()
-            .filter(|c| matches!(c, '.' | '-' | '–'))
+            .filter(|c| {
+                matches!(c, '.' | '-' | '–') || (!c.is_ascii() && rest.len() == trimmed.len())
+            })
+            .map(|c| if c.is_ascii() || c == '–' { c } else { '.' })
         else {
             break;
         };
-        let after_separator = &trimmed[separator.len_utf8()..];
-        let next = after_separator.trim_start();
+        let width = trimmed.chars().next().map_or(1, char::len_utf8);
+        let after_separator = &trimmed[width..];
+        let next = if width == separator.len_utf8() {
+            after_separator.trim_start()
+        } else {
+            after_separator
+        };
         let length = digits(next);
         if length == 0 {
             break;
@@ -726,6 +876,25 @@ fn figure_number(text: &str) -> Option<(String, usize)> {
     Some((number, consumed))
 }
 
+/// `rest` after a caption word, past the one non-ASCII letter a broken font
+/// map prints for its dot ("Figú 27ú2"), when a number follows it.
+fn garbled_dot(rest: &str) -> &str {
+    let mut characters = rest.chars();
+    match characters.next() {
+        Some(mark) if !mark.is_ascii() && mark.is_alphabetic() => {
+            let after = &rest[mark.len_utf8()..];
+            if after.starts_with(' ')
+                && after.trim_start().starts_with(|c: char| c.is_ascii_digit())
+            {
+                after
+            } else {
+                rest
+            }
+        }
+        _ => rest,
+    }
+}
+
 /// The label a line opens with, written the usual way: "Figure 3.2".
 /// `line` without the bullet, square or rule some books set before a caption.
 fn without_leading_marks(line: &str) -> &str {
@@ -742,7 +911,7 @@ fn caption_label(line: &str) -> Option<String> {
     let word = CAPTION_WORDS
         .iter()
         .find(|word| lowered.starts_with(**word))?;
-    let rest = &lowered[word.len()..];
+    let rest = garbled_dot(&lowered[word.len()..]);
     if !word.ends_with('.') && rest.chars().next().is_some_and(char::is_alphabetic) {
         return None;
     }
@@ -905,7 +1074,7 @@ fn mentions(text: &str, label: &str) -> Vec<usize> {
         else {
             continue;
         };
-        let rest = &lowered[start + spelling.len()..];
+        let rest = garbled_dot(&lowered[start + spelling.len()..]);
         if !spelling.ends_with('.') && rest.chars().next().is_some_and(char::is_alphabetic) {
             continue;
         }

@@ -776,7 +776,7 @@ describe("StudyGuideDialog", () => {
       .toEqual(["Practice this section's flashcards", "Mark as read", "Edit or rewrite this section"]);
   });
 
-  it("shows a key point's source beside the pages when its number is chosen", async () => {
+  it("shows a source beside the pages when it is chosen on the Sources line", async () => {
     window.localStorage.setItem("ostudy.guidePageStyle", "sage");
     vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
     vi.mocked(readMaterialInk).mockResolvedValue({ marks: [], unavailableLinkIds: [] });
@@ -785,14 +785,14 @@ describe("StudyGuideDialog", () => {
     mockedGetGuide.mockResolvedValue(twoSectionGuide());
     renderGuide();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Source 2 for 1.1 Preload" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Source slide 4 for 1.1 Preload" }));
     const sources = await screen.findByRole("list", { name: "Sources for 1.1 Preload" });
     const items = within(sources).getAllByRole("article");
     expect(items.map((item) => item.textContent)).toEqual([
       expect.stringContaining("Preload is the stretch of the ventricle"),
       expect.stringContaining("End-diastolic volume sets preload."),
     ]);
-    // The chosen number is marked; a page of the PDF opens, a slide reference stays text.
+    // The chosen source is marked; a page of the PDF opens, a slide reference stays text.
     expect(items[1]?.getAttribute("aria-current")).toBe("true");
     expect(items[0]?.getAttribute("aria-current")).toBeNull();
     expect(within(required(items[0], "first source")).getByRole("button", { name: "Open page 3" })).toBeTruthy();

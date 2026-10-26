@@ -187,6 +187,39 @@ fn an_unread_numbered_figure_shows_once_when_its_caption_matches_the_section() {
 }
 
 #[test]
+fn an_unread_figure_with_a_garbled_caption_shows_on_its_own_page() {
+    let sections = [
+        section(
+            'a',
+            vec![28, 29],
+            "Antihypertensive drugs act at several sites.",
+            &[],
+        ),
+        section('b', vec![30], "Diuretics lower blood volume.", &[]),
+    ];
+    let mut scanned = figure("p00028-01", 28, 5, &[]);
+    scanned.reading = None;
+    scanned.label = Some("Figure 22.1".to_string());
+    scanned.caption = Some("Fig. 22.1 Sitôs îf acêiîñ îf êhô añêihypôrêôñsivô drugs.".to_string());
+    // Text on page 30 names it, but the guide cannot tell what it shows.
+    scanned.passages = vec![crate::document_figures::FigurePassageDto {
+        page_number: 30,
+        kind: "mention".to_string(),
+        excerpt: None,
+    }];
+    let chosen = choose(&sections, &[scanned]);
+    assert_eq!(ids(&chosen, 'a'), ["p00028-01"]);
+    assert!(ids(&chosen, 'b').is_empty());
+    let figure = &chosen.get(&"a".repeat(32)).unwrap()[0];
+    assert_eq!(figure.title, "Figure 22.1 in the source");
+    assert_eq!(figure.caption, "Source page 28");
+    // Another language's accents are words, not a broken text layer.
+    assert!(!garbled(
+        "Mécanisme de la sécrétion gastrique par les cellules pariétales"
+    ));
+}
+
+#[test]
 fn captions_are_short_and_name_the_source_page() {
     assert_eq!(
         caption("Arrows trace the path.", 12),

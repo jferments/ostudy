@@ -391,6 +391,19 @@ Topic practice resolves current linked card IDs and studyability. A guide sectio
 
 PDF export freezes an effective guide snapshot, optionally including annotations, then renders locally into a prepared-file result. A PDF guide's sections show the source figures that fit them ([`figures.rs`](../../src-tauri/src/document_study_guide_export/figures.rs)): from the stored figure readings, or numbered captions for unread figures, Rust picks for each section the visible figures on or explained by its pages whose concepts its text names or that are rated needed, at most two a section and each figure once, and draws them from the stored PDF as page tiles. The choice calls no model. Export does not invoke a model or regenerate content. Text extraction/layout tests and safe font handling protect the native pipeline, but visual output still needs review for representative scripts, pagination, and devices.
 
+### Study guide design
+
+A study guide is read as laid-out pages, and its design is a contract that prompt, length and layout changes keep:
+
+- Most sections hold a box beside their key points: one callout (a key idea, a warning or a study tip), the two or three terms a learner must define, an explanation in a How it works box, or a check-yourself question. Parallel items (drugs, stages, classes) are a table, not a list of key points.
+- Source figures appear in the sections they illustrate whenever the document has them, scanned book pages included ([`detect.rs`](../../src-tauri/src/document_figures/detect.rs) finds a scanned page's figures from their captions).
+- Boxes and narrow figures sit beside the text that runs past them; they are not all stacked down the page.
+- Each section ends with one Sources line, each page or page range once; key points carry no inline citation marks.
+- The cram sheet is one full page: every section's key ideas and its most important key points, with terms and warnings, fitted by shrinking the type rather than dropping sections.
+- One study guide theme, Sage by default, is the same setting for reading and for the PDF.
+
+[Study-guide evaluation](../development/study-guide-evaluation.md) measures the share of sections with boxes and tables, because the model judge reads text only; a prompt change that raises the score by cutting them is a regression.
+
 Deleting a guide removes generated revisions, guide-specific overrides/conflicts, checkpoints/jobs, and prepared PDF exports while preserving its source, learning plan, linked cards, and stable guide/topic notes. Permanent source deletion is broader; surviving generated cards retain detached readable citation provenance where appropriate. Archiving a source retains its graph. A guide-only document is valid and must not be forced to invent a deck.
 
 Sources: [guide library](../../src-tauri/src/document_study_guide_library.rs), [guide generation](../../src-tauri/src/document_study_guide_generation.rs), [guide/overlay store](../../src-tauri/src/document_study_guides.rs), [topic links](../../src-tauri/src/document_topic_links.rs), [PDF export](../../src-tauri/src/document_study_guide_export.rs), [guide deletion](../../src-tauri/src/document_study_guide_deletion.rs), [ADR 0043](../decisions/0043-study-guides-and-topic-linked-learning.md).

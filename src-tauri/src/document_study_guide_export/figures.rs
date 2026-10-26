@@ -12,7 +12,9 @@
 //!   itself uses; one read as incidental or not worth studying never shows;
 //! - a figure not read (no model that sees images, or reading has not run)
 //!   qualifies only when it is a numbered figure whose caption shares at
-//!   least two words with the section, and then one per section at most.
+//!   least two words with the section, and then one per section at most;
+//!   when its caption cannot be read (a scanned book whose text layer prints
+//!   other letters), it qualifies on the section's own pages by its number.
 //!
 //! Hidden figures never show. The figure is drawn from the PDF when the guide
 //! is laid out, as a sharp crop of its page, so nothing new is stored.
@@ -44,6 +46,9 @@ const NEEDED_IMPORTANCE: i64 = 4;
 const UNREAD_IMPORTANCE: i64 = 3;
 const UNREAD_MIN_SHARED_WORDS: usize = 2;
 const MAX_CAPTION_CHARS: usize = 220;
+/// A caption with at least this share of its words mixing other letters into
+/// plain ones ("Sites îf acêiîñ") is a broken text layer, not words to match.
+const GARBLED_WORD_SHARE: f64 = 0.5;
 
 /// A figure chosen for one section, ready to draw.
 #[derive(Clone, Debug, PartialEq)]
@@ -64,6 +69,8 @@ struct Candidate {
     explained_on: Vec<i64>,
     title: String,
     shows: String,
+    /// An unread figure whose caption is not readable text.
+    unreadable: bool,
 }
 
 fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
@@ -86,13 +93,25 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
             explained_on: reading.explained_on.clone(),
             title: reading.title.trim().to_string(),
             shows: reading.shows.clone(),
+            unreadable: false,
         });
     }
     // Unread: only a numbered figure with a caption says what it is.
-    figure.label.as_ref()?;
+    let label = figure.label.as_ref()?;
     let caption = strip_label(figure.caption.as_deref()?.trim());
     if caption.is_empty() {
         return None;
+    }
+    if garbled(caption) {
+        return Some(Candidate {
+            read: false,
+            importance: UNREAD_IMPORTANCE,
+            concepts: Vec::new(),
+            explained_on: Vec::new(),
+            title: format!("{label} in the source"),
+            shows: String::new(),
+            unreadable: true,
+        });
     }
     let (title, rest) = match caption.find(". ") {
         Some(end) => (&caption[..end], caption[end + 2..].trim()),
@@ -109,7 +128,25 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
             .collect(),
         title: title.trim().to_string(),
         shows: caption_detail(rest),
+        unreadable: false,
     })
+}
+
+/// Whether many of `text`'s words mix letters outside ASCII into ASCII ones,
+/// as a broken font map prints them.
+fn garbled(text: &str) -> bool {
+    let words = text
+        .split_whitespace()
+        .filter(|word| word.chars().any(char::is_alphabetic))
+        .collect::<Vec<_>>();
+    let mixed = words
+        .iter()
+        .filter(|word| {
+            word.chars().any(|c| c.is_ascii_alphabetic())
+                && word.chars().any(|c| c.is_alphabetic() && !c.is_ascii())
+        })
+        .count();
+    !words.is_empty() && mixed as f64 >= words.len() as f64 * GARBLED_WORD_SHARE
 }
 
 /// The caption's sentences after its title, up to the abbreviation key
@@ -202,7 +239,13 @@ pub(crate) fn choose_for(
             {
                 continue;
             }
-            let shared = if candidate.read {
+            let shared = if candidate.unreadable {
+                // Its number is all there is to go on: it shows on its own page.
+                if !on_page {
+                    continue;
+                }
+                0
+            } else if candidate.read {
                 candidate
                     .concepts
                     .iter()
@@ -225,7 +268,7 @@ pub(crate) fn choose_for(
                 }
                 shared
             };
-            if candidate.importance < NEEDED_IMPORTANCE && shared == 0 {
+            if candidate.importance < NEEDED_IMPORTANCE && shared == 0 && !candidate.unreadable {
                 continue;
             }
             let score = candidate.importance * 10

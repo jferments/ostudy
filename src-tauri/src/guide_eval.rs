@@ -353,6 +353,18 @@ pub fn relayout(
                 .map_err(CommandError::database)
         })
         .map_err(|error| error.message)?;
+    // The figures are found again, so a change to finding them shows too.
+    let source = database
+        .with_connection(|connection| {
+            crate::document_annotations::pdf_source_path(connection, &document_id)
+        })
+        .map_err(|error| error.message)?;
+    tauri::async_runtime::block_on(crate::document_figures::find_after_ingestion(
+        &database,
+        render_runtime.clone(),
+        &document_id,
+        paths.resolve_relative(&source),
+    ));
     crate::document_study_guide_export::render_document_guide_pdf(
         &database,
         &paths,

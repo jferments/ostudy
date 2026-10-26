@@ -22,8 +22,8 @@ use typst::{
 use typst_layout::PagedDocument;
 
 use super::{
-    chemistry, citations, key_terms, math_layout, math_source, source_label,
-    EffectiveExportSection, EffectiveGuideExport, ExportBlock,
+    chemistry, key_terms, math_layout, math_source, source_label, EffectiveExportSection,
+    EffectiveGuideExport, ExportBlock,
 };
 use crate::{
     document_domain::{SourceLocator, SourceUnitKind},
@@ -140,6 +140,11 @@ pub(super) struct CanvasAnchor {
     pub(super) page: usize,
     pub(super) x: f64,
     pub(super) y: f64,
+    /// A source's size on the page, for the button over it.
+    #[serde(default)]
+    pub(super) w: Option<f64>,
+    #[serde(default)]
+    pub(super) h: Option<f64>,
 }
 
 /// The whole guide laid out exactly as the PDF export lays it out, as one SVG
@@ -493,32 +498,28 @@ fn section_data(
         .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
         .map_or(0, |heading| heading + 1)
         .min(section.body_lines.len().saturating_sub(1));
-    let key_points = section
-        .body_lines
-        .iter()
-        .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
-        .map(|heading| heading + 1);
     let citations = section.citations.as_ref().filter(|cited| !cited.is_empty());
     let blocks = section
         .body_lines
         .iter()
-        .enumerate()
-        .map(|(index, block)| {
+        .map(|block| {
             let lead = !lead_used && matches!(block, ExportBlock::Paragraph(_));
             lead_used = true;
-            let data = match (block, citations) {
-                (ExportBlock::Bullets(items), Some(cited)) if Some(index) == key_points => {
-                    json!({ "kind": "bullets", "items": cited_items(&section.key, items, cited) })
-                }
-                _ => block_data(block, lead),
-            };
-            emphasise(data, &mut section_terms)
+            emphasise(block_data(block, lead), &mut section_terms)
         })
         .collect::<Vec<_>>();
+    // In page order: with no numbers in the text, the line reads as a list.
     let sources = citations.map_or_else(Vec::new, |cited| {
-        cited
-            .sources
-            .iter()
+        let mut sources = cited.sources.iter().collect::<Vec<_>>();
+        sources.sort_by_key(|source| {
+            source
+                .locator
+                .as_ref()
+                .and_then(|locator| locator.unit_numbers.iter().min().copied())
+                .unwrap_or(i64::MAX)
+        });
+        sources
+            .into_iter()
             .map(|source| {
                 json!({
                     "number": source.number,
@@ -554,27 +555,6 @@ fn section_data(
         "sources": sources,
         "notes": run_list(&section.notes),
     })
-}
-
-/// Key points with their source numbers after them, as footnote marks are.
-fn cited_items(key: &str, items: &[String], cited: &citations::SectionCitations) -> Value {
-    Value::Array(
-        items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let mut item_runs = runs(item);
-                if let (Value::Array(list), Some(numbers)) =
-                    (&mut item_runs, cited.key_points.get(index))
-                {
-                    if !numbers.is_empty() {
-                        list.push(json!({ "cite": numbers, "key": key }));
-                    }
-                }
-                item_runs
-            })
-            .collect(),
-    )
 }
 
 /// "p. 12", "pp. 12–14" or "slide 3": what a source number points at, short

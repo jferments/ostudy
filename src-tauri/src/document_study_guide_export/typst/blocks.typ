@@ -22,33 +22,33 @@
   [#metadata((kind: kind, key: key, page: p.page, x: p.x.pt(), y: p.y.pt())) <canvas-anchor>]
 }
 
-// A key point's source numbers, set like footnote marks. Each number is a
-// mark the canvas puts a button on; `key` is the section's.
-#let cite-mark(key, numbers) = {
-  for (i, n) in numbers.enumerate() {
-    if i > 0 { super(size: 0.72em, text(font: ui, fill: T.muted, ",")) }
-    box[#anchor("cite", key + ":" + str(n))#super(size: 0.72em, text(font: ui, weight: 700, fill: T.accent, str(n)))]
-  }
+// A section's sources, at its end: each page or range it drew on, once. Each
+// is a mark the canvas puts a button on, opening what the page says; `key`
+// is the section's.
+#let source-mark(key, source) = {
+  let label = text(fill: T.accent, source.label)
+  box(context {
+    let size = measure(label)
+    let p = here().position()
+    [#metadata((kind: "cite", key: key + ":" + str(source.number), page: p.page, x: p.x.pt(), y: p.y.pt(), w: size.width.pt(), h: size.height.pt())) <canvas-anchor>]
+    label
+  })
 }
-
-// A section's sources, under its text: each number with the page it names.
-#let sources-view(sources) = block(above: 2.5mm, below: 1mm, breakable: false, {
+#let sources-view(key, sources) = block(above: 3mm, below: 1mm, breakable: false, {
   set par(justify: false)
   text(font: ui, size: 7pt, fill: T.muted)[
     #text(weight: 700, tracking: 0.08em, upper("Sources")) #h(2mm)
-    #sources.map(source => [#text(weight: 700, fill: T.accent, str(source.number)) #source.label]).join(h(3mm))]
+    #sources.map(source => source-mark(key, source)).join([ #h(0.6mm)·#h(0.6mm) ])]
 })
 
 // Rich text: a list of runs, each plain text (t), a bold key term (b), an
 // organism's italic name (i), a formula's subscript (sub) or superscript
-// (sup), translated math (m, with block), LaTeX kept as source (src) when it
-// is outside the native subset, or a key point's citation (cite).
+// (sup), translated math (m, with block), or LaTeX kept as source (src) when
+// it is outside the native subset.
 #let rt(runs) = {
   for run in runs {
     if "t" in run {
       run.t
-    } else if "cite" in run {
-      cite-mark(run.key, run.cite)
     } else if "b" in run {
       text(weight: 700, fill: T.primary, run.b)
     } else if "i" in run {
@@ -108,8 +108,8 @@
     tile(fill: T.accent-soft, inset: 4mm)[
       #eyebrow("Terms") #v(1mm)
       #set par(justify: false)
-      #grid(columns: (1fr, 1fr), column-gutter: 6mm, row-gutter: 2.5mm,
-        ..b.terms.map(((term, meaning)) => [#text(font: ui, size: 0.85em, weight: 700, fill: T.primary, rt(term)) \ #text(size: 0.92em, rt(meaning))]))]
+      #layout(size => grid(columns: if size.width < 100mm { (1fr,) } else { (1fr, 1fr) }, column-gutter: 6mm, row-gutter: 2.5mm,
+        ..b.terms.map(((term, meaning)) => [#text(font: ui, size: 0.85em, weight: 700, fill: T.primary, rt(term)) \ #text(size: 0.92em, rt(meaning))])))]
   } else if kind == "callout" {
     let style = callout-style(b.label)
     tile(fill: style.fill)[
@@ -186,19 +186,79 @@
   ((kind: "block", block: b),)
 }).flatten()
 
-// Draws units in order, consecutive key points as one list.
-#let units-view(units) = {
-  let points = ()
+// A box a few key points can run beside, as they run beside a narrow figure.
+#let aside-kinds = ("callout", "check", "terms", "example")
+#let aside-width(width) = calc.min(76mm, width * 0.42)
+#let aside-gutter = 5mm
+
+// Draws units in order, consecutive key points as one list. On a full-width
+// page a box after key points sits at the right of the last of them, as many
+// as reach its height, and two boxes in a row share one; a box with no text
+// to sit beside, or a narrow column, keeps the full width.
+#let units-view(units) = layout(size => {
+  let wide = size.width >= 120mm
+  let side = aside-width(size.width)
+  let column = size.width - side - aside-gutter
+  let tall(body, width) = measure(block(width: width, body)).height
+  let pieces = ()
   for u in units {
     if u.kind == "point" {
-      points.push(u.item)
+      if pieces.len() > 0 and pieces.last().kind == "points" {
+        pieces.last().items.push(u.item)
+      } else {
+        pieces.push((kind: "points", items: (u.item,)))
+      }
     } else {
-      if points.len() > 0 { bullets(points); points = () }
-      block-view(u.block)
+      pieces.push((kind: "block", block: u.block))
     }
   }
+  let is-aside(p) = p.kind == "block" and p.block.kind in aside-kinds
+  let i = 0
+  let points = ()
+  while i < pieces.len() {
+    let p = pieces.at(i)
+    if p.kind == "points" {
+      if points.len() > 0 { bullets(points) }
+      points = p.items
+      i += 1
+      continue
+    }
+    if wide and is-aside(p) and points.len() > 0 {
+      let box-height = tall(block-view(p.block), side)
+      let count = 0
+      let used = 0pt
+      while count < points.len() and used < box-height {
+        used += tall(bullets((points.at(points.len() - 1 - count),)), column) + 1.2mm
+        count += 1
+      }
+      if used + 10mm >= box-height {
+        let first = points.slice(0, points.len() - count)
+        if first.len() > 0 { bullets(first) }
+        block(above: 2mm, below: 2.6mm, breakable: false, grid(columns: (1fr, side), column-gutter: aside-gutter,
+          bullets(points.slice(points.len() - count)), block-view(p.block)))
+        points = ()
+        i += 1
+        continue
+      }
+    }
+    if points.len() > 0 { bullets(points); points = () }
+    if wide and is-aside(p) and i + 1 < pieces.len() and is-aside(pieces.at(i + 1)) {
+      let other = pieces.at(i + 1)
+      let half = (size.width - aside-gutter) / 2
+      let a = tall(block-view(p.block), half)
+      let b = tall(block-view(other.block), half)
+      if calc.max(a.pt(), b.pt()) <= calc.min(a.pt(), b.pt()) * 1.8 + 20 {
+        block(above: 2mm, below: 2.6mm, breakable: false, grid(columns: (1fr, 1fr), column-gutter: aside-gutter,
+          block-view(p.block), block-view(other.block)))
+        i += 2
+        continue
+      }
+    }
+    block-view(p.block)
+    i += 1
+  }
   if points.len() > 0 { bullets(points) }
-}
+})
 
 // A unit that may sit in the narrow column beside a figure: tables and
 // term grids need the full width.
