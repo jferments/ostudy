@@ -43,7 +43,7 @@ function SourceDetails({ source }: { source: SourceCitation }) {
 }
 
 /** Copy reports its own result in place, so a chat needs no toast. */
-function CopyAnswer({ text }: { text: string }) {
+function CopyAnswer({ text, label }: { text: string; label?: string }) {
   const [result, setResult] = useState<"copied" | "failed" | null>(null);
   useEffect(() => {
     if (!result) return;
@@ -51,7 +51,7 @@ function CopyAnswer({ text }: { text: string }) {
     return () => window.clearTimeout(timer);
   }, [result]);
   return (
-    <Button size="small" variant="ghost" onClick={() => {
+    <Button size="small" variant="ghost" aria-label={label} onClick={() => {
       copyText(text).then(() => setResult("copied"), () => setResult("failed"));
     }}>
       <Icon name="copy" size={16} />
@@ -496,11 +496,14 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
                 <div className={styles.message}>{turn.userText}</div>
               </section>
             ) : null}
-            {!edit && turn.userText && askAgain ? (
+            {!edit && turn.userText && !hintOnly ? (
               <div className={styles.userActions}>
-                <Button size="small" variant="ghost" disabled={locked || tutor.needsRefresh} onClick={() => setEditing({ turnId: turn.id, text: turn.userText })}>
-                  <Icon name="edit" size={16} /> Edit
-                </Button>
+                <CopyAnswer text={turn.userText} label="Copy question" />
+                {askAgain ? (
+                  <Button size="small" variant="ghost" disabled={locked || tutor.needsRefresh} onClick={() => setEditing({ turnId: turn.id, text: turn.userText })}>
+                    <Icon name="edit" size={16} /> Edit
+                  </Button>
+                ) : null}
               </div>
             ) : null}
             <section className={cn(styles.assistantMessage, latest ? null : styles.earlierVersion)} aria-label={latest ? "Tutor response" : `Tutor response, version ${shown + 1} of ${versions.length}`}>

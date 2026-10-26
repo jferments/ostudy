@@ -361,6 +361,7 @@ describe("Tutor workspace consent and source reads", () => {
     render(<Harness />);
     await act(async () => { await controller.selectConversation(detail.conversation.id); });
     await act(async () => { controller.setDraft("Something else"); });
+    expect(screen.getByRole("button", { name: "Copy question" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const form = screen.getByRole("form", { name: "Edit your question" });
     fireEvent.keyDown(form, { key: "Escape" });
