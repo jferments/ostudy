@@ -71,6 +71,8 @@ export interface TutorTurn {
   errorMessage: string;
   totalTokens: number | null;
   createdAt: number;
+  /** The newer version that replaced this turn; the chat carries on from it. */
+  replacedByTurnId: string | null;
 }
 
 export interface ConversationDetail {
@@ -89,6 +91,8 @@ export interface TutorTurnInput {
   profileId: string | null;
   includeConversations: boolean;
   questionId: string | null;
+  /** The conversation's last answer this one replaces: Regenerate, or the question edited and sent again. */
+  replacesTurnId?: string;
 }
 
 export async function listTutorProjects(): Promise<TutorProject[]> {
@@ -240,4 +244,19 @@ export interface SpokenPiece {
  */
 export async function speakTutorReply(turnId: string, piece: number): Promise<SpokenPiece> {
   return invoke<SpokenPiece>("speak_tutor_reply", { input: { turnId, piece } });
+}
+
+/** A flashcard the flashcard model drafted from a Tutor answer. */
+export interface AnswerCardDraft {
+  question: string;
+  answer: string;
+}
+
+/**
+ * Asks the flashcard model for a few cards from a finished answer. Nothing is
+ * saved; cancel it with `cancelLearningTask(operationId)`.
+ */
+export async function draftTutorAnswerCards(operationId: string, turnId: string): Promise<AnswerCardDraft[]> {
+  const drafted = await invoke<{ cards: AnswerCardDraft[] }>("draft_tutor_answer_cards", { input: { operationId, turnId } });
+  return drafted.cards;
 }

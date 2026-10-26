@@ -46,6 +46,7 @@ pub(crate) fn enumerate_sources(
                      JOIN tutor_conversations c ON c.id = t.conversation_id
                      WHERE COALESCE(t.captured_scope_json, json_extract(t.request_json, '$.capturedScope'), c.scope_json) = ?1
                        AND t.state = 'complete' AND t.evidence_current = 1
+                       AND t.id NOT IN (SELECT turn_id FROM tutor_turn_replacements)
                        AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence
                      ORDER BY c.id, t.sequence LIMIT 100001",
                 )
@@ -152,6 +153,7 @@ fn read_conversation(
             "SELECT c.title, t.user_text, t.assistant_text, t.updated_at
              FROM tutor_turns t JOIN tutor_conversations c ON c.id = t.conversation_id
              WHERE t.id = ?1 AND c.id = ?2 AND t.state = 'complete' AND t.evidence_current = 1
+               AND t.id NOT IN (SELECT turn_id FROM tutor_turn_replacements)
                AND c.retrieval_enabled = 1 AND t.sequence > c.memory_start_sequence",
             rusqlite::params![seed.parent_key, seed.owner_id],
             |row| {

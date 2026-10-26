@@ -343,6 +343,16 @@ const CONTRACTS: &[Contract] = &[
             },
         ],
     },
+    // A Tutor answer is replaced by Regenerate or an edited question in the
+    // app; the upgrade only creates the table.
+    Contract {
+        version: 24,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "tutor_turn_replacements",
+            description: "replaced Tutor answers",
+        }],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

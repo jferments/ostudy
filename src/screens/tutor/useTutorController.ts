@@ -297,8 +297,24 @@ export function useTutorController() {
     }
     // Confirmed terminal failure is a new intent; an ambiguous acknowledgement
     // uses retryPending with the original identity. Older answers cannot silently
-    // become answers to a newer pending quiz.
-    await send(saved.mode, saved.userText);
+    // become answers to a newer pending quiz. A failed new version of an answer
+    // is tried again as that version, so the question is not asked twice.
+    const version = current.current?.turns.some((entry) => entry.replacedByTurnId === saved.id);
+    await send(saved.mode, saved.userText, undefined, version ? saved.id : undefined);
+  }
+
+  /**
+   * Asks the latest answer again, as a new version of it, with its question or
+   * an edited one. The earlier answer is kept to look back at, and the chat
+   * carries on from the new one.
+   */
+  async function regenerate(turn: TutorTurn, text = turn.userText): Promise<void> {
+    const saved = current.current?.turns.at(-1);
+    if (!saved || saved.id !== turn.id || saved.mode !== "explain" || saved.state === "running") {
+      setError("Only the latest answer can be asked again. Send a new message instead.");
+      return;
+    }
+    await send("explain", text, undefined, saved.id);
   }
 
   function openContext(next: TutorTarget): void {
@@ -330,7 +346,8 @@ export function useTutorController() {
     setPending(turn.state === "running" ? request : null);
     if (turn.state !== "running") {
       active.current = null;
-      settleDraft(turn.state, request.text);
+      // A new version of an answer was never in the draft.
+      if (!request.replacesTurnId) settleDraft(turn.state, request.text);
     }
     const previous = current.current;
     if (previous?.conversation.id === request.conversationId) {
@@ -365,7 +382,12 @@ export function useTutorController() {
    * `fresh` names the new chat a starter makes: the chat is created before the
    * new scope renders, so the closure's scope, project and target are stale.
    */
-  async function send(mode: TutorMode, text = draft, fresh?: { scope: StudyScope; title: string }): Promise<void> {
+  async function send(
+    mode: TutorMode,
+    text = draft,
+    fresh?: { scope: StudyScope; title: string },
+    replacesTurnId?: string,
+  ): Promise<void> {
     if (mutating.current || loading || pendingRef.current || needsRefresh || preparation.locked) return;
     if (!text.trim() && mode !== "quiz") return;
     mutating.current = true;
@@ -415,6 +437,7 @@ export function useTutorController() {
         focus: fresh ? null : target?.focus ?? null, profileId,
         includeConversations: !fresh && includeConversations && conversationRetrievalAllowed && mode !== "hint",
         questionId: question?.id ?? null,
+        ...(replacesTurnId ? { replacesTurnId } : {}),
       };
       await perform(request);
     } catch (failure: unknown) {
@@ -423,7 +446,7 @@ export function useTutorController() {
       const rejectedBeforeAdmission = code !== null && (
         code.startsWith("invalid_") || ["tutor_focus_changed", "tutor_answer_not_revealed", "ai_task_profile_required",
           "ai_profile_disabled", "ai_document_model_not_verified", "tutor_conversation_changed",
-          "learning_task_running", "learning_task_capacity", "tutor_conversation_missing"].includes(code)
+          "learning_task_running", "learning_task_capacity", "tutor_conversation_missing", "tutor_turn_not_replaceable"].includes(code)
       );
       if (request && !rejectedBeforeAdmission) setPending(request);
       else active.current = null;
@@ -633,7 +656,7 @@ export function useTutorController() {
     loading, busy, organizing, error, pending, liveOperationId, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
     initialize, refresh, selectConversation,
     newConversation, newConversationInProject, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
-    send, start, retryPending, cancel, loadEarlier,
+    send, start, regenerate, retryPending, cancel, loadEarlier,
     createProject, updateProject, setProjectArchived, removeProject,
     renameConversation, moveConversation, setConversationArchived, removeConversation,
   };

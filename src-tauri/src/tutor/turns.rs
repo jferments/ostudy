@@ -111,6 +111,9 @@ pub(crate) fn begin(
         if let Some(question_id) = &input.question_id {
             load_question(&transaction, &input.conversation_id, question_id)?;
         }
+        if let Some(replaced) = &input.replaces_turn_id {
+            ensure_replaceable(&transaction, &input.conversation_id, replaced)?;
+        }
         let sequence: i64 = transaction.query_row(
             "SELECT COALESCE(MAX(sequence), 0) + 1 FROM tutor_turns WHERE conversation_id = ?1",
             [&input.conversation_id], |row| row.get(0),
@@ -127,6 +130,20 @@ pub(crate) fn begin(
                 request_json, captured_scope_json, input.mode.as_str(), input.text, input.question_id,
                 task.profile_id, task.profile_revision, task.provider_kind, task.model_id, now],
         ).map_err(CommandError::database)?;
+        if let Some(replaced) = &input.replaces_turn_id {
+            // The chat carries on from the new version at once: the replaced
+            // answer leaves the history this turn is written from, and is no
+            // longer offered as an earlier conversation to search.
+            transaction.execute(
+                "INSERT INTO tutor_turn_replacements (turn_id, replaced_by_turn_id, created_at)
+                 VALUES (?1, ?2, ?3)",
+                params![replaced, id, now],
+            ).map_err(CommandError::database)?;
+            transaction.execute(
+                "DELETE FROM knowledge_sources WHERE kind = 'conversation' AND turn_id = ?1",
+                [replaced],
+            ).map_err(CommandError::database)?;
+        }
         transaction.execute(
             "UPDATE tutor_conversations SET revision = revision + 1, updated_at = ?1 WHERE id = ?2",
             params![now, input.conversation_id],
@@ -262,7 +279,8 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         .query_row(
             "SELECT id, operation_id, sequence, mode, user_text, assistant_text, state,
                 citations_json, evidence_current, quiz_json, provider_kind, model_id,
-                safe_error_code, safe_error_message, total_tokens, created_at, conversation_id
+                safe_error_code, safe_error_message, total_tokens, created_at, conversation_id,
+                (SELECT replaced_by_turn_id FROM tutor_turn_replacements WHERE turn_id = tutor_turns.id)
          FROM tutor_turns WHERE id = ?1",
             [id],
             |row| {
@@ -284,6 +302,7 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
                     row.get::<_, Option<i64>>(14)?,
                     row.get::<_, i64>(15)?,
                     row.get::<_, String>(16)?,
+                    row.get::<_, Option<String>>(17)?,
                 ))
             },
         )
@@ -325,7 +344,33 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         error_message: row.13,
         total_tokens: row.14,
         created_at: row.15,
+        replaced_by_turn_id: row.17,
     })
+}
+
+/// Only the conversation's last turn can be replaced, once, and only an
+/// explanation: a quiz question or a graded answer keeps its place.
+fn ensure_replaceable(
+    connection: &Connection,
+    conversation_id: &str,
+    turn_id: &str,
+) -> Result<(), CommandError> {
+    let last: Option<(String, String, bool)> = connection
+        .query_row(
+            "SELECT id, mode, EXISTS(SELECT 1 FROM tutor_turn_replacements r WHERE r.turn_id = t.id)
+             FROM tutor_turns t WHERE conversation_id = ?1 ORDER BY sequence DESC LIMIT 1",
+            [conversation_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    match last {
+        Some((id, mode, replaced)) if id == turn_id && mode == "explain" && !replaced => Ok(()),
+        _ => Err(CommandError::new(
+            "tutor_turn_not_replaceable",
+            "Only the latest answer can be asked again. Send a new message instead.",
+        )),
+    }
 }
 
 pub(crate) fn load_question(

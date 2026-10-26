@@ -125,6 +125,7 @@ fn input(fixture: &Fixture, mode: TutorMode) -> TutorTurnInput {
         profile_id: None,
         include_conversations: false,
         question_id: None,
+        replaces_turn_id: None,
     }
 }
 
@@ -436,3 +437,102 @@ fn hints_use_native_reveal_state_and_the_exact_practice_question() {
 mod source_optional;
 
 mod learning_context;
+
+fn answered(
+    fixture: &Fixture,
+    request: &TutorTurnInput,
+    text: &str,
+) -> super::contracts::TutorTurn {
+    let identity = turns::begin(&fixture.database, request, &fixture.task).unwrap();
+    let answer = ProviderAnswer {
+        text: text.to_string(),
+        source_ids: Vec::new(),
+        quiz: None,
+        feedback: None,
+    };
+    turns::complete(&fixture.database, &identity, &answer, &context(), None).unwrap()
+}
+
+#[test]
+fn a_new_version_replaces_the_last_answer_and_the_chat_carries_on_from_it() {
+    let fixture = fixture();
+    let first = answered(
+        &fixture,
+        &input(&fixture, TutorMode::Explain),
+        "First answer.",
+    );
+
+    let mut again = input(&fixture, TutorMode::Explain);
+    again.text = "Explain the idea for a board exam".to_string();
+    again.replaces_turn_id = Some(first.id.clone());
+    let identity = turns::begin(&fixture.database, &again, &fixture.task).unwrap();
+    // The replaced answer is left out of what the new version is written from.
+    let remembered = history::load(&fixture.database, &fixture.conversation.id).unwrap();
+    assert!(remembered.turns.iter().all(|turn| turn.id != first.id));
+    let answer = ProviderAnswer {
+        text: "Second answer.".to_string(),
+        source_ids: Vec::new(),
+        quiz: None,
+        feedback: None,
+    };
+    let second = turns::complete(&fixture.database, &identity, &answer, &context(), None).unwrap();
+
+    let detail = conversations::get(
+        &fixture.database,
+        ConversationPageInput {
+            conversation_id: fixture.conversation.id.clone(),
+            before_sequence: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(detail.turns.len(), 2);
+    assert_eq!(detail.turns[0].assistant_text, "First answer.");
+    assert_eq!(
+        detail.turns[0].replaced_by_turn_id.as_deref(),
+        Some(second.id.as_str())
+    );
+    assert_eq!(detail.turns[1].replaced_by_turn_id, None);
+    let remembered = history::load(&fixture.database, &fixture.conversation.id).unwrap();
+    assert_eq!(
+        remembered
+            .turns
+            .iter()
+            .map(|turn| turn.id.as_str())
+            .collect::<Vec<_>>(),
+        vec![second.id.as_str()]
+    );
+
+    // A turn is replaced once, and only the latest answer can be replaced.
+    let mut twice = input(&fixture, TutorMode::Explain);
+    twice.replaces_turn_id = Some(first.id.clone());
+    let refused = turns::begin(&fixture.database, &twice, &fixture.task).unwrap_err();
+    assert_eq!(refused.code, "tutor_turn_not_replaceable");
+    answered(
+        &fixture,
+        &input(&fixture, TutorMode::Explain),
+        "Third answer.",
+    );
+    let mut earlier = input(&fixture, TutorMode::Explain);
+    earlier.replaces_turn_id = Some(second.id.clone());
+    let refused = turns::begin(&fixture.database, &earlier, &fixture.task).unwrap_err();
+    assert_eq!(refused.code, "tutor_turn_not_replaceable");
+}
+
+#[test]
+fn only_an_explanation_replaces_an_answer() {
+    let fixture = fixture();
+    let first = answered(
+        &fixture,
+        &input(&fixture, TutorMode::Explain),
+        "First answer.",
+    );
+    let mut quiz = input(&fixture, TutorMode::Quiz);
+    quiz.replaces_turn_id = Some(first.id);
+    assert!(quiz.validate().is_err());
+    // An ordinary request keeps the identity it had before versions existed.
+    let plain = input(&fixture, TutorMode::Explain);
+    assert!(serde_json::to_value(&plain)
+        .unwrap()
+        .get("replacesTurnId")
+        .is_none());
+}

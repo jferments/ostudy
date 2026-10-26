@@ -103,6 +103,22 @@ pub(crate) async fn leased_draft_mark_question(
     .await
 }
 
+#[tauri::command(rename = "draft_tutor_answer_cards")]
+pub(crate) async fn leased_draft_tutor_answer_cards(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::tutor::cards::draft_tutor_answer_cards(
+        app.state::<crate::database::Database>().inner(),
+        app.state::<crate::ai::AiRuntimeState>().inner(),
+        input,
+    )
+    .await
+}
+
 #[tauri::command(rename = "preview_semantic_preparation")]
 pub(crate) async fn leased_preview_semantic_preparation(
     app: AppHandle,

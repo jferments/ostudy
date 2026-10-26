@@ -116,6 +116,7 @@ export interface NativeCommandGatewayMap {
   "dismiss_incoming_share": readonly [typeof GatewayModule18.dismissIncomingShare];
   "dismiss_subject_filing_review": readonly [typeof GatewayModule44.dismissSubjectFilingReview];
   "draft_mark_question": readonly [typeof GatewayModule3.draftMarkQuestion];
+  "draft_tutor_answer_cards": readonly [typeof GatewayModule46.draftTutorAnswerCards];
   "find_document_figures": readonly [typeof GatewayModule14.findDocumentFigures];
   "find_duplicate_cards": readonly [typeof GatewayModule6.findDuplicateCards];
   "flush_diagnostics": readonly [typeof GatewayModule11.flushNativeDiagnostics];

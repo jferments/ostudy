@@ -62,6 +62,7 @@ pub(crate) fn load(
         let mut statement = connection.prepare(
             "SELECT id, sequence, user_text, assistant_text FROM tutor_turns
              WHERE conversation_id = ?1 AND state = 'complete' AND evidence_current = 1
+               AND id NOT IN (SELECT turn_id FROM tutor_turn_replacements)
                AND sequence > ?2 AND sequence > ?3 ORDER BY sequence DESC LIMIT 12",
         ).map_err(CommandError::database)?;
         let mut turns = statement.query_map(params![conversation_id, through_sequence, start_sequence], read_turn)
@@ -92,13 +93,16 @@ pub(crate) async fn refresh_summary(
         if !enabled { return Ok((String::new(), boundary, start, Vec::new())); }
         let cutoff: Option<i64> = connection.query_row(
             "SELECT sequence FROM tutor_turns WHERE conversation_id = ?1
-             AND state = 'complete' AND evidence_current = 1 AND sequence > ?2 ORDER BY sequence DESC LIMIT 1 OFFSET 12",
+             AND state = 'complete' AND evidence_current = 1 AND sequence > ?2
+             AND id NOT IN (SELECT turn_id FROM tutor_turn_replacements)
+             ORDER BY sequence DESC LIMIT 1 OFFSET 12",
             params![conversation_id, start], |row| row.get(0),
         ).optional().map_err(CommandError::database)?;
         let Some(cutoff) = cutoff else { return Ok((summary, boundary, start, Vec::new())) };
         let mut statement = connection.prepare(
             "SELECT id, sequence, user_text, assistant_text FROM tutor_turns
              WHERE conversation_id = ?1 AND state = 'complete' AND evidence_current = 1
+               AND id NOT IN (SELECT turn_id FROM tutor_turn_replacements)
                AND sequence > ?2 AND sequence <= ?3 AND sequence > ?4 ORDER BY sequence LIMIT 12",
         ).map_err(CommandError::database)?;
         let turns = statement.query_map(params![conversation_id, boundary, cutoff, start], read_turn)
@@ -186,7 +190,8 @@ pub(crate) fn verify_and_inherit(
     let current: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM tutor_turns WHERE id IN (SELECT value FROM json_each(?1))
-         AND state = 'complete' AND evidence_current = 1",
+         AND state = 'complete' AND evidence_current = 1
+         AND id NOT IN (SELECT turn_id FROM tutor_turn_replacements)",
             [&ids_json],
             |row| row.get(0),
         )
