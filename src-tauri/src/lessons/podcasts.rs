@@ -23,7 +23,7 @@ use super::{
 use crate::{
     ai::{
         document_intelligence::{
-            generate_podcast_script, load_document_task_context, PodcastLesson,
+            generate_podcast_script, load_verified_document_task_context, PodcastLesson,
             PodcastScriptAuthoring, PODCAST_SCRIPT_PROMPT_VERSION,
         },
         document_provider, generation,
@@ -696,7 +696,7 @@ async fn author(
     target_minutes: u32,
     diagnostics: generation::Context,
 ) -> Result<(PodcastScript, Value), CommandError> {
-    let mut task = load_document_task_context(database)?;
+    let mut task = load_verified_document_task_context(database, runtime).await?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,

@@ -12,7 +12,7 @@ export type AppDestination = "home" | "library" | "notes" | "tutor" | "progress"
  * and Study guides keep their section ids so saved checkpoints and launch
  * requests still name them.
  */
-export const SUBJECT_SECTIONS = ["lessons", "study-guides", "decks", "podcasts", "documents"] as const;
+export const SUBJECT_SECTIONS = ["lessons", "decks", "study-guides", "podcasts", "documents"] as const;
 
 export type SubjectSection = (typeof SUBJECT_SECTIONS)[number];
 
@@ -23,6 +23,15 @@ export type SubjectSection = (typeof SUBJECT_SECTIONS)[number];
 export const LIBRARY_SECTIONS = ["overview", "decks", "study-guides", "lessons", "podcasts", "documents"] as const;
 
 export type LibrarySection = (typeof LIBRARY_SECTIONS)[number];
+
+/** A subject's pages that only AI makes: hidden while AI is off. */
+export const AI_SUBJECT_SECTIONS: readonly SubjectSection[] = ["lessons", "study-guides", "podcasts"];
+
+/** The section shown in place of `section` while AI is off. */
+export function sectionWithoutAi(section: AppSection): AppSection {
+  if (section === "tutor") return "home";
+  return (AI_SUBJECT_SECTIONS as readonly AppSection[]).includes(section) ? "decks" : section;
+}
 
 export function isSubjectSection(section: AppSection): section is SubjectSection {
   return (SUBJECT_SECTIONS as readonly AppSection[]).includes(section);

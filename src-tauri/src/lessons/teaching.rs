@@ -25,7 +25,7 @@ use super::{
 use crate::{
     ai::{
         document_intelligence::{
-            generate_lecture_script, load_document_task_context, LectureScriptAuthoring,
+            generate_lecture_script, load_verified_document_task_context, LectureScriptAuthoring,
             LECTURE_SCRIPT_PROMPT_VERSION,
         },
         document_provider, generation, AiRuntimeState,
@@ -584,7 +584,7 @@ async fn author(
     lecture: &LectureDto,
     diagnostics: generation::Context,
 ) -> Result<(LectureScript, Value), CommandError> {
-    let mut task = load_document_task_context(database)?;
+    let mut task = load_verified_document_task_context(database, runtime).await?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,

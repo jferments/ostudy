@@ -72,6 +72,41 @@ pub(super) async fn list_models(
     })
 }
 
+/// One automatic test at a time, so jobs started together test a model once.
+static AUTOMATIC_TEST_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Learning tools on OpenRouter need a passing test of the exact model a task
+/// uses. Setting up a service, choosing another model, a new key or an app
+/// update leaves that test out of date, so it runs here, as Test model would,
+/// instead of refusing until the learner presses Test model in Settings.
+pub(crate) async fn ensure_model_tested(
+    database: &Database,
+    runtime: &AiRuntimeState,
+    profile: &ProfileSnapshot,
+) -> Result<(), CommandError> {
+    if profile.provider_kind != ProviderKind::Openrouter
+        || repository::load_document_probe_evidence(database, profile)?.probe_matches
+    {
+        return Ok(());
+    }
+    let _turn = AUTOMATIC_TEST_TURN.lock().await;
+    if repository::load_document_probe_evidence(database, profile)?.probe_matches {
+        return Ok(());
+    }
+    test_profile(
+        database,
+        runtime,
+        AiProfileReferenceInput {
+            profile_id: profile.id.clone(),
+            revision: profile.revision,
+            model_id: Some(profile.model_id.clone()),
+            reasoning_effort: Some(profile.reasoning_effort.clone()),
+        },
+    )
+    .await
+    .map(|_| ())
+}
+
 pub(crate) async fn test_profile(
     database: &Database,
     runtime: &AiRuntimeState,

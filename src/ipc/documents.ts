@@ -202,6 +202,14 @@ export async function importDocumentAndGenerateFlashcards(
   return retryDocumentFlashcardGeneration(imported.documentId, guidance.generationInstructions);
 }
 
+/**
+ * Reads, renders and chunks a document without asking any AI service, so it
+ * can be opened and annotated while AI features are off.
+ */
+export async function startDocumentPreparation(documentId: string): Promise<void> {
+  await invoke("start_document_preparation", { input: { documentId } });
+}
+
 /** `destinationDeckId` writes a document's first cards into that existing deck instead of a new one. */
 export async function startDocumentFlashcardGeneration(
   documentId: string,

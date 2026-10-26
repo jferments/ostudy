@@ -260,11 +260,13 @@ def ipc_practice(session_id: str, plans: list[dict[str, Any]]) -> list[dict[str,
 def install_transport_retry() -> None:
     """Resend a WebDriver request that tauri-driver could not deliver.
 
-    tauri-driver keeps a pooled connection to WebKitWebDriver, which closes
-    every connection after its response. A request that lands on such a
-    connection fails inside tauri-driver before WebKitWebDriver sees it, and
-    tauri-driver then drops the client connection without an answer, so the
-    request can be sent again.
+    tauri-driver keeps a pooled connection to WebKitWebDriver, which closes a
+    connection after its response when the request said ``Connection: close``.
+    A request that lands on such a connection fails inside tauri-driver before
+    WebKitWebDriver sees it, and tauri-driver then drops the client connection
+    without an answer, so the request can be sent again. ``webdriver.request``
+    no longer sends that header, so this stays only as a backstop for long
+    capture runs.
     """
     if getattr(webdriver.request, "__ostudy_retry__", False):
         return

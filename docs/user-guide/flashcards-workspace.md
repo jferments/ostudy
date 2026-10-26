@@ -2,7 +2,7 @@
 
 Library's **Flashcards** tab opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: the chosen subject's decks and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
 
-A subject's pages are tabs under its name: **Lessons**, **Study guides**, **Flashcards** (the Workbench), **Podcasts** and **Documents**; **All cards** on Library's page opens the Workbench on every card, without tabs. **Import deck** sits at the end of the tabs on the Flashcards page; on a phone it sits beside **New deck** under the decks, so the five tabs fit. The Workbench shows the subject you chose on Library's page; there is no second list of subjects inside it.
+A subject's pages are tabs under its name: **Lessons**, **Flashcards** (the Workbench), **Study guides**, **Podcasts** and **Documents**; **All cards** on Library's page opens the Workbench on every card, without tabs. **Import deck** sits at the end of the tabs on the Flashcards page; on a phone it sits beside **New deck** under the decks, so the five tabs fit. The Workbench shows the subject you chose on Library's page; there is no second list of subjects inside it.
 
 ## The tree
 

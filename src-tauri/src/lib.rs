@@ -403,6 +403,7 @@ pub fn run() {
             library_session::commands::leased_amend_image_set,
             document_import::import_document,
             document_operations::start_document_flashcard_generation,
+            document_operations::start_document_preparation,
             library_session::commands::leased_run_document_flashcard_generation,
             library_session::commands::leased_generate_more_pdf_flashcards,
             document_operations::cancel_document_flashcard_generation,

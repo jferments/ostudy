@@ -6,7 +6,8 @@ use std::sync::Arc;
 use crate::{
     ai::{
         document_intelligence::{
-            load_tutor_task_context, request_json_cancellable, DocumentTaskContext, JsonTaskRequest,
+            load_verified_tutor_task_context, request_json_cancellable, DocumentTaskContext,
+            JsonTaskRequest,
         },
         observe_output, AiRuntimeState, OutputObserver,
     },
@@ -38,8 +39,8 @@ pub(crate) async fn send(
         false,
     )?;
     let task = match &input.profile_id {
-        Some(id) => DocumentTaskContext::for_tutor_profile(database, id)?,
-        None => load_tutor_task_context(database)?,
+        Some(id) => DocumentTaskContext::for_verified_tutor_profile(database, runtime, id).await?,
+        None => load_verified_tutor_task_context(database, runtime).await?,
     };
     // Read the private rubric before admission marks an answer as running.
     // Admission independently verifies that the same question is pending.

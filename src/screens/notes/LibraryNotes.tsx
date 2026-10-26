@@ -36,6 +36,7 @@ import { TextField } from "../../ui/primitives/TextField";
 import { useLibrarySubjects, type LibrarySubjects } from "../library/LibrarySubjects";
 import { LabeledChoice } from "./LabeledChoice";
 import { NotebookEditor, type NotebookLinkActions } from "./NotebookEditor";
+import { NotesWelcome } from "./NotesWelcome";
 import { NotebookThumbnail, PAPER_LABELS } from "./paper";
 
 interface LibraryNotesProps extends Omit<NotebookLinkActions, "onOpenNotebook"> {
@@ -246,7 +247,7 @@ export function LibraryNotes({ subject, showToast, openRequest = null, onOpenReq
               ) : null}
               <h2 id="notes-view-title" className="tw:m-0 tw:truncate tw:text-section tw:font-semibold">{viewTitle}</h2>
             </div>
-            {shownView.kind !== "recent" ? (
+            {shownView.kind !== "recent" && shown.length > 0 ? (
               <NativeSelect aria-label="Sort notes" value={sort} onChange={(event) => setSort(event.currentTarget.value as NotesSort)}>
                 <option value="changed">Recently changed</option>
                 <option value="name">Name</option>
@@ -288,11 +289,7 @@ export function LibraryNotes({ subject, showToast, openRequest = null, onOpenReq
             <LoadingState label="Loading notes…" />
           ) : shown.length === 0 && notebooks !== null ? (
             shownView.kind === "all" ? (
-              <EmptyState
-                icon="pen"
-                title="No notes yet"
-                description="A notebook is pages of paper to write and draw on with the PDF tools, and to link to your documents, study guides and flashcards."
-              />
+              <NotesWelcome onCreate={() => setCreating(true)} onCreateFolder={() => setNaming({ folder: null, parentId: null })} />
             ) : childFolders.length === 0 ? (
               <EmptyState
                 compact
