@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { getErrorMessage } from "../../ipc/common";
@@ -9,8 +9,10 @@ import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { Card } from "../../ui/primitives/Card";
+import { EmptyState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { ListRow, ListRowMedia, ListRows } from "../../ui/primitives/ListRow";
+import { SubjectMaterialBeingMade, useMaterialProgress } from "../documents/MaterialsBeingMade";
 import { MakePodcastDialog } from "./MakePodcastDialog";
 
 interface PodcastsSectionProps {
@@ -54,7 +56,18 @@ export function PodcastsSection({ headingId, subjectId, lessons, onOpenPodcast }
     );
   };
 
-  if (lessons.length === 0 && !podcasts?.length) return null;
+  const beingMade = useMaterialProgress(subjectId, "podcast") !== null;
+  const wasBeingMade = useRef(false);
+  useEffect(() => {
+    // The finished podcast joins the list.
+    if (wasBeingMade.current && !beingMade) refresh();
+    wasBeingMade.current = beingMade;
+  }, [beingMade, refresh]);
+  if (lessons.length === 0 && !podcasts?.length && !beingMade) {
+    return podcasts ? (
+      <EmptyState icon="headphones" title="No podcasts yet" description="A podcast is made from the subject's lessons, once it has some." />
+    ) : null;
+  }
   return (
     <section aria-labelledby={headingId} data-testid="subject-podcasts" className="tw:flex tw:flex-col tw:gap-3">
       <div className="tw:flex tw:items-center tw:justify-between tw:gap-3">
@@ -68,6 +81,7 @@ export function PodcastsSection({ headingId, subjectId, lessons, onOpenPodcast }
         ) : null}
       </div>
       {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
+      <SubjectMaterialBeingMade subjectId={subjectId} kind="podcast" />
       {podcasts && podcasts.length > 0 ? (
         <Card as="div" className="tw:gap-0 tw:py-0">
           <ListRows>
@@ -100,7 +114,7 @@ export function PodcastsSection({ headingId, subjectId, lessons, onOpenPodcast }
             ))}
           </ListRows>
         </Card>
-      ) : podcasts ? (
+      ) : podcasts && !beingMade ? (
         <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
           Two hosts talk through the lessons you pick, to listen to anywhere.
         </p>

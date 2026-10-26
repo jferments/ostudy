@@ -9,10 +9,13 @@ import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { Progress } from "../../ui/primitives/Progress";
+import { SubjectMaterialBeingMade } from "../documents/MaterialsBeingMade";
+import { useWaitingStudySet } from "../documents/pendingStudySets";
 import type { SubjectCourse } from "./useSubjectCourse";
 
 interface LessonsSectionProps {
   headingId: string;
+  subjectId: string;
   course: SubjectCourse;
   /** Lessons are written from processed sources; without any there is nothing to offer. */
   hasSources: boolean;
@@ -20,7 +23,9 @@ interface LessonsSectionProps {
 }
 
 /** The subject's course: where to pick up, every lesson in order, and writing it. */
-export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: LessonsSectionProps) {
+export function LessonsSection({ headingId, subjectId, course, hasSources, onOpenLesson }: LessonsSectionProps) {
+  // A New study set's lessons wait for its documents; until then there is nothing to write from.
+  const waiting = useWaitingStudySet(subjectId)?.lessons === true;
   const lessons = useMemo(
     () => course.course?.lessons.filter((lesson) => lesson.written !== null) ?? [],
     [course.course],
@@ -38,7 +43,7 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
     if (approved) course.rewrite();
   };
 
-  if (!hasSources && lessons.length === 0) return null;
+  if (!hasSources && lessons.length === 0 && !waiting) return null;
   return (
     <section aria-labelledby={headingId} data-testid="subject-lessons" className="tw:flex tw:flex-col tw:gap-3">
       <div className="tw:flex tw:items-baseline tw:justify-between tw:gap-3">
@@ -80,6 +85,7 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
       {course.updateError ? (
         <InlineNotice kind="error">The lesson was not updated: {course.updateError}</InlineNotice>
       ) : null}
+      {!course.writing ? <SubjectMaterialBeingMade subjectId={subjectId} kind="lessons" /> : null}
       {course.writing ? (
         <Card as="div" role="status" className="tw:gap-3 tw:p-5 tw:compact:p-4">
           <div className="tw:flex tw:items-center tw:gap-3">
@@ -143,7 +149,7 @@ export function LessonsSection({ headingId, course, hasSources, onOpenLesson }: 
             </ol>
           </Card>
         </>
-      ) : !course.writing && !course.loading && course.course ? (
+      ) : !course.writing && !waiting && !course.loading && course.course ? (
         <Card as="div" className="tw:flex-row tw:flex-wrap tw:items-center tw:gap-x-4 tw:gap-y-3 tw:p-5 tw:compact:p-4">
           <span
             aria-hidden="true"

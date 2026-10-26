@@ -9,6 +9,7 @@ import { LessonsSection } from "../lessons/LessonsSection";
 import { PodcastPlayer } from "../lessons/PodcastPlayer";
 import { PodcastsSection } from "../lessons/PodcastsSection";
 import { useSubjectCourse } from "../lessons/useSubjectCourse";
+import { useWaitingStudySet } from "../documents/pendingStudySets";
 import { useLibraryFullPage } from "./LibraryFrame";
 import { useLibrarySubjects, type LibrarySubjects } from "./LibrarySubjects";
 
@@ -70,6 +71,7 @@ function SubjectLessons({
   showToast: ShowToast;
 }) {
   const course = useSubjectCourse(subjectId);
+  const waitingLessons = useWaitingStudySet(subjectId)?.lessons === true;
   const headingId = useId();
   const podcastsHeadingId = useId();
   const [openPodcastId, setOpenPodcastId] = useState<string | null>(null);
@@ -121,10 +123,10 @@ function SubjectLessons({
     );
   }
   const hasSources = (tile?.summary.sourceCount ?? 0) > 0;
-  if (!hasSources && written.length === 0) return <EmptyState icon="book" title="No lessons yet" />;
+  if (!hasSources && written.length === 0 && !waitingLessons) return <EmptyState icon="book" title="No lessons yet" />;
   return (
     <div data-testid="library-lessons" className="tw:flex tw:max-w-3xl tw:flex-col tw:gap-8">
-      <LessonsSection headingId={headingId} course={course} hasSources={hasSources} onOpenLesson={onOpenLesson} />
+      <LessonsSection headingId={headingId} subjectId={subjectId} course={course} hasSources={hasSources} onOpenLesson={onOpenLesson} />
     </div>
   );
 }
