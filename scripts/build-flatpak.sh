@@ -71,7 +71,10 @@ flatpak run --command=sh "org.gnome.Platform//$RUNTIME_VERSION" -c \
   exit 1
 }
 
-WORK="$(mktemp -d -t ostudy-flatpak.XXXXXXXX)"
+# flatpak-builder needs its state, build and repo directories on one
+# filesystem, and /tmp is often a separate tmpfs, so work inside the checkout.
+mkdir -p "$ROOT_DIR/.artifacts"
+WORK="$(mktemp -d -p "$ROOT_DIR/.artifacts" flatpak-work.XXXXXXXX)"
 cleanup() { rm -rf -- "$WORK"; }
 trap cleanup EXIT
 cp -- "$MANIFEST" "$FLATPAK_DIR/$APP_ID.metainfo.xml" "$WORK/"
@@ -79,7 +82,7 @@ cp -- "$DEB" "$WORK/ostudy.deb"
 
 printf '==> Building %s %s\n' "$APP_ID" "$VERSION"
 flatpak-builder --user --force-clean --disable-rofiles-fuse \
-  --repo="$WORK/repo" "$WORK/build" "$WORK/$APP_ID.yml"
+  --state-dir="$WORK/state" --repo="$WORK/repo" "$WORK/build" "$WORK/$APP_ID.yml"
 
 ARCH="$(flatpak --default-arch)"
 mkdir -p "$OUTPUT_DIR"
