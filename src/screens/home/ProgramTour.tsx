@@ -20,7 +20,7 @@ const STOPS: readonly TourStop[] = [
   {
     icon: "cards",
     title: "Write cards your way",
-    body: "In a subject's Flashcards page, write cards with formatting, formulas and images, hide parts of a picture with image occlusion, and sort cards into decks and tags. Decks from Anki come in as they are.",
+    body: "In a subject's Flashcards page, write cards with formatting, formulas and images, hide parts of a picture with image occlusion, and sort cards into decks and tags. Decks from Anki come in as they are, and Quizlet sets come in from their Export text.",
   },
   {
     icon: "calendar-check",

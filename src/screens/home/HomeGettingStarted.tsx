@@ -32,7 +32,7 @@ interface HomeGettingStartedProps {
 }
 
 /**
- * Ways to begin beside Home's welcome: bringing in Anki decks, a tour of
+ * Ways to begin beside Home's welcome: bringing in Anki or Quizlet decks, a tour of
  * oStudy, and, while no AI service is set up, what AI adds with Set up AI and
  * Don't show this again. On a Home that already has subjects only the AI tip
  * shows, until it is set up or hidden.
@@ -48,7 +48,7 @@ export function HomeGettingStarted({ onSetUpAi, onImportDeck, onTakeTour }: Home
     <ul aria-label="Getting started" data-testid="home-getting-started" className="tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0 tw:medium:grid-cols-2 tw:wide:grid-cols-3">
       {onImportDeck ? (
         <StartTile icon="import" title="Bring your flashcards" action={<Button onClick={onImportDeck}><Icon name="import" size={16} />Import a deck</Button>}>
-          Import decks from Anki (.apkg) or another oStudy library (.studydeck) and review them here.
+          Import decks from Anki or Quizlet, or from another oStudy library, and review them here.
         </StartTile>
       ) : null}
       {onTakeTour ? (
