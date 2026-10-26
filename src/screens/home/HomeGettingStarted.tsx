@@ -45,7 +45,9 @@ export function HomeGettingStarted({ onSetUpAi, onImportDeck, onTakeTour }: Home
   if (!showAiTip && !onImportDeck && !onTakeTour) return null;
 
   return (
-    <ul aria-label="Getting started" data-testid="home-getting-started" className="tw:m-0 tw:grid tw:list-none tw:gap-3 tw:p-0 tw:medium:grid-cols-2 tw:wide:grid-cols-3">
+    // Tiles keep a third of the row on wide screens, and the first-run welcome centers
+    // them, so hiding the AI tip leaves the other two under the welcome's middle.
+    <ul aria-label="Getting started" data-testid="home-getting-started" className={`tw:m-0 tw:flex tw:list-none tw:flex-wrap tw:gap-3 tw:p-0 ${onImportDeck || onTakeTour ? "tw:justify-center" : "tw:justify-start"}`}>
       {onImportDeck ? (
         <StartTile icon="import" title="Bring your flashcards" action={<Button onClick={onImportDeck}><Icon name="import" size={16} />Import a deck</Button>}>
           Import decks from Anki or Quizlet, or from another oStudy library, and review them here.
@@ -89,7 +91,7 @@ export function HomeGettingStarted({ onSetUpAi, onImportDeck, onTakeTour }: Home
 
 function StartTile({ icon, title, action, children }: { icon: IconName; title: string; action: ReactNode; children: ReactNode }) {
   return (
-    <li className="tw:grid tw:min-w-0 tw:content-start tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-4 tw:text-start">
+    <li className="tw:grid tw:min-w-0 tw:basis-full tw:medium:basis-[calc((100%-0.75rem)/2)] tw:wide:basis-[calc((100%-1.5rem)/3)] tw:content-start tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-4 tw:text-start">
       <span className="tw:flex tw:items-center tw:gap-2.5">
         <span aria-hidden="true" className="tw:grid tw:size-9 tw:shrink-0 tw:place-items-center tw:rounded-lg tw:bg-accent tw:text-accent-foreground">
           <Icon name={icon} size={18} />
