@@ -24,7 +24,8 @@ Build the production .deb, .rpm, AppImage and .tar.gz for the exact committed
 source inside an Ubuntu 22.04 container (Docker or Podman), verify them, and
 write them with BUILD-INFO.txt and SHA256SUMS.txt to the output directory
 (default .artifacts/linux-portable). Toolchains and Cargo output are cached in
-the container volume ostudy-linux-portable-cache between runs.
+the container volume ostudy-linux-portable-cache between runs; the Cargo build
+output is deleted after each run unless OSTUDY_PORTABLE_KEEP_TARGET=1.
 OSTUDY_CONTAINER_ENGINE selects docker or podman; OSTUDY_CONTAINER_ARGS adds
 arguments to the container run (for example proxy settings).
 USAGE
@@ -63,6 +64,7 @@ printf '==> Building portable Linux packages for %s in %s (%s)\n' "$(git rev-par
   -v "$OUTPUT_DIR:/output" \
   -v "$CACHE_VOLUME:/cache" \
   -e HOME=/cache/home \
+  -e OSTUDY_PORTABLE_KEEP_TARGET="${OSTUDY_PORTABLE_KEEP_TARGET:-0}" \
   "${EXTRA_ARGS[@]}" \
   "$IMAGE" bash -Eeuo pipefail -c '
     export DEBIAN_FRONTEND=noninteractive
@@ -85,6 +87,8 @@ printf '==> Building portable Linux packages for %s in %s (%s)\n' "$(git rev-par
     cp "$CARGO_TARGET_DIR"/release/bundle/appimage/*.AppImage /cache/packages/
     chown -R "$(stat -c %u:%g /output)" /cache/packages
     cp -a /cache/packages/. /output/
+    # A release build target holds tens of GB; keep only the toolchains.
+    [[ "${OSTUDY_PORTABLE_KEEP_TARGET:-0}" == 1 ]] || rm -rf /cache/target /cache/work /cache/packages
   '
 
 cd "$OUTPUT_DIR"
