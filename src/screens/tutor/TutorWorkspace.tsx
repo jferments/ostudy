@@ -27,6 +27,8 @@ import { useReadAloud, type ReadAloud } from "./useReadAloud";
 import { useVoiceAvailable } from "../lessons/useVoiceAvailable";
 import { useSpeechInput } from "./useSpeechInput";
 import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStarters";
+import { TutorAnswerCards } from "./TutorAnswerCards";
+import { useGenerationModelMissing } from "../documents/useGenerationModelMissing";
 import { styles, withoutFigures } from "./presentation";
 
 function SourceDetails({ source }: { source: SourceCitation }) {
@@ -40,7 +42,7 @@ function SourceDetails({ source }: { source: SourceCitation }) {
 }
 
 /** Copy reports its own result in place, so a chat needs no toast. */
-function CopyAnswer({ text }: { text: string }) {
+function CopyAnswer({ text, label }: { text: string; label?: string }) {
   const [result, setResult] = useState<"copied" | "failed" | null>(null);
   useEffect(() => {
     if (!result) return;
@@ -48,13 +50,27 @@ function CopyAnswer({ text }: { text: string }) {
     return () => window.clearTimeout(timer);
   }, [result]);
   return (
-    <Button size="small" variant="ghost" onClick={() => {
+    <Button size="small" variant="ghost" aria-label={label} onClick={() => {
       copyText(text).then(() => setResult("copied"), () => setResult("failed"));
     }}>
       <Icon name="copy" size={16} />
       <span aria-live="polite">{result === "copied" ? "Copied" : result === "failed" ? "Couldn't copy" : "Copy"}</span>
     </Button>
   );
+}
+
+/**
+ * A slot's versions, oldest first: the turn shown and the finished answers it
+ * replaced, one after another.
+ */
+function versionsOf(current: TutorTurn, turns: readonly TutorTurn[]): TutorTurn[] {
+  const chain = [current];
+  for (;;) {
+    const earlier = turns.find((turn) => turn.replacedByTurnId === chain[0]?.id);
+    if (!earlier || chain.includes(earlier)) break;
+    chain.unshift(earlier);
+  }
+  return chain.filter((turn, index) => index === chain.length - 1 || (turn.state === "complete" && Boolean(turn.assistantText)));
 }
 
 /** Reads a finished reply aloud in the lesson voice; a second press stops it. */
@@ -102,7 +118,13 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const hintOnly = tutor.target?.mode === "hint";
   const locked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
   const question = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
-  const turns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
+  const allTurns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
+  // A replaced answer is one of its slot's earlier versions, not a turn of its own.
+  const turns = allTurns.filter((turn) => !turn.replacedByTurnId);
+  const [shownVersion, setShownVersion] = useState<Record<string, number>>({});
+  const [editing, setEditing] = useState<{ turnId: string; text: string } | null>(null);
+  const [cardsFor, setCardsFor] = useState<string | null>(null);
+  const cardModelMissing = useGenerationModelMissing();
   const lastTurnId = tutor.detail?.turns.at(-1)?.id;
   const live = useLiveTurn(tutor.liveOperationId);
   const withDraft = (text: string) => (tutor.draft.trim() ? `${tutor.draft.trimEnd()} ${text}` : text);
@@ -142,6 +164,8 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     setSourceBusy(false);
     followTail.current = true;
     setAwayFromTail(false);
+    setShownVersion({});
+    setEditing(null);
   }, [sourceLane, tutor.detail?.conversation.id, hintOnly]);
 
   useEffect(() => {
@@ -394,16 +418,64 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
       {tutor.detail?.hasEarlierTurns && !hintOnly ? (
         <Button className="tw:self-center" disabled={locked} onClick={() => { followTail.current = false; void tutor.loadEarlier(); }}>Load earlier messages</Button>
       ) : null}
-      {turns.map((turn) => {
+      {turns.map((current) => {
+        const versions = versionsOf(current, allTurns);
+        const shown = Math.min(shownVersion[current.id] ?? versions.length - 1, versions.length - 1);
+        const turn = versions[shown] ?? current;
+        const latest = turn === current;
         const answered = turn.state === "complete" && Boolean(turn.assistantText) && turn.assistantText !== turn.errorMessage;
+        // Only the last answer can be asked again, as a new version of itself.
+        const askAgain = !hintOnly && latest && turn.id === lastTurnId && turn.mode === "explain" && turn.state !== "running" && !question;
+        const edit = editing?.turnId === turn.id ? editing : null;
         return (
-          <article className={styles.turn} key={turn.id}>
-            {turn.userText ? (
-              <section className={styles.userMessage} aria-label="Your message">
+          <article className={styles.turn} key={current.id}>
+            {edit ? (
+              <form
+                className={styles.userEdit}
+                aria-label="Edit your question"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!edit.text.trim()) return;
+                  setEditing(null);
+                  void tutor.regenerate(turn, edit.text);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setEditing(null);
+                  }
+                }}
+              >
+                <label className="tw:sr-only" htmlFor={`${id}-edit`}>Your question</label>
+                <Textarea
+                  id={`${id}-edit`}
+                  rows={3}
+                  maxLength={8000}
+                  autoFocus
+                  value={edit.text}
+                  onChange={(event) => setEditing({ turnId: turn.id, text: event.target.value })}
+                />
+                <div className={styles.userEditActions}>
+                  <Button size="small" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
+                  <Button size="small" variant="primary" type="submit" disabled={locked || tutor.needsRefresh || !edit.text.trim()}>Send</Button>
+                </div>
+              </form>
+            ) : turn.userText ? (
+              <section className={cn(styles.userMessage, latest ? null : styles.earlierVersion)} aria-label="Your message">
                 <div className={styles.message}>{turn.userText}</div>
               </section>
             ) : null}
-            <section className={styles.assistantMessage} aria-label="Tutor response">
+            {!edit && turn.userText && !hintOnly ? (
+              <div className={styles.userActions}>
+                <CopyAnswer text={turn.userText} label="Copy question" />
+                {askAgain ? (
+                  <Button size="small" variant="ghost" disabled={locked || tutor.needsRefresh} onClick={() => setEditing({ turnId: turn.id, text: turn.userText })}>
+                    <Icon name="edit" size={16} /> Edit
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+            <section className={cn(styles.assistantMessage, latest ? null : styles.earlierVersion)} aria-label={latest ? "Tutor response" : `Tutor response, version ${shown + 1} of ${versions.length}`}>
               {turn.assistantText && turn.assistantText !== turn.errorMessage
                 ? turn.mode === "hint"
                   ? <div className={styles.message}>{turn.assistantText}</div>
@@ -430,19 +502,48 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
                 </Disclosure>
               ) : null}
               {citations(turn)}
+              {versions.length > 1 ? (
+                <div className={styles.versions}>
+                  <IconButton
+                    icon="chevron-left"
+                    label="Earlier version"
+                    iconSize={16}
+                    disabled={shown === 0}
+                    onClick={() => setShownVersion((saved) => ({ ...saved, [current.id]: shown - 1 }))}
+                  />
+                  <span>{shown + 1} / {versions.length}</span>
+                  <IconButton
+                    icon="chevron-right"
+                    label="Later version"
+                    iconSize={16}
+                    disabled={latest}
+                    onClick={() => setShownVersion((saved) => ({ ...saved, [current.id]: shown + 1 }))}
+                  />
+                </div>
+              ) : null}
               {!hintOnly && answered ? (
                 <div className={styles.answerActions}>
-                  {turn.id === lastTurnId && !question ? (
+                  {latest && turn.id === lastTurnId && !question ? (
                     <Button size="small" variant="ghost" disabled={locked || tutor.needsRefresh} onClick={() => { void tutor.send("quiz", ""); }}>
                       <Icon name="help" size={16} /> Quiz me on this
                     </Button>
                   ) : null}
                   <CopyAnswer text={withoutFigures(turn.assistantText)} />
+                  {askAgain ? (
+                    <Button size="small" variant="ghost" disabled={locked || tutor.needsRefresh} onClick={() => { void tutor.regenerate(turn); }}>
+                      <Icon name="redo" size={16} /> Regenerate
+                    </Button>
+                  ) : null}
                   {voiceAvailable ? <ReadAloudAnswer turnId={turn.id} reader={reader} /> : null}
+                  {turn.mode === "explain" && !cardModelMissing ? (
+                    <Button size="small" variant="ghost" onClick={() => setCardsFor(turn.id)}>
+                      <Icon name="cards" size={16} /> Make flashcards
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
               {reader.error?.turnId === turn.id ? <InlineNotice kind="error">{reader.error.message}</InlineNotice> : null}
-              {turn.id === lastTurnId
+              {latest && turn.id === lastTurnId
                 && (turn.mode !== "hint" || hintOnly)
                 && ["failed", "canceled", "interrupted"].includes(turn.state) ? (
                   <Button size="small" className="tw:justify-self-start" disabled={locked || tutor.needsRefresh} onClick={() => { void tutor.retryTurn(turn); }}>
@@ -557,6 +658,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
           onApply={(scope) => { if (!sameStudyScope(scope, tutor.scope)) tutor.changeSources(scope); }}
         />
       ) : null}
+      {cardsFor ? <TutorAnswerCards turnId={cardsFor} onClose={() => setCardsFor(null)} /> : null}
       {settingsOpen ? <TutorChatSettings tutor={tutor} onClose={() => setSettingsOpen(false)} onDelete={remove} /> : null}
       {renaming && tutor.detail ? (
         <RenameConversationDialog tutor={tutor} conversation={tutor.detail.conversation} onClose={() => setRenaming(false)} />

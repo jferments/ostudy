@@ -1,6 +1,7 @@
 //! Content-focused conversational tutoring. The tutor owns conversations and
 //! fixed conversational quiz rubrics, not practice ratings or learner profiles.
 
+pub(crate) mod cards;
 pub(crate) mod commands;
 mod context;
 mod contracts;
@@ -35,6 +36,7 @@ pub(crate) fn sanitize_for_device_transfer(
             "DELETE FROM tutor_memory_operations;
          DELETE FROM tutor_organization_operations;
          DELETE FROM tutor_turn_sources;
+         DELETE FROM tutor_turn_replacements;
          DELETE FROM knowledge_sources WHERE kind = 'conversation';
          DELETE FROM tutor_turns;
          DELETE FROM tutor_conversations;

@@ -105,7 +105,7 @@ const quizTurn: TutorTurn = {
   id: "q".repeat(32), operationId: "o".repeat(32), sequence: 1, mode: "quiz", userText: "",
   assistantText: "Where is renin made?", state: "complete", citations: [], evidenceCurrent: true,
   pendingQuestion: true, feedback: null, provider: "fixture", model: "fixture", errorCode: "", errorMessage: "",
-  totalTokens: null, createdAt: 1,
+  totalTokens: null, createdAt: 1, replacedByTurnId: null,
 };
 
 const speechStatus: SpeechInputStatus = {

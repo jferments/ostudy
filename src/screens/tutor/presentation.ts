@@ -57,6 +57,11 @@ export const styles = {
   // A numbered chip; its accessible name carries the source's title.
   citation: "tw:h-6 tw:min-h-6 tw:min-w-6 tw:rounded-md tw:border-primary/25 tw:bg-primary/8 tw:px-1.5 tw:text-caption tw:font-semibold tw:text-primary tw:shadow-none tw:coarse:min-h-touch tw:coarse:min-w-touch",
   answerActions: "tw:-ml-2 tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-1 tw:[&_button]:text-small tw:[&_button]:font-normal tw:[&_button]:text-muted-foreground",
+  userActions: "tw:-mt-2 tw:ml-auto tw:flex tw:min-w-0 tw:flex-wrap tw:justify-end tw:gap-1 tw:[&_button]:text-small tw:[&_button]:font-normal tw:[&_button]:text-muted-foreground",
+  userEdit: "tw:ml-auto tw:grid tw:w-full tw:max-w-[min(100%,36rem)] tw:min-w-0 tw:gap-2 tw:rounded-2xl tw:border tw:border-primary tw:bg-card tw:p-3",
+  userEditActions: "tw:flex tw:flex-wrap tw:justify-end tw:gap-2",
+  versions: "tw:-ml-2 tw:flex tw:items-center tw:gap-1 tw:text-small tw:text-muted-foreground",
+  earlierVersion: "tw:text-muted-foreground",
   composerWrap: "tw:px-6 tw:pt-2 tw:pb-4 tw:compact:px-3 tw:compact:pb-3",
   composer: "tw:mx-auto tw:flex tw:w-full tw:max-w-3xl tw:min-w-0 tw:items-end tw:gap-2 tw:rounded-2xl tw:border tw:border-solid tw:border-border tw:bg-background tw:py-1.5 tw:pr-1.5 tw:pl-4 tw:shadow-sm tw:focus-within:border-primary/60",
   hintComposer: "tw:grid tw:min-w-0 tw:gap-2 tw:border-0 tw:border-t tw:border-solid tw:border-border/70 tw:pt-3",

@@ -77,6 +77,7 @@ fn conversational_question_publication_preserves_request_identity_and_private_ru
         profile_id: None,
         include_conversations: false,
         question_id: None,
+        replaces_turn_id: None,
     };
     let identity = TurnIdentity {
         id: "c".repeat(32),
@@ -146,6 +147,7 @@ fn organization_changes_do_not_invalidate_an_admitted_response() {
         profile_id: None,
         include_conversations: false,
         question_id: None,
+        replaces_turn_id: None,
     };
     let identity = TurnIdentity {
         id: "f".repeat(32),

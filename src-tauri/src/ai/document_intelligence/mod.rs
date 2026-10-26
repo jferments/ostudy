@@ -4,6 +4,7 @@ use crate::{error::CommandError, task_cancellation::CancellationSignal};
 
 use super::AiRuntimeState;
 
+mod answer_cards;
 mod artifact_metadata;
 mod context;
 mod contracts;
@@ -25,6 +26,7 @@ mod support;
 pub(crate) use support::is_output_failure;
 mod transport;
 
+pub(crate) use answer_cards::{request_answer_cards, AnswerCardDraft};
 pub(crate) use artifact_metadata::{
     DocumentArtifactMetadataCandidate, ARTIFACT_DESCRIPTION_MAX_CHARS,
     ARTIFACT_METADATA_GENERATOR_VERSION, ARTIFACT_METADATA_PROMPT_VERSION,

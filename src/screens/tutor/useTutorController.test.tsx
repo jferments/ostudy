@@ -55,6 +55,7 @@ const turn: TutorTurn = {
   id: "b".repeat(32), operationId: "c".repeat(32), sequence: 1, mode: "explain", userText: "Explain triangles",
   assistantText: "A triangle has three sides.", state: "complete", citations: [], evidenceCurrent: true,
   pendingQuestion: false, feedback: null, provider: "llama_cpp", model: "fixture", errorCode: "", errorMessage: "", totalTokens: 20, createdAt: 1,
+  replacedByTurnId: null,
 };
 const detail: ConversationDetail = { conversation: { ...conversation, revision: 3 }, turns: [turn], hasEarlierTurns: false };
 const project: TutorProject = {

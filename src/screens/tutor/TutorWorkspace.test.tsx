@@ -1,9 +1,10 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getAiTaskDefaults, listAiProviderProfiles } from "../../ipc/aiProfiles";
 import {
+  getLearningTaskProgress,
   getSemanticPreparation,
   getSemanticSourceCitation,
   listSemanticScopeChoices,
@@ -17,6 +18,7 @@ import {
   listTutorConversations,
   listTutorProjects,
   moveTutorConversation,
+  sendTutorTurn,
   type ConversationDetail,
   type ConversationSummary,
   type TutorProject,
@@ -48,6 +50,7 @@ vi.mock("../../ipc/tutor", () => ({
   createTutorProjectConversation: vi.fn(),
   deleteTutorConversation: vi.fn(),
   deleteTutorProject: vi.fn(),
+  draftTutorAnswerCards: vi.fn(),
   getTutorConversation: vi.fn(),
   listTutorConversations: vi.fn(),
   listTutorProjects: vi.fn(),
@@ -147,6 +150,7 @@ const detail: ConversationDetail = {
       errorMessage: "",
       totalTokens: null,
       createdAt: 1,
+      replacedByTurnId: null,
     },
   ],
 };
@@ -174,6 +178,7 @@ beforeEach(() => {
   vi.mocked(createTutorProject).mockResolvedValue(project);
   vi.mocked(moveTutorConversation).mockResolvedValue({ ...projectConversation, organizationRevision: 2 });
   vi.mocked(getSemanticPreparation).mockResolvedValue(null);
+  vi.mocked(getLearningTaskProgress).mockResolvedValue(null);
   vi.mocked(getTutorConversation).mockResolvedValue(detail);
 });
 
@@ -319,4 +324,70 @@ describe("Tutor workspace consent and source reads", () => {
       expect(screen.queryByText("Obsolete source error")).toBeNull();
     },
   );
+
+  it("asks the last answer again as a new version and keeps the earlier one to look back at", async () => {
+    const [first] = detail.turns;
+    const second = { ...first!, id: "9".repeat(32), operationId: "2".repeat(32), sequence: 2, assistantText: "A three-sided shape" };
+    vi.mocked(sendTutorTurn).mockResolvedValue(second);
+    render(<Harness />);
+    await act(async () => { await controller.selectConversation(detail.conversation.id); });
+    expect(screen.queryByRole("button", { name: "Earlier version" })).toBeNull();
+    vi.mocked(getTutorConversation).mockResolvedValue({
+      ...detail,
+      turns: [{ ...first!, replacedByTurnId: second.id }, second],
+    });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Regenerate" })); });
+    expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({
+      mode: "explain",
+      text: "Explain triangles",
+      replacesTurnId: first!.id,
+    }));
+    expect(screen.getByText("A three-sided shape")).toBeTruthy();
+    expect(screen.queryByText("Three sides")).toBeNull();
+    expect(screen.getByText("2 / 2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Earlier version" }));
+    expect(screen.getByRole("region", { name: "Tutor response, version 1 of 2" }).textContent).toContain("Three sides");
+    // An earlier version is read only.
+    expect(screen.queryByRole("button", { name: "Regenerate" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Later version" }));
+    expect(screen.getByRole("button", { name: "Regenerate" })).toBeTruthy();
+  });
+
+  it("sends an edited question as a new version without touching the composer", async () => {
+    vi.mocked(sendTutorTurn).mockResolvedValue({ ...detail.turns[0]!, id: "9".repeat(32), sequence: 2 });
+    render(<Harness />);
+    await act(async () => { await controller.selectConversation(detail.conversation.id); });
+    await act(async () => { controller.setDraft("Something else"); });
+    expect(screen.getByRole("button", { name: "Copy question" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const form = screen.getByRole("form", { name: "Edit your question" });
+    fireEvent.keyDown(form, { key: "Escape" });
+    expect(screen.queryByRole("form", { name: "Edit your question" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const edit = within(screen.getByRole("form", { name: "Edit your question" }));
+    fireEvent.change(edit.getByRole("textbox", { name: "Your question" }), { target: { value: "Explain right triangles" } });
+    await act(async () => { fireEvent.click(edit.getByRole("button", { name: "Send" })); });
+    expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Explain right triangles",
+      replacesTurnId: detail.turns[0]!.id,
+    }));
+    expect(controller.draft).toBe("Something else");
+  });
+
+  it("offers flashcards from an answer only when a flashcard model is chosen", async () => {
+    const view = render(<Harness />);
+    await act(async () => { await controller.selectConversation(detail.conversation.id); });
+    expect(screen.queryByRole("button", { name: "Make flashcards" })).toBeNull();
+    view.unmount();
+    vi.mocked(getAiTaskDefaults).mockResolvedValue({
+      flashcardGenerationProfileId: "p".repeat(32),
+      tutorProfileId: null,
+      embeddingsProfileId: null,
+    });
+    vi.mocked(listAiProviderProfiles).mockResolvedValue([{ id: "p".repeat(32) } as never]);
+    render(<Harness />);
+    await act(async () => { await controller.selectConversation(detail.conversation.id); });
+    expect(screen.getByRole("button", { name: "Make flashcards" })).toBeTruthy();
+  });
 });

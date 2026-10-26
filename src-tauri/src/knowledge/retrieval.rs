@@ -271,6 +271,7 @@ pub(crate) fn eligible_entries_in(
                  OR (?5 = 1 AND s.kind = 'conversation' AND EXISTS(
                      SELECT 1 FROM tutor_turns t JOIN tutor_conversations tc ON tc.id = t.conversation_id
                      WHERE t.id = s.turn_id AND t.state = 'complete' AND t.evidence_current = 1
+                       AND t.id NOT IN (SELECT turn_id FROM tutor_turn_replacements)
                        AND COALESCE(t.captured_scope_json, json_extract(t.request_json, '$.capturedScope'), tc.scope_json) = ?6
                        AND tc.retrieval_enabled = 1 AND t.sequence > tc.memory_start_sequence))
              )
@@ -333,7 +334,8 @@ pub(crate) fn resolve_citation(
             ))?;
         if let Some(turn_id) = &source.turn_id {
             let current = connection.query_row(
-                "SELECT 1 FROM tutor_turns WHERE id = ?1 AND state = 'complete' AND evidence_current = 1",
+                "SELECT 1 FROM tutor_turns WHERE id = ?1 AND state = 'complete' AND evidence_current = 1
+                 AND id NOT IN (SELECT turn_id FROM tutor_turn_replacements)",
                 [turn_id], |_| Ok(()),
             ).optional().map_err(CommandError::database)?;
             if current.is_none() {

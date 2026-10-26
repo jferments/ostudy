@@ -417,6 +417,7 @@ pub fn run() {
             annotation_cards::get_document_marked_cards,
             annotation_cards::get_card_mark_source,
             library_session::commands::leased_draft_mark_question,
+            library_session::commands::leased_draft_tutor_answer_cards,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
             document_figures::get_document_figures,

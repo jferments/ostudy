@@ -69,6 +69,7 @@ fn every_valid_sync_selection_excludes_chat_and_semantic_projection_rows() {
                     "tutor_organization_operations",
                     "tutor_projects",
                     "tutor_turn_sources",
+                    "tutor_turn_replacements",
                     "tutor_turns",
                     "tutor_conversations",
                     "knowledge_sources",

@@ -127,6 +127,11 @@ pub struct TutorTurnInput {
     #[serde(default)]
     pub include_conversations: bool,
     pub question_id: Option<String>,
+    /// The conversation's last turn this one replaces (Regenerate, or the
+    /// question edited and sent again). Left out of the stored request when
+    /// absent, so earlier operations keep their identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaces_turn_id: Option<String>,
 }
 
 impl TutorTurnInput {
@@ -155,6 +160,14 @@ impl TutorTurnInput {
             }
             (Some(_), _) => return Err(invalid("Only a quiz answer may reference a question.")),
             (None, _) => {}
+        }
+        if let Some(id) = &self.replaces_turn_id {
+            validate_entity_id(id, "replaced tutor message")?;
+            if self.mode != TutorMode::Explain {
+                return Err(invalid(
+                    "Only an explanation can replace an earlier answer.",
+                ));
+            }
         }
         if self.mode == TutorMode::Hint
             && !matches!(
@@ -259,6 +272,8 @@ pub struct TutorTurn {
     pub error_message: String,
     pub total_tokens: Option<i64>,
     pub created_at: i64,
+    /// The newer version that replaced this turn; the chat carries on from it.
+    pub replaced_by_turn_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -374,6 +389,7 @@ mod tests {
             profile_id: None,
             include_conversations: false,
             question_id: None,
+            replaces_turn_id: None,
         };
         assert!(input.validate().is_err());
         let serialized = serde_json::to_value(input).unwrap();
