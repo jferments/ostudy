@@ -6,8 +6,8 @@ use std::sync::Arc;
 use crate::{
     ai::{
         document_intelligence::{
-            load_verified_tutor_task_context, request_json_cancellable, DocumentTaskContext,
-            JsonTaskRequest,
+            load_tutor_task_context, load_verified_tutor_task_context, request_json_cancellable,
+            DocumentTaskContext, JsonTaskRequest,
         },
         observe_output, AiRuntimeState, OutputObserver,
     },
