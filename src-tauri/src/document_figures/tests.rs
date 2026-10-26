@@ -919,3 +919,94 @@ fn a_scanned_pages_text_that_names_a_figure_is_not_one() {
     runs.extend(prose(60.0, 212.0, 490.0, 30));
     assert!(detect::detect_layouts(&[scanned_page(30, runs)]).is_empty());
 }
+
+/// A white image `width` by `height` with ink over each of `blocks`, given as
+/// left, top, right and bottom; a block with `lines` is set as text lines.
+fn drawn(width: u32, height: u32, blocks: &[[u32; 4]], lines: &[[u32; 4]]) -> image::RgbaImage {
+    let mut pixels = image::RgbaImage::from_pixel(width, height, image::Rgba([255, 255, 255, 255]));
+    let ink = image::Rgba([30, 30, 30, 255]);
+    for [left, top, right, bottom] in blocks {
+        for y in *top..*bottom {
+            for x in *left..*right {
+                pixels.put_pixel(x, y, ink);
+            }
+        }
+    }
+    for [left, top, right, bottom] in lines {
+        for y in *top..*bottom {
+            for x in (*left..*right).step_by(3) {
+                pixels.put_pixel(x, y, ink);
+            }
+        }
+    }
+    pixels
+}
+
+#[test]
+fn a_rendered_figure_is_segmented_from_the_caption_under_it() {
+    // 2 pixels a point: a figure, two caption lines whose printed letters sit
+    // 8 points above where the text layer puts them, and a strip of the
+    // page's header cut by the top edge.
+    let pixels = drawn(
+        400,
+        400,
+        &[[40, 30, 300, 260], [320, 0, 400, 12]],
+        &[[20, 284, 380, 300], [20, 306, 250, 322]],
+    );
+    let found = segment::segment(&pixels, 2.0, Some(300.0)).unwrap();
+    assert_eq!(
+        found.caption,
+        Some(segment::Band {
+            start: 284,
+            end: 322
+        })
+    );
+    assert_eq!(
+        found.figure.0,
+        segment::Band {
+            start: 30,
+            end: 260
+        }
+    );
+    assert_eq!(
+        found.figure.1,
+        segment::Band {
+            start: 40,
+            end: 300
+        }
+    );
+
+    // Labels inside the figure, above where its caption starts, stay with it.
+    let labelled = drawn(
+        400,
+        400,
+        &[[40, 30, 300, 200]],
+        &[[60, 220, 200, 236], [20, 284, 380, 300]],
+    );
+    let found = segment::segment(&labelled, 2.0, Some(296.0)).unwrap();
+    assert_eq!(
+        found.figure.0,
+        segment::Band {
+            start: 30,
+            end: 236
+        }
+    );
+    assert_eq!(
+        found.caption,
+        Some(segment::Band {
+            start: 284,
+            end: 300
+        })
+    );
+
+    // Without a caption on the page the whole image is the figure.
+    let found = segment::segment(&labelled, 2.0, None).unwrap();
+    assert_eq!(
+        found.figure.0,
+        segment::Band {
+            start: 30,
+            end: 300
+        }
+    );
+    assert_eq!(found.caption, None);
+}

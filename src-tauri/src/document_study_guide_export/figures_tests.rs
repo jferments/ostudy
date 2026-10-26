@@ -227,7 +227,25 @@ fn captions_are_short_and_name_the_source_page() {
     );
     assert_eq!(caption("", 3), "Source page 3");
     let long = format!("{}. {}", "a".repeat(120), "b".repeat(200));
-    let cut = caption(&long, 4);
-    assert!(cut.chars().count() < MAX_CAPTION_CHARS + 20, "{cut}");
-    assert!(cut.ends_with("Source page 4"));
+    let cut = clipped(&long, MAX_SHOWS_CHARS);
+    assert_eq!(cut, "a".repeat(120));
+}
+
+#[test]
+fn a_read_figures_caption_says_why_it_matters() {
+    let mut read = figure("p00012-01", 12, 5, &["preload"]);
+    if let Some(reading) = read.reading.as_mut() {
+        reading.use_in_text = Some("It shows why preload sets stroke volume.".into());
+    }
+    let sections = [section(
+        'a',
+        vec![12],
+        "Preload",
+        &["Preload sets stroke volume."],
+    )];
+    let chosen = choose(&sections, &[read]);
+    assert_eq!(
+        chosen.get(&"a".repeat(32)).unwrap()[0].caption,
+        "It shows why preload sets stroke volume. Source page 12"
+    );
 }

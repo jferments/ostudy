@@ -143,7 +143,7 @@ async fn evaluate(
     };
 
     let started = std::time::Instant::now();
-    match configure_provider(database, runtime, &request.provider).await {
+    match configure_provider(database, runtime, &request.provider, "Guide evaluation").await {
         Ok(probe) => outcome.probe = Some(probe),
         Err(error) => {
             outcome.error = Some(fail("configure", error));
@@ -224,6 +224,20 @@ async fn evaluate(
         if let Some(search) = figure_search {
             let _ = search.await;
         }
+        // As the app does after an import: figures are read when the model
+        // sees images, so the guide's captions say what each one shows.
+        if let Err(error) = crate::document_figures::read_unread_figures(
+            database,
+            paths,
+            &render_runtime,
+            runtime,
+            &document_id,
+        )
+        .await
+        {
+            outcome.error = Some(fail("figures", error));
+            return outcome;
+        }
         if let Err(error) = crate::document_study_guide_export::render_document_guide_pdf(
             database,
             paths,
@@ -241,6 +255,7 @@ async fn configure_provider(
     database: &Database,
     runtime: &AiRuntimeState,
     provider: &GuideEvalProvider,
+    display_name: &str,
 ) -> Result<Value, CommandError> {
     let operation = || database.with_connection(|connection| generate_id(connection));
     let auth_mode = if provider.credential.is_some() {
@@ -253,7 +268,7 @@ async fn configure_provider(
         runtime,
         input::<CreateAiProviderProfileInput>(json!({
             "operationId": operation()?,
-            "displayName": "Guide evaluation",
+            "displayName": display_name,
             "providerKind": provider.kind,
             "baseUrl": provider.base_url,
             "authMode": auth_mode,
@@ -333,11 +348,14 @@ async fn import_and_ingest(
 }
 
 /// Lays out again the guide of the one document in an earlier run's library,
-/// so a layout change can be seen without generating the guide again.
+/// so a layout change can be seen without generating the guide again. Its
+/// figures are found again, and with a `provider` the ones not yet read are
+/// read with it.
 pub fn relayout(
     library_dir: PathBuf,
     resource_dir: Option<PathBuf>,
     destination: &Path,
+    provider: Option<GuideEvalProvider>,
 ) -> Result<(), String> {
     let paths = AppPaths::new(library_dir).map_err(|error| error.to_string())?;
     let database = Database::open(paths.database_path())?;
@@ -353,18 +371,42 @@ pub fn relayout(
                 .map_err(CommandError::database)
         })
         .map_err(|error| error.message)?;
-    // The figures are found again, so a change to finding them shows too.
     let source = database
         .with_connection(|connection| {
             crate::document_annotations::pdf_source_path(connection, &document_id)
         })
         .map_err(|error| error.message)?;
-    tauri::async_runtime::block_on(crate::document_figures::find_after_ingestion(
-        &database,
-        render_runtime.clone(),
-        &document_id,
-        paths.resolve_relative(&source),
-    ));
+    tauri::async_runtime::block_on(async {
+        crate::document_figures::find_after_ingestion(
+            &database,
+            render_runtime.clone(),
+            &document_id,
+            paths.resolve_relative(&source),
+        )
+        .await;
+        if let Some(provider) = provider {
+            let runtime =
+                AiRuntimeState::new(std::sync::Arc::new(crate::platform::UnavailableSecretStore))?;
+            // The run's own profile kept its key for that run only.
+            let name = format!(
+                "Guide evaluation {}",
+                crate::util::unix_time_millis().map_err(|error| error.message)?
+            );
+            configure_provider(&database, &runtime, &provider, &name)
+                .await
+                .map_err(|error| error.message)?;
+            crate::document_figures::read_unread_figures(
+                &database,
+                &paths,
+                &render_runtime,
+                &runtime,
+                &document_id,
+            )
+            .await
+            .map_err(|error| error.message)?;
+        }
+        Ok::<_, String>(())
+    })?;
     crate::document_study_guide_export::render_document_guide_pdf(
         &database,
         &paths,
