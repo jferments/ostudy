@@ -287,6 +287,8 @@ class AndroidSmokeTest {
                         "document.querySelector('[data-testid=\"nav-home\"]')?.getAttribute('aria-current') === 'page'"
                 }
             )
+            // Later cases run as the fresh library they are, without AI pages.
+            evaluateSync(webView, "window.localStorage.removeItem('ostudy.aiFeaturesWithoutService.v1'); true")
         }
     }
 
