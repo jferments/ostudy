@@ -142,7 +142,8 @@ pub(crate) async fn generate_document_study_guide_for_document(
         ));
     }
 
-    let mut task = document_intelligence::load_document_task_context(database)?;
+    let mut task =
+        document_intelligence::load_verified_document_task_context(database, runtime).await?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,

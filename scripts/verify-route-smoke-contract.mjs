@@ -681,7 +681,8 @@ function parseUnion(source, name) {
 
 function parseRenderedAppSections(source) {
   const sections = [
-    ...source.matchAll(/(?:\{|:\s*)controller\.section\s*===\s*"([^"]+)"\s*\?\s*\(/gu),
+    // App renders the section it shows, which is `controller.section` unless AI is off.
+    ...source.matchAll(/(?:\{|:\s*)(?:controller\.)?section\s*===\s*"([^"]+)"\s*\?\s*\(/gu),
   ].map((entry) => entry[1]);
   if (sections.length === 0) {
     fail("Could not parse rendered section branches from src/App.tsx.");

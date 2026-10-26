@@ -85,7 +85,7 @@ Changing the hour re-groups all of your existing history by the new boundary; no
 
 ## Read Progress
 
-**Progress** shows what you have studied and how well it is sticking. Choose a **Subject** (or **All subjects**), a time range (**7 days**, **30 days**, **90 days**, **Year**, **All time**, or **Custom dates**), and, under **Decks, tags and dates**, particular decks and tags. Chosen filters appear as removable chips with **Clear all**. Dates are study days, which start at the **New day starts at** hour. An empty view means no reviews match, not necessarily that the library is empty. Before anything has been studied, Progress shows only **No reviews yet** and **Start review**.
+**Progress** shows what you have studied and how well it is sticking. Choose a **Subject** (or **All subjects**), a time range (**7 days**, **30 days**, **90 days**, **Year**, **All time**, or **Custom dates**), and, under **Decks, tags and dates**, particular decks and tags. Chosen filters appear as removable chips with **Clear all**. Dates are study days, which start at the **New day starts at** hour. An empty view means no reviews match, not necessarily that the library is empty. Before anything has been studied, Progress explains what it will show, with a preview of the page after a few weeks, how spaced repetition and FSRS schedule each card, and **Start review**.
 
 From top to bottom:
 

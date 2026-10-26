@@ -6,11 +6,11 @@ import * as subjectsIpc from "../../ipc/subjects";
 import { DeckTransferDialog, type DeckTransferDialogRequest } from "./DeckTransferDialog";
 
 const calls = vi.hoisted(() => ({
-  importFromFile: vi.fn(), exportDecks: vi.fn(), shareDeck: vi.fn(), invalidate: vi.fn(),
+  importFromFile: vi.fn(), importPastedCards: vi.fn(), exportDecks: vi.fn(), shareDeck: vi.fn(), invalidate: vi.fn(),
 }));
 vi.mock("../../controllers/deckTransferController", () => ({
   DeckTransferController: class {
-    importFromFile = calls.importFromFile; exportDecks = calls.exportDecks;
+    importFromFile = calls.importFromFile; importPastedCards = calls.importPastedCards; exportDecks = calls.exportDecks;
     shareDeck = calls.shareDeck; invalidate = calls.invalidate;
   },
 }));
@@ -36,6 +36,24 @@ function mount(request: DeckTransferDialogRequest = { kind: "import" }) {
 beforeEach(() => { vi.resetAllMocks(); calls.importFromFile.mockResolvedValue(outcome); });
 
 describe("active deck transfer presentation", () => {
+  it("imports a pasted Quizlet set as a named deck and opens it", async () => {
+    calls.importPastedCards.mockResolvedValue(outcome);
+    const { open, toast } = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Paste from Quizlet" }));
+    expect(screen.getByRole("dialog", { name: "Import from Quizlet" })).toBeTruthy();
+    const importButton = screen.getByRole("button", { name: /Import 0 cards/ });
+    expect(importButton.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByTestId("quizlet-text"), { target: { value: "hablar\tto speak\ncomer\tto eat\nvivir" } });
+    expect(screen.getByText(/2 cards found; 1 line has no definition/)).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: /Deck name/ }), { target: { value: "Spanish verbs" } });
+    fireEvent.click(screen.getByRole("button", { name: /Import 2 cards/ }));
+    await waitFor(() => expect(open).toHaveBeenCalledWith(outcome));
+    expect(calls.importPastedCards).toHaveBeenCalledWith("Spanish verbs", [
+      { question: "hablar", answer: "to speak" },
+      { question: "comer", answer: "to eat" },
+    ]);
+    expect(toast).toHaveBeenCalledWith("success", outcome.message);
+  });
   it("offers one Choose a file action with the formats on one line and no help paragraph", () => {
     mount();
     const choose = screen.getByRole("button", { name: /Choose a file/ });

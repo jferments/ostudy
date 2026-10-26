@@ -9,7 +9,6 @@ import { Icon } from "../../ui/icons/Icon";
 import { Sheet } from "../../ui/overlays/Dialog";
 import { FilterSummary, PageHeader, PageScaffold, type ActiveFilter } from "../../ui/patterns/WorkspacePatterns";
 import { Button } from "../../ui/primitives/Button";
-import { EmptyState } from "../../ui/primitives/EmptyState";
 import { Checkbox } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
@@ -18,6 +17,7 @@ import { TextField } from "../../ui/primitives/TextField";
 import { ActivityPanel } from "./ActivityPanel";
 import { AnswersPanel, QuestionTypesPanel, SessionsPanel } from "./DetailPanels";
 import { ForecastPanel } from "./ForecastPanel";
+import { ProgressWelcome } from "./ProgressWelcome";
 import { ReviewsChart } from "./ReviewsChart";
 import { StrengthPanel } from "./StrengthPanel";
 import { SubjectsPanel } from "./SubjectsPanel";
@@ -160,8 +160,8 @@ export function ProgressScreen({ decks, launchRequest, onLaunchConsumed, onPract
     return (
       <PageScaffold width="wide">
         <PageHeader title="Progress" />
-        <EmptyState large icon={<Icon name="analytics" size={28} />} title="No reviews yet"
-          actions={dueDeckIds.length > 0 ? <Button variant="primary" disabled={busy} onClick={startReview}><Icon name="practice" size={16} />Start review</Button> : undefined} />
+        <ProgressWelcome
+          action={dueDeckIds.length > 0 ? <Button variant="primary" disabled={busy} onClick={startReview}><Icon name="practice" size={16} />Start review</Button> : undefined} />
       </PageScaffold>
     );
   }

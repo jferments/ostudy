@@ -140,7 +140,7 @@
             ],
             "assertionFragments": [
               "heading.textContent?.trim() === 'Your library is empty'",
-              "assertEquals(\"Home|Library|Notes|Tutor|Progress\", homeSnapshot.getString(\"navigation\"))",
+              "assertEquals(\"Home|Library|Notes|Progress\", homeSnapshot.getString(\"navigation\"))",
               "assertEquals(\"nav-home\", homeSnapshot.getString(\"current\"))",
               "assertTrue(homeSnapshot.getBoolean(\"importDeck\"))",
               "assertFalse(homeSnapshot.getBoolean(\"todayStrip\"))"

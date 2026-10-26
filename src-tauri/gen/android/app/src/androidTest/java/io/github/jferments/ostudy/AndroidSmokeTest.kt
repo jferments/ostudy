@@ -86,7 +86,8 @@ class AndroidSmokeTest {
                 })()
                 """.trimIndent()
             )
-            assertEquals("Home|Library|Notes|Tutor|Progress", homeSnapshot.getString("navigation"))
+            // A fresh library has no AI service, so the Tutor stays out of the navigation.
+            assertEquals("Home|Library|Notes|Progress", homeSnapshot.getString("navigation"))
             assertEquals("nav-home", homeSnapshot.getString("current"))
             assertTrue(homeSnapshot.getBoolean("bottomNavigation"))
             assertTrue(homeSnapshot.getBoolean("searchAction"))
@@ -246,6 +247,18 @@ class AndroidSmokeTest {
     fun c_tutorOfflineAndAndroidBackReturnHome() {
         withApplication { webView ->
             waitForBridge(webView)
+            // The library has no AI service. The automation flag shows AI-only
+            // pages without one; leaving Home makes the app read it.
+            evaluateSync(
+                webView,
+                "window.localStorage.setItem('ostudy.aiFeaturesWithoutService.v1', 'shown'); " +
+                    "document.querySelector('[data-testid=\"nav-library\"]')?.click(); true"
+            )
+            waitUntil(
+                webView,
+                predicate = { it == "true" },
+                expression = { "Boolean(document.querySelector('[data-testid=\"nav-tutor\"]'))" }
+            )
             evaluateSync(
                 webView,
                 "document.querySelector('[data-testid=\"nav-tutor\"]')?.click(); true"
@@ -274,6 +287,8 @@ class AndroidSmokeTest {
                         "document.querySelector('[data-testid=\"nav-home\"]')?.getAttribute('aria-current') === 'page'"
                 }
             )
+            // Later cases run as the fresh library they are, without AI pages.
+            evaluateSync(webView, "window.localStorage.removeItem('ostudy.aiFeaturesWithoutService.v1'); true")
         }
     }
 

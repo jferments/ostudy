@@ -261,11 +261,23 @@ pub(super) fn resolved(connection: &Connection) -> Result<Resolved, CommandError
         .optional()
         .map_err(CommandError::database)?;
     let usable = connections(connection)?;
+    let default_profile = || -> Result<Option<String>, CommandError> {
+        Ok(speech::document_connection(connection)?
+            .filter(|id| usable.iter().any(|item| item.id == *id))
+            .or_else(|| usable.first().map(|item| item.id.clone())))
+    };
     let mut stored_revision = 0;
     if let Some((profile_id, model_id, voice, revision)) = saved {
         stored_revision = revision;
         if let Some(model) = speech::speech_model(&model_id) {
-            let profile_id = profile_id.filter(|id| usable.iter().any(|item| item.id == *id));
+            // Removing a service clears the saved voice's connection (ON
+            // DELETE SET NULL), and Settings has no way to choose none, so a
+            // voice without a usable connection speaks through the default
+            // one rather than silently turning lesson audio off.
+            let profile_id = match profile_id {
+                Some(id) if usable.iter().any(|item| item.id == id) => Some(id),
+                _ => default_profile()?,
+            };
             return Ok(Resolved {
                 profile_id,
                 model,
@@ -274,10 +286,7 @@ pub(super) fn resolved(connection: &Connection) -> Result<Resolved, CommandError
             });
         }
     }
-    let document_default = speech::document_connection(connection)?;
-    let profile_id = document_default
-        .filter(|id| usable.iter().any(|item| item.id == *id))
-        .or_else(|| usable.first().map(|item| item.id.clone()));
+    let profile_id = default_profile()?;
     let model = speech::speech_model(speech::DRAMA).expect("Drama 3 is in the speech catalog");
     Ok(Resolved {
         profile_id,

@@ -145,10 +145,14 @@ describe("ProgressScreen", () => {
     expect(onPracticeScope).toHaveBeenCalledWith(["d".repeat(32)], []);
   });
 
-  it("shows only a title and Start review before anything was studied", async () => {
+  it("explains the page, spaced repetition and FSRS with Start review before anything was studied", async () => {
     vi.mocked(progressIpc.getProgressActivity).mockResolvedValue(activity({ currentStreak: null, longestStreak: null, days: [] }));
     const { onPracticeScope } = renderScreen();
-    expect(await screen.findByText("No reviews yet")).toBeTruthy();
+    expect(await screen.findByText("Your progress shows up here once you review")).toBeTruthy();
+    expect(screen.getByRole("list", { name: "What Progress shows" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "How spaced repetition works" })).toBeTruthy();
+    expect(screen.getByText("FSRS")).toBeTruthy();
+    expect(screen.getByRole("figure", { name: "A preview of Progress after three weeks of study" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Learning summary" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Start review" }));
     expect(onPracticeScope).toHaveBeenCalledWith(["d".repeat(32)], []);

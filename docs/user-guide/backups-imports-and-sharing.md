@@ -8,6 +8,7 @@ A deck shared with a classmate, generated card input, a personal disaster-recove
 | --- | --- | --- | --- |
 | `.studydeck` | One portable deck | Excluded | Excluded |
 | Compatible Anki `.apkg` | Convert existing Anki card presentations | Not imported | Not imported |
+| Quizlet Export text | Bring a Quizlet set's terms and definitions | Not imported | Not imported |
 | `.ostudy.json` | Strict generated-card authoring input | Excluded | Excluded |
 | `.ostudybackup` | Whole-library recovery | Included | Excluded |
 | Trusted-device sync offer | Explicit one-way exchange of the selected supported study-data graph | Included within selected scope | Separate sender opt-in and secure-store requirements |
@@ -16,7 +17,7 @@ A backup is not automatically encrypted just because credentials are excluded. I
 
 ## Import a deck or generated cards
 
-Open **Library → Flashcards** and choose **Import deck** beside the Library tabs (on a phone, beside **New deck** under the decks). **Choose a file** accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files, and **Into subject** files the new deck in a subject, starting on the one you have open. If the deck cannot be filed, it is still imported, under No subject. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
+Open **Library → Flashcards** and choose **Import deck** beside the Library tabs (on a phone, beside **New deck** under the decks). **Choose a file** accepts `.studydeck`, compatible Anki `.apkg`, and compatible `.ostudy.json` files, **Paste from Quizlet** takes a Quizlet set's Export text, and **Into subject** files the new deck in a subject, starting on the one you have open. If the deck cannot be filed, it is still imported, under No subject. There is no standing Import/Export tab and no separate generated-import preview/approval queue.
 
 A new imported deck starts in **No subject** until you move it with **Move to subject…**. The receiving library owns subject membership and schedules. Generated `.ostudy.json` and `.studydeck` imports open the imported deck when they finish.
 
@@ -45,6 +46,12 @@ While a large Anki deck is importing, the dialog shows the current phase and car
 After the import commits, the dialog stays open as **Anki import complete**, with an import report and **Open imported deck**. It shows imported/skipped/content-simplified totals plus aggregate counts for native appearance conversion, JavaScript static recovery, typed-answer conversion, native Fill in the blank conversion, and complex-cloze fallback. Expand compatibility details for actual per-card problems. If no compatible cards are found, no deck is created. Nothing executable in the package is run, and no network content is fetched.
 
 The compatibility report is a post-import result, not an approval preview. Do not import the same file again merely because some cards were skipped. See the [Anki adapter reference](../reference/anki-import.md) for exact format, semantic conversion, extension boundaries, resource limits, and JavaScript-salvage rules.
+
+### Quizlet sets
+
+Quizlet has no deck file to download; it exports a set as text. In Quizlet, open the set, choose **⋯** then **Export**, and copy the text. In oStudy's **Import deck** dialog choose **Paste from Quizlet**, paste the text, and name the new deck. Quizlet's defaults (a tab between term and definition, a new line between cards) are recognized, and **Between term and definition** (Tab or Comma) and **Between cards** (New line or Semicolon) match the other Export choices. A definition that spans several lines needs **Semicolon** between cards in Quizlet's Export. The dialog shows how many cards it found and the first one before anything is saved.
+
+Each term and definition becomes a Basic card with a fresh schedule, in a new deck filed by **Into subject**. Images, audio, starred terms and Quizlet's study progress do not carry over, and exact duplicates are skipped. Cards are saved 500 at a time; if a later batch fails, the message says how many were added, and **Import** again adds only the missing ones to the same deck.
 
 ### Generated `.ostudy.json`
 

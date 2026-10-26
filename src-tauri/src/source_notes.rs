@@ -17,7 +17,8 @@ use sha2::{Digest, Sha256};
 use crate::{
     ai::{
         document_intelligence::{
-            generate_source_notes, load_document_task_context, SourceNotes, MAX_SOURCE_PROMPT_CHARS,
+            generate_source_notes, load_verified_document_task_context, SourceNotes,
+            MAX_SOURCE_PROMPT_CHARS,
         },
         document_provider, generation, AiRuntimeState,
     },
@@ -59,7 +60,7 @@ pub(crate) async fn write(
             format!("Describe what to study in 1 to {MAX_SOURCE_PROMPT_CHARS} characters."),
         ));
     }
-    let mut task = load_document_task_context(database)?;
+    let mut task = load_verified_document_task_context(database, runtime).await?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,
