@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/common";
@@ -222,6 +222,16 @@ export interface SubjectCourse {
   rewrite: () => void;
   stop: () => void;
   dismissWriteError: () => void;
+}
+
+function writingSubjectsKey(): string {
+  return [...runs].filter(([, run]) => run.outcome === null).map(([subjectId]) => subjectId).sort().join("\n");
+}
+
+/** The subjects whose course, with its podcast and lecture audio, is being written now. */
+export function useSubjectsWritingCourses(): ReadonlySet<string> {
+  const key = useSyncExternalStore(subscribe, writingSubjectsKey);
+  return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
 }
 
 /** A subject's course, and writing it with AI. */
