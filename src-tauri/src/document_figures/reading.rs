@@ -16,7 +16,7 @@ use crate::{
         concurrency::{document_request_parallelism, run_bounded_provider_queue, QueueControl},
         document_intelligence::{
             self, is_output_failure, DocumentTaskContext, FigurePage, FigureReading, FigureToRead,
-            NearbyText, SourcePageImage,
+            ImageShows, NearbyText, SourcePageImage,
         },
         AiRuntimeState,
     },
@@ -334,7 +334,7 @@ async fn prepare_window(
                 whole_page_tile(page_width, page_height),
             )
             .map_err(render_error)?,
-            crop_of: None,
+            shows: ImageShows::Unit,
         }];
         for (figure_id, width, height, bounds) in &crops {
             images.push(SourcePageImage {
@@ -346,7 +346,7 @@ async fn prepare_window(
                     crop_tile(*width, *height, *bounds),
                 )
                 .map_err(render_error)?,
-                crop_of: Some(figure_id.clone()),
+                shows: ImageShows::CropOf(figure_id.clone()),
             });
         }
         let mut wanted = vec![page];
@@ -360,7 +360,7 @@ async fn prepare_window(
                     whole_page_tile(page_width, page_height),
                 )
                 .map_err(render_error)?,
-                crop_of: None,
+                shows: ImageShows::Unit,
             });
             wanted.push(neighbour);
         }

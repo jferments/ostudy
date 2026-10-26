@@ -11,6 +11,7 @@ import {
   deleteTutorConversation,
   deleteTutorProject,
   getTutorConversation,
+  getTutorImageInput,
   listTutorConversations,
   listTutorProjects,
   moveTutorConversation,
@@ -31,6 +32,7 @@ vi.mock("../../ipc/knowledge", () => ({ cancelLearningTask: vi.fn(), listSemanti
   getSemanticPreparation: vi.fn(), prepareSemanticMaterial: vi.fn(), previewSemanticPreparation: vi.fn(),
 }));
 vi.mock("../../ipc/tutor", () => ({
+  getTutorImageInput: vi.fn(),
   createTutorConversation: vi.fn(),
   createTutorProject: vi.fn(),
   createTutorProjectConversation: vi.fn(),
@@ -56,6 +58,7 @@ const turn: TutorTurn = {
   assistantText: "A triangle has three sides.", state: "complete", citations: [], evidenceCurrent: true,
   pendingQuestion: false, feedback: null, provider: "llama_cpp", model: "fixture", errorCode: "", errorMessage: "", totalTokens: 20, createdAt: 1,
   replacedByTurnId: null,
+  attachments: [],
   question: null,
   questionId: null,
 };
@@ -74,6 +77,7 @@ const project: TutorProject = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getTutorImageInput).mockResolvedValue(true);
   vi.mocked(getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: null, tutorProfileId: null, embeddingsProfileId: null });
   vi.mocked(listAiProviderProfiles).mockResolvedValue([]);
   vi.mocked(listSemanticScopeChoices).mockResolvedValue([]);

@@ -46,7 +46,8 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     TableSpec::new("card_templates", &["id"]),
     TableSpec::new("card_template_fields", &["id"]),
     // Card images. Notebook pictures and lesson audio are the other parts of
-    // `assets`, and travel with their own categories.
+    // `assets`, and travel with their own categories; pictures attached to a
+    // Tutor chat stay on the device that has the chat.
     TableSpec::assets(
         "assets",
         "lifecycle_state IN ('ready', 'deleted')
@@ -55,7 +56,9 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
               OR id IN (SELECT asset_id FROM question_attempt_assets)
               OR (id NOT IN (SELECT asset_id FROM notebook_item_assets)
                   AND id NOT IN (SELECT asset_id FROM speech_segments)
-                  AND id NOT IN (SELECT asset_id FROM speech_voices)))",
+                  AND id NOT IN (SELECT asset_id FROM speech_voices)
+                  AND id NOT IN (SELECT asset_id FROM tutor_turn_attachments
+                                 WHERE asset_id IS NOT NULL)))",
     ),
     TableSpec::new("notes", &["id"]),
     TableSpec::new("question_generation_evidence", &["note_id"]),

@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({ send: vi.fn(), draft: "Test my knowledge", tar
 vi.mock("./TutorContext", () => ({ useTutor: () => ({
   ...state, loading: false, busy: false, organizing: false, pending: null, preparation: { locked: false },
   scope: { kind: "general", id: null }, choices: [], profiles: [{}], conversations: [], projects: [],
+  attachments: { items: [], adding: false, imagesBlocked: false, error: null, add: vi.fn(), remove: vi.fn() },
   needsRefresh: false, error: null, initialize: vi.fn(), setDraft: vi.fn(),
 }) }));
 vi.mock("../../platform/externalLinks", () => ({ openExternalUrl: vi.fn() }));
@@ -19,7 +20,7 @@ beforeEach(() => {
   state.detail = { conversation: { id: "a", title: "Saved chat" }, turns: [{
     id: "b", mode: "explain", userText: "Ask me questions", assistantText: "**Question 1**\n\nExplain this relationship.",
     state: "complete", citations: [], evidenceCurrent: true, pendingQuestion: false, feedback: null,
-    errorMessage: "", model: "fixture",
+    errorMessage: "", model: "fixture", attachments: [],
   }] };
 });
 
@@ -54,7 +55,7 @@ describe("Conversational Tutor presentation", () => {
     state.target = { mode: "hint" };
     state.detail = { conversation: { id: "a", title: "Hints" }, turns: [{
       id: "h", mode: "hint", userText: "Hint", assistantText: "**Think about the relationship**", state: "complete",
-      citations: [], evidenceCurrent: true, pendingQuestion: false, feedback: null, errorMessage: "", model: "fixture",
+      citations: [], evidenceCurrent: true, pendingQuestion: false, feedback: null, errorMessage: "", model: "fixture", attachments: [],
     }] };
     render(<TutorWorkspace />);
     expect(screen.queryByRole("button", { name: "Quiz me" })).toBeNull();
@@ -69,7 +70,7 @@ describe("Tutor saved mathematical replies", () => {
     const detail = { conversation: { id: "a", title: "Saved math" }, turns: [{
       id: "m", mode: "explain", userText: "Explain", assistantText: String.raw`Answer \(x^2\)`,
       state: "complete", citations: [{ id: "s", title: "Original source" }], evidenceCurrent: false,
-      pendingQuestion: false, feedback: null, errorMessage: "", model: "fixture",
+      pendingQuestion: false, feedback: null, errorMessage: "", model: "fixture", attachments: [],
     }] };
     const before = JSON.stringify(detail);
     state.detail = detail;

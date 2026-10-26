@@ -9,7 +9,8 @@ use super::{
     contracts::{
         ConversationDetail, ConversationPageInput, ConversationSummary, CreateConversationInput,
         CreateProjectConversationInput, DeleteConversationInput, MoveConversationInput,
-        RenameConversationInput, SetConversationArchivedInput, TutorTurn, TutorTurnInput,
+        RenameConversationInput, SetConversationArchivedInput, TutorImageInputQuery, TutorTurn,
+        TutorTurnInput,
     },
     conversations, figures, memory, projects, service,
 };
@@ -114,6 +115,22 @@ pub fn get_tutor_figure(
     input: figures::TutorFigureInput,
 ) -> Result<figures::TutorFigureDto, CommandError> {
     figures::tutor_figure(database.inner(), input)
+}
+
+/// Whether the chat's model sees the pictures a learner attaches, so the
+/// composer can say so before anything is sent.
+#[tauri::command]
+pub fn get_tutor_image_input(
+    database: State<'_, Database>,
+    input: TutorImageInputQuery,
+) -> Result<bool, CommandError> {
+    if let Some(id) = &input.profile_id {
+        crate::util::validate_entity_id(id, "tutor profile")?;
+    }
+    Ok(service::accepts_images(
+        database.inner(),
+        input.profile_id.as_deref(),
+    ))
 }
 
 #[tauri::command]

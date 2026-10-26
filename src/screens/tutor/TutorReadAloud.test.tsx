@@ -8,6 +8,7 @@ vi.mock("./TutorContext", () => ({ useTutor: () => ({
   detail: state.detail, send: vi.fn(), draft: "", target: null, loading: false, busy: false, organizing: false,
   pending: null, preparation: { locked: false }, scope: { kind: "general", id: null }, choices: [], profiles: [{}],
   conversations: [], projects: [], needsRefresh: false, error: null, initialize: vi.fn(), setDraft: vi.fn(),
+  attachments: { items: [], adding: false, imagesBlocked: false, error: null, add: vi.fn(), remove: vi.fn() },
 }) }));
 vi.mock("../lessons/useVoiceAvailable", () => ({ useVoiceAvailable: () => state.voice }));
 vi.mock("../../ipc/tutor", async (importOriginal) => ({
@@ -35,7 +36,7 @@ beforeEach(() => {
   state.detail = { conversation: { id: "a", title: "Saved chat" }, turns: [{
     id: "b".repeat(32), mode: "explain", userText: "Why?", assistantText: "Because **it** works.",
     state: "complete", citations: [], evidenceCurrent: true, pendingQuestion: false, feedback: null,
-    errorMessage: "", model: "fixture",
+    errorMessage: "", model: "fixture", attachments: [],
   }] };
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);

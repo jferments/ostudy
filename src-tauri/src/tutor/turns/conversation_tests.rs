@@ -80,6 +80,7 @@ fn conversational_question_publication_preserves_request_identity_and_private_ru
         replaces_turn_id: None,
         after_question_id: None,
         choice: None,
+        attachments: Vec::new(),
     };
     let identity = TurnIdentity {
         id: "c".repeat(32),
@@ -152,6 +153,7 @@ fn organization_changes_do_not_invalidate_an_admitted_response() {
         replaces_turn_id: None,
         after_question_id: None,
         choice: None,
+        attachments: Vec::new(),
     };
     let identity = TurnIdentity {
         id: "f".repeat(32),

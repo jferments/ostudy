@@ -4,6 +4,7 @@ import { getErrorMessage } from "../../ipc/common";
 import { getSemanticSourceCitation, sameStudyScope, studyScopeKey, type SourceCitation } from "../../ipc/knowledge";
 import type { TutorTurn } from "../../ipc/tutor";
 import { copyText } from "../../platform/clipboard";
+import { dataTransferImageFiles, readClipboardImageFiles } from "../../platform/imageInput";
 import { Icon } from "../../ui/icons/Icon";
 import { IconButton } from "../../ui/icons/IconButton";
 import { cn } from "../../ui/internal/cn";
@@ -14,6 +15,7 @@ import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { Textarea, Disclosure } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
+import { TextField } from "../../ui/primitives/TextField";
 import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { TutorChatSettings } from "./TutorChatSettings";
 import { RenameConversationDialog, TutorHistory } from "./TutorHistory";
@@ -30,6 +32,8 @@ import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStart
 import { TutorAnswerCards, type CardSource } from "./TutorAnswerCards";
 import { earlierOutcomes, TutorQuizCard } from "./TutorQuizCard";
 import { useGenerationModelMissing } from "../documents/useGenerationModelMissing";
+import { ComposerAttachments, SentAttachments } from "./TutorAttachments";
+import { ATTACHMENT_ACCEPT } from "./useTutorAttachments";
 import { styles, withoutFigures } from "./presentation";
 
 function SourceDetails({ source }: { source: SourceCitation }) {
@@ -105,6 +109,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const sourceLane = useRequestLane();
   const transcript = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
   const followTail = useRef(true);
   const [awayFromTail, setAwayFromTail] = useState(false);
   const starters = useTutorStarters();
@@ -302,7 +307,12 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   );
   const submitLabel = hintOnly ? "Request hint" : question ? "Submit answer" : "Send";
   const recording = speech.phase === "recording";
-  const sendDisabled = locked || tutor.needsRefresh || !tutor.draft.trim() || speech.phase !== "idle";
+  const attached = tutor.attachments;
+  // Attachments go with a question, not with a hint request or a quiz answer.
+  const attaching = !hintOnly && !question;
+  const sendable = Boolean(tutor.draft.trim()) || (attaching && attached.items.length > 0);
+  const sendDisabled = locked || tutor.needsRefresh || !sendable || speech.phase !== "idle"
+    || (attaching && (attached.adding || attached.imagesBlocked));
   const speechStatus = recording
     ? "Recording…"
     : speech.phase === "transcribing"
@@ -337,7 +347,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
 
   const composerForm = (
     <form
-      className={styles.composer}
+      className={cn(styles.composer, attaching ? styles.composerAttaching : null)}
       onSubmit={(event) => { event.preventDefault(); submit(); }}
       onKeyDown={(event) => {
         if (event.key === "Escape" && recording) {
@@ -345,7 +355,49 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
           speech.cancel();
         }
       }}
+      onPaste={(event) => {
+        if (!attaching || locked) return;
+        const files = dataTransferImageFiles(event.clipboardData);
+        if (files.length) {
+          event.preventDefault();
+          attached.add(files);
+        } else if (!event.clipboardData.getData("text/plain")) {
+          // Some Linux clipboards hand a screenshot only to the clipboard reader.
+          void readClipboardImageFiles().then((read) => { if (read.length) attached.add(read); }, () => undefined);
+        }
+      }}
+      onDragOverCapture={(event) => {
+        if (!attaching || !event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = locked ? "none" : "copy";
+      }}
+      onDropCapture={(event) => {
+        if (!attaching || !event.dataTransfer.files.length) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!locked) attached.add(Array.from(event.dataTransfer.files));
+      }}
     >
+      {attaching ? (
+        <>
+          <ComposerAttachments items={attached.items} disabled={locked} onRemove={attached.remove} />
+          <TextField
+            ref={picker}
+            type="file"
+            multiple
+            accept={ATTACHMENT_ACCEPT}
+            aria-label="Choose pictures or files"
+            className="tw:sr-only"
+            tabIndex={-1}
+            onChange={(event) => {
+              const files = Array.from(event.currentTarget.files ?? []);
+              event.currentTarget.value = "";
+              attached.add(files);
+            }}
+          />
+          <IconButton icon="plus" label="Attach pictures or files" disabled={locked || tutor.needsRefresh} onClick={() => picker.current?.click()} />
+        </>
+      ) : null}
       {composerInput(styles.composerInput, 1)}
       {microphone}
       {question ? (
@@ -361,6 +413,16 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const composer = (
     <>
       {composerForm}
+      {attaching && attached.imagesBlocked ? (
+        <div className={styles.composerNotice}>
+          <InlineNotice kind="warning">
+            This chat's model can't see pictures, or hasn't been tested with them. Remove them, or choose and test a model that can under Settings → AI → Interactive tutor.
+          </InlineNotice>
+        </div>
+      ) : null}
+      {attaching && attached.error ? (
+        <p className={styles.speechError} role="alert">{attached.error}</p>
+      ) : null}
       {speech.available ? (
         <p className={speech.error ? styles.speechError : styles.speechStatus} role="status">
           {speech.error ?? speechStatus}
@@ -460,6 +522,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
         const edit = editing?.turnId === turn.id ? editing : null;
         return (
           <article className={styles.turn} key={current.id}>
+            <SentAttachments attachments={turn.attachments} className={latest ? undefined : styles.earlierVersion} />
             {edit ? (
               <form
                 className={styles.userEdit}

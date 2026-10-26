@@ -9,7 +9,7 @@ function turn(id: string, fields: Partial<TutorTurn>): TutorTurn {
     id: id.repeat(32), operationId: id.repeat(32), sequence: 1, mode: "quiz", userText: "",
     assistantText: "", state: "complete", citations: [], evidenceCurrent: true, pendingQuestion: false,
     feedback: null, question: null, questionId: null, provider: "fixture", model: "fixture", errorCode: "",
-    errorMessage: "", totalTokens: null, createdAt: 1, replacedByTurnId: null, ...fields,
+    errorMessage: "", totalTokens: null, createdAt: 1, replacedByTurnId: null, attachments: [], ...fields,
   };
 }
 

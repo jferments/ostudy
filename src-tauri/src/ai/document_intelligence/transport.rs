@@ -14,7 +14,10 @@ use crate::{
 use super::super::AiRuntimeState;
 use super::{
     context::DocumentTaskContext,
-    contracts::{SourcePageImage, MAX_COMPLETION_BYTES, MAX_INLINE_IMAGES, MAX_REQUEST_JSON_BYTES},
+    contracts::{
+        ImageShows, SourcePageImage, MAX_COMPLETION_BYTES, MAX_INLINE_IMAGES,
+        MAX_REQUEST_JSON_BYTES,
+    },
     support::{output_error, truncated_output_error},
 };
 
@@ -300,13 +303,17 @@ fn multimodal_user_parts(
     for image in images {
         let media_type = document_image_media_type(&image.bytes).ok_or_else(||
             CommandError::new("ai_document_image_invalid", "An admitted source image is not a supported image format. The request was not sent."))?;
-        let caption = match &image.crop_of {
-            Some(figure) => format!(
+        let caption = match &image.shows {
+            ImageShows::CropOf(figure) => format!(
                 "A close crop of figure {figure} on source unit {} follows, so its small labels can be read.",
                 image.page_number
             ),
-            None => format!(
+            ImageShows::Unit => format!(
                 "Rendered source unit {} follows. Use it only as source evidence for diagrams, tables, equations, and layout-dependent or image-only content.",
+                image.page_number
+            ),
+            ImageShows::Attached(name) => format!(
+                "The learner attached picture {} (\"{name}\") to their question. It follows; it shows what they are asking about, not source evidence.",
                 image.page_number
             ),
         };
@@ -437,9 +444,23 @@ mod tests {
         let images = [SourcePageImage {
             page_number: 1,
             bytes: b"not an image".to_vec(),
-            crop_of: None,
+            shows: ImageShows::Unit,
         }];
         assert!(multimodal_user_parts("source", &images).is_err());
+    }
+
+    #[test]
+    fn an_attached_picture_is_captioned_as_the_learners_not_as_evidence() {
+        let images = [SourcePageImage {
+            page_number: 1,
+            bytes: vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0],
+            shows: ImageShows::Attached("lab results.png".to_string()),
+        }];
+        let parts = multimodal_user_parts("question", &images).unwrap();
+        let caption = parts[1]["text"].as_str().unwrap();
+        assert!(caption.contains("\"lab results.png\""));
+        assert!(caption.contains("not source evidence"));
+        assert_eq!(parts[2]["type"], "image_url");
     }
 }
 
