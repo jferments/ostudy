@@ -8,10 +8,7 @@ source "$ROOT_DIR/versions.env"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/node-toolchain.bash"
 ostudy_activate_node_toolchain
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/cargo-target.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 cd "$ROOT_DIR"
 
 VERSION="$(node -p "require('./package.json').version")"
@@ -30,53 +27,44 @@ git diff --quiet && git diff --cached --quiet || {
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
 
 "$SCRIPT_DIR/release-check.sh"
-prepare_cargo_target "$ROOT_DIR"
-pnpm install --frozen-lockfile
-"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
-
-printf '\n==> Building Linux Debian, RPM and AppImage bundles\n'
-pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb,rpm,appimage --ci -- --locked
 
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;
-  aarch64|arm64) ARCH="aarch64" ;;
-  *) printf 'ERROR: unsupported release architecture: %s\n' "$(uname -m)" >&2; exit 1 ;;
+  *) printf 'ERROR: Linux releases are built on x86_64 only, not %s.\n' "$(uname -m)" >&2; exit 1 ;;
 esac
 
 OUT_DIR="$ROOT_DIR/artifacts/$EXPECTED_TAG/linux-$ARCH"
 rm -rf -- "$ROOT_DIR/artifacts/$EXPECTED_TAG"
 mkdir -p "$OUT_DIR"
-BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"
-shopt -s nullglob
-DEB_FILES=("$BUNDLE_ROOT"/deb/*.deb)
-RPM_FILES=("$BUNDLE_ROOT"/rpm/*.rpm)
-APPIMAGE_FILES=("$BUNDLE_ROOT"/appimage/*.AppImage)
-(( ${#DEB_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one Debian bundle.\n' >&2; exit 1; }
-(( ${#RPM_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one RPM bundle.\n' >&2; exit 1; }
-(( ${#APPIMAGE_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one AppImage bundle.\n' >&2; exit 1; }
 
-"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
-python3 "$SCRIPT_DIR/verify-rpm-package.py" "${RPM_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
+# Built in an Ubuntu 22.04 container so the files start on every maintained
+# distribution; it qualifies the .deb and .rpm with check-linux-package.sh
+# (verify-deb-package.sh, verify-rpm-package.py) before writing anything.
+printf '\n==> Building the portable .deb, .rpm, AppImage and tarball\n'
+"$SCRIPT_DIR/package-linux-portable.sh" --output "$OUT_DIR"
+DEB="$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.deb"
+[[ -f "$DEB" && -f "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.rpm" && -f "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage" ]] || {
+  printf 'ERROR: the portable build did not produce the %s .deb, .rpm and AppImage.\n' "$EXPECTED_TAG" >&2
+  exit 1
+}
 
-cp "${DEB_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.deb"
-cp "${RPM_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.rpm"
-cp "${APPIMAGE_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage"
-chmod +x "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage"
+printf '\n==> Building the Flatpak bundle from the portable .deb\n'
+FLATPAK_DIR="$(mktemp -d -t ostudy-release-flatpak.XXXXXXXX)"
+trap 'rm -rf -- "$FLATPAK_DIR"' EXIT
+"$SCRIPT_DIR/build-flatpak.sh" --deb "$DEB" --output "$FLATPAK_DIR"
+cp "$FLATPAK_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.flatpak" "$OUT_DIR/"
+
 git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
   --output="$OUT_DIR/ostudy-$EXPECTED_TAG-source.tar.gz" HEAD
 
 {
-  printf 'version=%s\n' "$VERSION"
   printf 'tag=%s\n' "$EXPECTED_TAG"
-  printf 'commit=%s\n' "$(git rev-parse HEAD)"
-  printf 'architecture=%s\n' "$ARCH"
-  printf 'built_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'cargo_jobs=%s\n' "$CARGO_BUILD_JOBS"
+  printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
   printf 'pdfium_build=%s\n' "$PDFIUM_BUILD"
-} > "$OUT_DIR/BUILD-INFO.txt"
+} >> "$OUT_DIR/BUILD-INFO.txt"
 (
   cd "$OUT_DIR"
-  sha256sum BUILD-INFO.txt *.deb *.rpm *.AppImage *.tar.gz > SHA256SUMS.txt
+  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
 )
 
 printf '\nRelease artifacts created in: %s\n' "$OUT_DIR"

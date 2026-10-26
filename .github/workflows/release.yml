@@ -41,3 +41,14 @@ jobs:
         run: |
           bash ./scripts/persist-runner-output.sh linux-release \
             "artifacts/${GITHUB_REF_NAME}"
+
+      # A draft in the public releases repository; the maintainer publishes it
+      # there, and puts the same files on ostudy.io with ostudy-io's
+      # tools/publish-release.sh.
+      - name: Draft the public GitHub release
+        env:
+          OSTUDY_RELEASES_TOKEN: ${{ secrets.OSTUDY_RELEASES_TOKEN }}
+          OSTUDY_RELEASES_REPO: ${{ vars.OSTUDY_RELEASES_REPO }}
+        run: |
+          ./scripts/publish-github-release.sh "$GITHUB_REF_NAME" \
+            "artifacts/${GITHUB_REF_NAME}/linux-x86_64"
