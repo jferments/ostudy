@@ -55,9 +55,12 @@ modules:
       - cp -a deb/usr/lib/ostudy /app/lib/ostudy
       - install -Dm644 deb/usr/share/applications/ostudy.desktop /app/share/applications/io.github.jferments.ostudy.desktop
       - desktop-file-edit --set-icon=io.github.jferments.ostudy /app/share/applications/io.github.jferments.ostudy.desktop
+      # The .deb carries 32, 128 and 256 px icons (appstream needs 64 or 128)
+      # beside the 1254 px source; HiDPI "@2" folders are left out.
       - |
         for size_dir in deb/usr/share/icons/hicolor/*; do
           size="$(basename "$size_dir")"
+          case "$size" in *@*) continue ;; esac
           install -Dm644 "$size_dir/apps/ostudy.png" "/app/share/icons/hicolor/$size/apps/io.github.jferments.ostudy.png"
         done
       - install -Dm644 io.github.jferments.ostudy.metainfo.xml /app/share/metainfo/io.github.jferments.ostudy.metainfo.xml
