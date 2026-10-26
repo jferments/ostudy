@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 MANIFEST="$SCRIPT_DIR/native-deps-manifest.json"
 PDFIUM_DEST="$ROOT_DIR/src-tauri/resources/native/pdfium"
+SHERPA_DEST="$ROOT_DIR/src-tauri/resources/native/sherpa-onnx"
 INSTALL_TESSERACT=1
+STAGE_ANDROID_SPEECH=0
 TARGET=""
 
 usage() {
@@ -13,14 +15,16 @@ usage() {
 Usage: ./scripts/install-native-deps.sh [options]
 
 Options:
-  --pdfium-only          Provision/verify PDFium only (used by build/check CI).
+  --pdfium-only          Provision/verify the build's native libraries (PDFium and
+                         the sherpa-onnx speech libraries) without Tesseract.
   --with-tesseract       Also ensure desktop Tesseract + English data are installed.
+  --android              Also stage the Android sherpa-onnx libraries.
   --target TARGET        Stage a specific manifest target (for example linux-x64,
                          macos-arm64, android-arm64, ios-device-arm64).
   --help                 Show this help.
 
-PDFium is downloaded only from the immutable, pinned release in
-scripts/native-deps-manifest.json and is SHA-256 verified before extraction.
+PDFium and sherpa-onnx are downloaded only from the immutable, pinned releases
+in scripts/native-deps-manifest.json and are SHA-256 verified before use.
 Set OSTUDY_PDFIUM_PATH to use an explicitly managed/system library instead.
 EOF
 }
@@ -29,6 +33,7 @@ while (( $# > 0 )); do
   case "$1" in
     --pdfium-only) INSTALL_TESSERACT=0 ;;
     --with-tesseract) INSTALL_TESSERACT=1 ;;
+    --android) STAGE_ANDROID_SPEECH=1 ;;
     --target)
       shift
       [[ $# -gt 0 ]] || { printf 'ERROR: --target requires a value.\n' >&2; exit 2; }
@@ -184,6 +189,69 @@ EOF
     printf 'OK   PDFium %s staged at %s and cached at %s\n' \
       "$PDFIUM_BUILD" "$installed_library" "$cache_dir"
   fi
+fi
+
+# Copies one pinned sherpa-onnx archive into SHERPA_DEST after checking its
+# SHA-256. The sherpa-onnx-sys build script reads it from there through
+# SHERPA_ONNX_ARCHIVE_DIR (.cargo/config.toml) instead of downloading it.
+stage_sherpa_onnx() {
+  local target="$1" version base_url archive expected_sha
+  IFS=$'\t' read -r version base_url archive expected_sha < <(
+    python3 - "$MANIFEST" "$target" <<'PY'
+import json, pathlib, sys
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+sherpa = manifest["sherpaOnnx"]
+artifact = sherpa["artifacts"].get(sys.argv[2])
+if artifact is None:
+    print("", "", "", "", sep="\t")
+else:
+    print(sherpa["version"], sherpa["binarySource"]["releaseBaseUrl"], artifact["archive"], artifact["sha256"], sep="\t")
+PY
+  )
+  if [[ -z "$archive" ]]; then
+    printf 'SKIP sherpa-onnx has no pinned libraries for %s; speech input is unavailable there.\n' "$target"
+    return 0
+  fi
+
+  local staged="$SHERPA_DEST/$archive"
+  local cache_dir="$cache_root/sherpa-onnx/$version/$expected_sha"
+  local cached="$cache_dir/$archive"
+  mkdir -p "$SHERPA_DEST"
+  if [[ -f "$staged" && "$(hash_file "$staged")" == "$expected_sha" ]]; then
+    printf 'OK   sherpa-onnx %s for %s is already staged and verified.\n' "$version" "$target"
+    return 0
+  fi
+  if [[ -f "$cached" && "$(hash_file "$cached")" == "$expected_sha" ]]; then
+    cp "$cached" "$staged"
+    printf 'OK   sherpa-onnx %s for %s restored from verified cache %s.\n' "$version" "$target" "$cache_dir"
+    return 0
+  fi
+
+  local download
+  download="$(mktemp -t ostudy-sherpa-onnx.XXXXXXXX)"
+  printf 'Downloading pinned sherpa-onnx %s for %s...\n' "$version" "$target"
+  curl --fail --location --proto '=https' --tlsv1.2 "$base_url/$archive" --output "$download"
+  local actual_sha
+  actual_sha="$(hash_file "$download")"
+  if [[ "$actual_sha" != "$expected_sha" ]]; then
+    rm -f -- "$download"
+    printf 'ERROR: sherpa-onnx archive SHA-256 mismatch. Expected %s, got %s.\n' "$expected_sha" "$actual_sha" >&2
+    exit 1
+  fi
+  rm -rf -- "$cache_dir"
+  mkdir -p "$cache_dir"
+  cp "$download" "$cached"
+  mv "$download" "$staged"
+  chmod 0644 "$staged"
+  printf 'OK   sherpa-onnx %s staged at %s and cached at %s\n' "$version" "$staged" "$cache_dir"
+}
+
+case "$TARGET" in
+  android-*) stage_sherpa_onnx android ;;
+  *) stage_sherpa_onnx "$TARGET" ;;
+esac
+if (( STAGE_ANDROID_SPEECH == 1 )); then
+  stage_sherpa_onnx android
 fi
 
 ensure_tesseract() {

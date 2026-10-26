@@ -106,10 +106,12 @@ mod practice;
 mod practice_resume;
 mod practice_selection;
 mod projections;
+mod question_of_the_day;
 mod schedule_controls;
 mod scheduler;
 mod settings;
 mod source_notes;
+mod speech_input;
 mod startup;
 mod study_activity;
 mod study_calendar;
@@ -386,6 +388,7 @@ pub fn run() {
             tutor::commands::move_tutor_conversation,
             tutor::commands::set_tutor_conversation_archived,
             tutor::commands::get_tutor_conversation,
+            tutor::commands::get_tutor_figure,
             tutor::commands::delete_tutor_conversation,
             library_session::commands::leased_send_tutor_turn,
             tutor::commands::get_tutor_memory,
@@ -470,6 +473,7 @@ pub fn run() {
             library_session::commands::leased_write_podcast,
             library_session::commands::leased_write_source_notes,
             library_session::commands::leased_narrate_podcast_turn,
+            library_session::commands::leased_speak_tutor_reply,
             document_citations::list_deck_source_citations,
             document_citations::get_note_source_citation,
             library_session::commands::leased_generate_document_study_guide,
@@ -495,6 +499,10 @@ pub fn run() {
             library_session::commands::leased_prepare_library_backup_async,
             library_backup_commands::prepare_library_restore_async,
             home_summary::get_home_summary,
+            question_of_the_day::get_question_of_the_day,
+            speech_input::get_speech_input_status,
+            library_session::commands::leased_install_speech_input_model,
+            library_session::commands::leased_transcribe_speech,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
             practice_selection::start_card_practice,

@@ -382,6 +382,7 @@ const manifest = await read("src-tauri/gen/android/app/src/main/AndroidManifest.
 for (const requiredText of [
   'android.permission.INTERNET',
   'android.permission.ACCESS_NETWORK_STATE',
+  'android.permission.RECORD_AUDIO',
   'android:allowBackup="false"',
   'android:resizeableActivity="true"',
   'androidx.core.content.FileProvider',

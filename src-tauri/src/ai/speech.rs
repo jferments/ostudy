@@ -168,11 +168,13 @@ pub(crate) struct Speaker<'a> {
 }
 
 /// Speaks one finished piece of text. The request is accounted under the
-/// caller's operation; the provider reports no token usage for speech.
+/// caller's operation as `stage`; the provider reports no token usage for
+/// speech.
 pub(crate) async fn speak(
     runtime: &AiRuntimeState,
     request: &ProfileRequestSnapshot,
     speaker: &Speaker<'_>,
+    stage: &str,
     text: &str,
     accounting: &generation::Context,
     cancellation: &CancellationSignal,
@@ -197,12 +199,8 @@ pub(crate) async fn speak(
         .as_ref()
         .map(|secret| secret.as_utf8())
         .transpose()?;
-    let mut attempt = accounting.start_attempt(
-        "lesson_narration",
-        &body,
-        None,
-        profile.provider_kind.as_str(),
-    )?;
+    let mut attempt =
+        accounting.start_attempt(stage, &body, None, profile.provider_kind.as_str())?;
     let response = tokio::select! {
         _ = cancellation.canceled() => Err(CommandError::new(
             "speech_canceled",

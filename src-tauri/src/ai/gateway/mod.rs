@@ -20,6 +20,7 @@ pub(crate) use errors::error;
 pub(crate) use response::AudioResponse;
 pub(crate) use streaming::sse::{anthropic_finish_reason, anthropic_usage_envelope};
 pub(crate) use streaming::usage::safe_usage_envelope as normalized_usage;
+pub(crate) use streaming::{observe_output, OutputObserver};
 
 #[cfg(test)]
 pub(crate) use streaming::sse::SseChatAccumulator;

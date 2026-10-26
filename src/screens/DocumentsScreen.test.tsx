@@ -13,6 +13,7 @@ import * as platformFiles from "../platform/files";
 import { makeSubject, makeSubjectLibrary } from "../test/factories";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
+import { openMenu } from "../test/menus";
 
 vi.mock("../platform/files", () => ({ selectExternalImport: vi.fn() }));
 vi.mock("../ipc/aiProfiles", () => ({
@@ -173,20 +174,7 @@ function renderDocuments(
 async function openDocumentActions(title = "Cardiac physiology"): Promise<HTMLElement> {
   const label = `More actions for ${title}`;
   const trigger = screen.getByRole("button", { name: label });
-  // Base UI connects a menu trigger to its root in a passive effect, so a click
-  // that lands after the row renders but before React runs that effect does
-  // nothing, and a busy machine widens the gap. An accepted click opens the menu
-  // before act returns and a dropped one leaves it closed, so clicking until it
-  // reports open never toggles it shut.
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => {
-      fireEvent.click(trigger);
-    });
-  }
-  await waitFor(() => {
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-  });
-  return screen.findByRole("menu", { name: label });
+  return openMenu(trigger);
 }
 
 async function chooseUpload(item: "Document…" | "Images…"): Promise<void> {

@@ -92,6 +92,8 @@ export function useTutorController() {
   const creating = useRef<PendingConversationCreate | null>(null);
   const organizationOperations = useRef(new Map<string, string>());
   const active = useRef<string | null>(null);
+  // The turn whose answer is being written, for its live progress.
+  const [liveOperationId, setLiveOperationId] = useState<string | null>(null);
   const mutating = useRef(false);
   const organizationMutating = useRef(false);
   const alive = useRef(true);
@@ -317,7 +319,13 @@ export function useTutorController() {
 
   async function perform(request: TutorTurnInput): Promise<void> {
     active.current = request.operationId;
-    const turn = await sendTutorTurn(request);
+    setLiveOperationId(request.operationId);
+    let turn: TutorTurn;
+    try {
+      turn = await sendTutorTurn(request);
+    } finally {
+      if (alive.current) setLiveOperationId(null);
+    }
     if (!alive.current) return;
     setPending(turn.state === "running" ? request : null);
     if (turn.state !== "running") {
@@ -346,7 +354,18 @@ export function useTutorController() {
     }
   }
 
-  async function send(mode: TutorMode, text = draft): Promise<void> {
+  /** Starts a new chat on `next` and sends its first message at once, as a starter does. */
+  async function start(next: StudyScope, mode: TutorMode, text: string, title: string): Promise<void> {
+    if (!canSwitch()) return;
+    newConversation(next);
+    await send(mode, text, { scope: next, title });
+  }
+
+  /**
+   * `fresh` names the new chat a starter makes: the chat is created before the
+   * new scope renders, so the closure's scope, project and target are stale.
+   */
+  async function send(mode: TutorMode, text = draft, fresh?: { scope: StudyScope; title: string }): Promise<void> {
     if (mutating.current || loading || pendingRef.current || needsRefresh || preparation.locked) return;
     if (!text.trim() && mode !== "quiz") return;
     mutating.current = true;
@@ -359,10 +378,10 @@ export function useTutorController() {
       if (!value) {
         creating.current ??= {
           operationId: createOperationId(),
-          scope,
-          title: (target?.title || text.trim() || "Study conversation").slice(0, 200),
-          projectId: draftProjectId,
-          projectScopeOverride,
+          scope: fresh?.scope ?? scope,
+          title: (fresh?.title || target?.title || text.trim() || "Study conversation").slice(0, 200),
+          projectId: fresh ? null : draftProjectId,
+          projectScopeOverride: fresh ? null : projectScopeOverride,
         };
         const planned = creating.current;
         const conversation = planned.projectId
@@ -393,8 +412,8 @@ export function useTutorController() {
       request = {
         operationId: createOperationId(), conversationId: value.conversation.id,
         expectedRevision: value.conversation.revision, mode, text,
-        focus: target?.focus ?? null, profileId,
-        includeConversations: includeConversations && conversationRetrievalAllowed && mode !== "hint",
+        focus: fresh ? null : target?.focus ?? null, profileId,
+        includeConversations: !fresh && includeConversations && conversationRetrievalAllowed && mode !== "hint",
         questionId: question?.id ?? null,
       };
       await perform(request);
@@ -611,10 +630,10 @@ export function useTutorController() {
 
   return {
     conversations, projects, profiles, choices, detail, scope, draftProjectId, target, panelOpen, draft, profileId, defaultTutorProfileId,
-    loading, busy, organizing, error, pending, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
+    loading, busy, organizing, error, pending, liveOperationId, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
     initialize, refresh, selectConversation,
     newConversation, newConversationInProject, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,
-    send, retryPending, cancel, loadEarlier,
+    send, start, retryPending, cancel, loadEarlier,
     createProject, updateProject, setProjectArchived, removeProject,
     renameConversation, moveConversation, setConversationArchived, removeConversation,
   };

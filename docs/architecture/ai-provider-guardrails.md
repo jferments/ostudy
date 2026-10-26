@@ -16,6 +16,10 @@ in [AI provider contract testing](../development/ai-provider-contract-testing.md
   provider response parsing.
 - `reqwest` remains confined to `src-tauri/src/ai/gateway/`. Provider protocol
   modules describe routes and wire contracts; they do not create independent clients.
+  The one other client is the speech model download in
+  `src-tauri/src/speech_input/install.rs`, which only fetches pinned,
+  hash-checked model files over HTTPS and contacts no provider
+  ([ADR 0061](../decisions/0061-local-speech-input.md)).
 - Operating-system credential access remains confined to
   `src-tauri/src/ai/secrets.rs`.
 - Never add credential bytes, masked credentials, reversible encrypted secrets,

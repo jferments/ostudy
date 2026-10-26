@@ -1,12 +1,14 @@
 //! User-requested tutor turns. This service orchestrates native context and
 //! provider calls; it cannot execute model tools or submit practice reviews.
 
+use std::sync::Arc;
+
 use crate::{
     ai::{
         document_intelligence::{
             load_tutor_task_context, request_json_cancellable, DocumentTaskContext, JsonTaskRequest,
         },
-        AiRuntimeState,
+        observe_output, AiRuntimeState, OutputObserver,
     },
     database::Database,
     error::CommandError,
@@ -106,7 +108,7 @@ pub(crate) async fn send(
         guard.progress("writing response", 2, 4);
         let schema = output::schema();
         let prompt = output::system_prompt(input.mode);
-        let value = request_json_cancellable(
+        let request = request_json_cancellable(
             runtime,
             &task,
             JsonTaskRequest {
@@ -117,8 +119,21 @@ pub(crate) async fn send(
                 images: &context.images,
             },
             &guard.signal,
-        )
-        .await?;
+        );
+        // An explanation shows while it is written. Hints, quizzes and grading
+        // carry private answers, so they wait for the checks below.
+        let value = if input.mode == TutorMode::Explain {
+            let operation_id = input.operation_id.clone();
+            let observer: OutputObserver = Arc::new(move |partial: &str| {
+                if let Some(text) = output::partial_text(partial) {
+                    TaskGuard::draft(&operation_id, text);
+                }
+            });
+            observe_output(observer, request).await?
+        } else {
+            request.await?
+        };
+        guard.progress("checking response", 3, 4);
         let mut answer = output::validate(
             value,
             input.mode,

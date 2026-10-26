@@ -142,10 +142,13 @@ for (const path of rustFiles) {
   const isTest = relativePath.includes("/tests/")
     || /(?:^|\/)(?:[^/]+_tests|tests)\.rs$/u.test(relativePath);
 
-  if (/\breqwest\b/u.test(source) && !isGateway) {
+  // The speech model download fetches pinned files and talks to no provider
+  // (ADR 0061); verify-repository-policy checks its shape.
+  const isSpeechModelDownload = relativePath === "src-tauri/src/speech_input/install.rs";
+  if (/\breqwest\b/u.test(source) && !isGateway && !isSpeechModelDownload) {
     violations.push(`${relativePath}: provider HTTP belongs only in ai/gateway/`);
   }
-  if (/\bClient::builder\s*\(/u.test(source) && !isGatewayClient) {
+  if (/\bClient::builder\s*\(/u.test(source) && !isGatewayClient && !isSpeechModelDownload) {
     violations.push(`${relativePath}: AI HTTP client construction belongs only in gateway/client.rs`);
   }
   if (isGateway && /\b(?:rusqlite|Database|tauri::State|profiles::|probes::|providers::)\b/u.test(source)) {

@@ -326,6 +326,7 @@ async fn make_sample(
             voice: "",
             reference: None,
         },
+        PURPOSE,
         &spoken,
         &accounting.context(),
         &CancellationSignal::new(),

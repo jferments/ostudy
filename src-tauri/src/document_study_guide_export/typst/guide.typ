@@ -11,12 +11,6 @@
 #set par(justify: true, leading: 0.6em, spacing: 0.75em)
 #show math.equation: set text(font: ("New Computer Modern Math",))
 
-// The reader's canvas finds chapters, sections and their Practice buttons
-// from these marks; they draw nothing.
-#let anchor(kind, key) = context {
-  let p = here().position()
-  [#metadata((kind: kind, key: key, page: p.page, x: p.x.pt(), y: p.y.pt())) <canvas-anchor>]
-}
 /// The room a section heading keeps for the reader's Practice button.
 #let practice-width = 24mm
 #let practice-height = 6.5mm
@@ -128,16 +122,13 @@
     [#anchor("section", s.key)#if name != none [#h #label(name)] else { h }],
     if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) },
     box(width: practice-width, height: practice-height)[#anchor("practice", s.key)]))
-  for (i, b) in s.blocks.enumerate() {
-    if i == s.figureAfter and b.kind == "bullets" and s.figures.len() > 0 and floats(s.figures.first()) and not pairs(s.figures) {
-      wrapped-bullets(b.items, s.figures.first(), number + ".1")
-      figures-view(s.figures.slice(1), number, first: 2)
-    } else {
-      block-view(b)
-      if i == s.figureAfter { figures-view(s.figures, number) }
-    }
-  }
-  if s.blocks.len() == 0 { figures-view(s.figures, number) }
+  // Figures go with the key points they illustrate: the text from there on
+  // flows around them.
+  let at = s.figureAfter
+  let start = if s.blocks.len() == 0 { 0 } else if s.blocks.at(at).kind == "bullets" { at } else { at + 1 }
+  for b in s.blocks.slice(0, start) { block-view(b) }
+  flow(units-of(s.blocks.slice(start)), s.figures, number)
+  if s.sources.len() > 0 { sources-view(s.sources) }
   if s.notes.len() > 0 {
     tile(fill: T.highlight-soft)[#eyebrow("My notes", color: T.highlight-ink) #v(1mm) #bullets(s.notes)]
   }

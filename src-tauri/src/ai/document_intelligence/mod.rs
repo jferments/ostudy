@@ -14,6 +14,7 @@ mod flashcards;
 mod lecture_script;
 mod lesson;
 mod mark_question;
+mod notation;
 mod observed;
 mod outline;
 mod podcast_script;

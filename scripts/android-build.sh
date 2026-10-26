@@ -100,6 +100,8 @@ else
   unset VITE_OSTUDY_ANDROID_TEST_BRIDGE || true
 fi
 
+"$ROOT_DIR/scripts/install-native-deps.sh" --pdfium-only --android
+
 printf 'Building ostudy Android %s %s for %s...\n' "$MODE" "$FORMAT" "${targets[*]}"
 pnpm tauri "${args[@]}"
 

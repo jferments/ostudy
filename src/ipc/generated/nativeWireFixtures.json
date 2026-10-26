@@ -16,6 +16,7 @@
     "motionPreference": "system",
     "newDayStartHour": 4,
     "practiceShuffle": true,
+    "speechAutoSendSeconds": 2,
     "theme": "dark",
     "tutorialsEnabled": false,
     "uiFont": "plex",

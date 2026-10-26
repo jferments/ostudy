@@ -46,4 +46,5 @@ args=(android dev)
 [[ -n "$HOST" ]] && args+=(--host "$HOST")
 ((OPEN_STUDIO == 1)) && args+=(--open)
 
+"$ROOT_DIR/scripts/install-native-deps.sh" --pdfium-only --android
 exec pnpm tauri "${args[@]}"

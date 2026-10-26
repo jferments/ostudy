@@ -32,6 +32,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::platform::SecureSecretStore;
 use gateway::AiGateway;
+/// Lets an interactive task see its structured output while it streams.
+pub(crate) use gateway::{observe_output, OutputObserver};
 use secrets::SecretManager;
 
 pub struct AiRuntimeState {

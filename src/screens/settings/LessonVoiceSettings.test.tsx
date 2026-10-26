@@ -12,6 +12,7 @@ import {
   type SpeechVoice,
 } from "../../ipc/speech";
 import { createManagedMediaObjectUrl } from "../../media/managedPlayback";
+import { openMenu } from "../../test/menus";
 import { LessonVoiceSettings, voiceLabel } from "./LessonVoiceSettings";
 
 vi.mock("../../ipc/common", () => ({
@@ -233,12 +234,12 @@ describe("LessonVoiceSettings", () => {
     await waitFor(() =>
       expect([...select("Lesson voice").options].map((option) => option.text)).toEqual(["Voice 1", "Voice 2"]),
     );
-    fireEvent.click(screen.getByRole("button", { name: "More for Voice" }));
+    await openMenu(screen.getByRole("button", { name: "More for Voice" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Lesson voices…" }));
     const dialog = await screen.findByRole("dialog", { name: "Lesson voices" });
     expect(trySpeechVoice).not.toHaveBeenCalled();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "More for Voice 1" }));
+    await openMenu(within(dialog).getByRole("button", { name: "More for Voice 1" }));
     expect((await screen.findByRole("menuitem", { name: "Remove" })).getAttribute("aria-disabled")).toBe("true");
     fireEvent.keyDown(document.activeElement ?? document.body, {
       key: "Escape",
@@ -248,7 +249,7 @@ describe("LessonVoiceSettings", () => {
     expect(keepSpeechVoice).toHaveBeenCalledWith(second.id);
     await waitFor(() => expect(within(dialog).getAllByRole("button", { name: "Use" })).toHaveLength(1));
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "More for Voice 1" }));
+    await openMenu(within(dialog).getByRole("button", { name: "More for Voice 1" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename…" }));
     const name = within(dialog).getByRole("textbox", {
       name: "Name for Voice 1",
@@ -258,7 +259,7 @@ describe("LessonVoiceSettings", () => {
     expect(renameSpeechVoice).toHaveBeenCalledWith(first.id, "Ms. Rivera");
     expect(await within(dialog).findByText("Ms. Rivera")).toBeTruthy();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "More for Ms. Rivera" }));
+    await openMenu(within(dialog).getByRole("button", { name: "More for Ms. Rivera" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
     expect(removeSpeechVoice).toHaveBeenCalledWith(first.id);
     await waitFor(() => expect(within(dialog).queryByText("Ms. Rivera")).toBeNull());
@@ -328,7 +329,7 @@ describe("LessonVoiceSettings", () => {
       ]),
     );
     expect(select("Lesson voice").value).toBe(relaxed.voice);
-    fireEvent.click(screen.getByRole("button", { name: "More for Voice" }));
+    await openMenu(screen.getByRole("button", { name: "More for Voice" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Lesson voices…" }));
     const dialog = await screen.findByRole("dialog", { name: "Lesson voices" });
     expect(within(dialog).queryByRole("button", { name: "More for Relaxed man" })).toBeNull();

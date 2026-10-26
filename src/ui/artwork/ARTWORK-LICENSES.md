@@ -21,6 +21,10 @@ The semantic artwork registered under `src/ui/artwork` is original project artwo
 
 `practice.complete` reuses the whole-mascot files on Session complete. It is decorative and follows the same preference.
 
+## Tutor welcome
+
+`tutor.welcome` is the project mascot teaching at a chalkboard, supplied by the maintainer as `assets/images/racoon mascot (tutor).png` (1254 x 1254 RGBA). It is the whole image downscaled to `images/raccoon-tutor-192.webp` and `images/raccoon-tutor-384.webp` (transparent WebP, Lanczos, quality 88, metadata stripped). A new Tutor chat shows it above "What are we studying today?". It is decorative and follows the decorative-artwork preference.
+
 Functional icons are not decorative artwork. They come from the app's icon registry (`src/ui/icons/Icon.tsx`, Lucide glyphs under the ISC notice in `public/licenses/LUCIDE-ISC.txt`) and remain visible when decorative artwork is disabled.
 
 User-authored educational images, imported document pages, and images embedded in flashcards are content, not application artwork. The decorative-artwork preference never hides or changes them.

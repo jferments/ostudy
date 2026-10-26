@@ -18,9 +18,16 @@ import { PageScaffold } from "../../ui/patterns/WorkspacePatterns";
 import { TutorChatSettings } from "./TutorChatSettings";
 import { RenameConversationDialog, TutorHistory } from "./TutorHistory";
 import { useTutor } from "./TutorContext";
+import { TutorFigure } from "./TutorFigure";
 import { TutorMarkdown } from "./TutorMarkdown";
 import { sourcesLabel, TutorSources } from "./TutorSources";
-import { styles } from "./presentation";
+import { useArtwork } from "../../ui/artwork/Artwork";
+import { useLiveTurn } from "./useLiveTurn";
+import { useReadAloud, type ReadAloud } from "./useReadAloud";
+import { useVoiceAvailable } from "../lessons/useVoiceAvailable";
+import { useSpeechInput } from "./useSpeechInput";
+import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStarters";
+import { styles, withoutFigures } from "./presentation";
 
 function SourceDetails({ source }: { source: SourceCitation }) {
   return (
@@ -50,6 +57,22 @@ function CopyAnswer({ text }: { text: string }) {
   );
 }
 
+/** Reads a finished reply aloud in the lesson voice; a second press stops it. */
+function ReadAloudAnswer({ turnId, reader }: { turnId: string; reader: ReadAloud }) {
+  const reading = reader.turnId === turnId;
+  return (
+    <Button
+      size="small"
+      variant="ghost"
+      aria-pressed={reading}
+      onClick={() => reader.toggle(turnId)}
+    >
+      <Icon name={reading ? "stop" : "listen"} size={16} />
+      {reading ? "Stop reading" : "Read aloud"}
+    </Button>
+  );
+}
+
 export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean }) {
   const tutor = useTutor();
   const id = useId();
@@ -64,17 +87,53 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const [sourceBusy, setSourceBusy] = useState(false);
   const sourceLane = useRequestLane();
   const transcript = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const followTail = useRef(true);
+  const [awayFromTail, setAwayFromTail] = useState(false);
+  const starters = useTutorStarters();
+  const voiceAvailable = useVoiceAvailable();
+  const reader = useReadAloud();
+  const conversationId = tutor.detail?.conversation.id;
+  const stopReading = reader.stop;
+  // Another chat's replies are not this one's to keep reading.
+  useEffect(() => stopReading, [conversationId, stopReading]);
+  const artwork = useArtwork("tutor.welcome");
+  const welcomeArt = artwork.enabled ? artwork.definition.image : undefined;
   const hintOnly = tutor.target?.mode === "hint";
   const locked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
   const question = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
   const turns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
   const lastTurnId = tutor.detail?.turns.at(-1)?.id;
+  const live = useLiveTurn(tutor.liveOperationId);
+  const withDraft = (text: string) => (tutor.draft.trim() ? `${tutor.draft.trimEnd()} ${text}` : text);
+  const speech = useSpeechInput({
+    onText: (text) => {
+      tutor.setDraft(withDraft(text));
+      input.current?.focus();
+    },
+    // A question that ended on a pause is sent as heard; if sending cannot
+    // start now, it waits in the draft.
+    onPause: (text) => {
+      const spoken = withDraft(text);
+      tutor.setDraft(spoken);
+      void tutor.send(hintOnly ? "hint" : question ? "answer" : "explain", spoken);
+    },
+  });
+  const liveAnswer = (
+    <div className={styles.assistantMessage} data-testid="tutor-live-answer">
+      {live?.draft && !hintOnly ? <div aria-busy="true"><TutorMarkdown text={live.draft} /></div> : null}
+      <p role="status" className={styles.muted}>{live?.status ?? (hintOnly ? "Preparing a hint…" : "Thinking…")}</p>
+    </div>
+  );
   const chosen = tutor.target?.title ?? sourcesLabel(tutor.scope, tutor.choices);
   const inlineHistory = showHistory && layoutMode !== "compact" && !hintOnly;
   // Only the wide, full-page chat has room to keep a source open beside it.
   const sourceBeside = inlineHistory && layoutMode === "wide";
   const canQuiz = !locked && !tutor.needsRefresh && (tutor.scope.kind !== "general" || Boolean(tutor.target) || Boolean(tutor.draft.trim()));
+  // A new full-page chat puts its composer in the middle, under the raccoon.
+  const welcome = !hintOnly && showHistory && !turns.length && !tutor.detail?.hasEarlierTurns && !tutor.busy && !tutor.pending;
+  // Phones keep Enter for new lines; the send button sends.
+  const enterSends = layoutMode !== "compact";
 
   useEffect(() => {
     sourceLane.invalidate();
@@ -82,11 +141,32 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     setSourceError(null);
     setSourceBusy(false);
     followTail.current = true;
+    setAwayFromTail(false);
   }, [sourceLane, tutor.detail?.conversation.id, hintOnly]);
 
   useEffect(() => {
     if (followTail.current && transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
-  }, [tutor.detail, tutor.busy]);
+  }, [tutor.detail, tutor.busy, live?.draft]);
+
+  // The composer grows with its text up to its CSS maximum, then scrolls.
+  useEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, [tutor.draft, welcome]);
+
+  function jumpToLatest(): void {
+    const element = transcript.current;
+    if (!element) return;
+    followTail.current = true;
+    setAwayFromTail(false);
+    element.scrollTop = element.scrollHeight;
+  }
+
+  function startFrom(starter: TutorStarter): void {
+    void tutor.start(starter.scope, starter.mode, starter.text, starter.chatTitle);
+  }
 
   async function showSource(citation: SourceCitation): Promise<void> {
     if (hintOnly) return;
@@ -168,6 +248,100 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
     );
   }
 
+  const messageLabel = hintOnly ? "Hint request" : question ? "Your answer" : "Message";
+  const composerInput = (className: string, rows: number) => (
+    <>
+      <label className={styles.composerLabel} htmlFor={`${id}-message`}>{messageLabel}</label>
+      <Textarea
+        ref={input}
+        className={className}
+        id={`${id}-message`}
+        rows={rows}
+        maxLength={8000}
+        value={tutor.draft}
+        placeholder={question ? "Your answer" : turns.length ? "Ask a follow-up" : "Ask anything"}
+        autoFocus={welcome && layoutMode !== "compact"}
+        disabled={locked || tutor.needsRefresh}
+        onChange={(event) => tutor.setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+          if (event.ctrlKey || event.metaKey || (enterSends && !hintOnly && !event.shiftKey && !event.altKey)) {
+            event.preventDefault();
+            submit();
+          }
+        }}
+      />
+    </>
+  );
+  const submitLabel = hintOnly ? "Request hint" : question ? "Submit answer" : "Send";
+  const recording = speech.phase === "recording";
+  const sendDisabled = locked || tutor.needsRefresh || !tutor.draft.trim() || speech.phase !== "idle";
+  const speechStatus = recording
+    ? "Recording…"
+    : speech.phase === "transcribing"
+      ? "Turning speech into text…"
+      : speech.phase === "downloading"
+        ? `Downloading speech input… ${Math.round(speech.downloaded * 100)}%`
+        : null;
+  const microphone = speech.available ? (
+    <>
+      {recording ? (
+        <>
+          <span className={styles.recordingTime} aria-hidden="true">
+            {Math.floor(speech.seconds / 60)}:{String(speech.seconds % 60).padStart(2, "0")}
+          </span>
+          <span className={styles.level} aria-hidden="true">
+            <span style={{ width: `${Math.round(speech.level * 100)}%` }} />
+          </span>
+          <IconButton icon="close" label="Discard recording" onClick={speech.cancel} />
+        </>
+      ) : null}
+      <IconButton
+        icon="mic"
+        label={recording ? "Stop and use recording" : "Speak"}
+        aria-pressed={recording}
+        className={recording ? styles.micRecording : undefined}
+        loading={speech.phase === "transcribing" || speech.phase === "downloading"}
+        disabled={!recording && (speech.phase !== "idle" || locked || tutor.needsRefresh)}
+        onClick={speech.toggle}
+      />
+    </>
+  ) : null;
+
+  const composerForm = (
+    <form
+      className={styles.composer}
+      onSubmit={(event) => { event.preventDefault(); submit(); }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && recording) {
+          event.preventDefault();
+          speech.cancel();
+        }
+      }}
+    >
+      {composerInput(styles.composerInput, 1)}
+      {microphone}
+      {question ? (
+        <Button size="small" variant="ghost" className="tw:mb-1" disabled={sendDisabled} onClick={() => { void tutor.send("explain"); }}>Ask instead</Button>
+      ) : null}
+      {tutor.busy || tutor.pending ? (
+        <IconButton icon="stop" label="Stop response" className={styles.stop} onClick={() => { void tutor.cancel(); }} />
+      ) : (
+        <IconButton icon="arrow-up" type="submit" label={submitLabel} className={styles.send} disabled={sendDisabled} />
+      )}
+    </form>
+  );
+  const composer = (
+    <>
+      {composerForm}
+      {speech.available ? (
+        <p className={speech.error ? styles.speechError : styles.speechStatus} role="status">
+          {speech.error ?? speechStatus}
+        </p>
+      ) : null}
+    </>
+  );
+
   const transcriptView = (
     <div
       ref={transcript}
@@ -177,10 +351,34 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
       aria-relevant="additions"
       onScroll={() => {
         const element = transcript.current;
-        if (element) followTail.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+        if (!element) return;
+        followTail.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100;
+        setAwayFromTail(!followTail.current);
       }}
     >
-      {!turns.length ? (
+      {welcome ? (
+        <div className={styles.welcome}>
+          {welcomeArt ? (
+            <img
+              src={welcomeArt.src}
+              srcSet={welcomeArt.srcSet}
+              alt=""
+              draggable={false}
+              data-artwork-slot="tutor.welcome"
+              className={styles.welcomeArt}
+            />
+          ) : null}
+          <h3>What are we studying today?</h3>
+          <div className={styles.welcomeComposer}>{composer}</div>
+          <div className={styles.toolbar}>
+            {scopePicker}
+            <Button size="small" variant="secondary" className={styles.scope} disabled={!canQuiz} onClick={() => { void tutor.send("quiz"); }}>
+              <Icon name="help" size={16} /> Quiz me
+            </Button>
+          </div>
+          <TutorStarters starters={starters} disabled={locked || tutor.needsRefresh} onStart={startFrom} />
+        </div>
+      ) : !turns.length && !tutor.busy ? (
         <div className={styles.empty}>
           <h3>{hintOnly ? "Work toward the answer" : "What would you like to understand?"}</h3>
           {!hintOnly ? (
@@ -209,9 +407,19 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
               {turn.assistantText && turn.assistantText !== turn.errorMessage
                 ? turn.mode === "hint"
                   ? <div className={styles.message}>{turn.assistantText}</div>
-                  : <TutorMarkdown text={turn.assistantText} />
+                  : (
+                    // Floated figures stay inside their answer.
+                    <div className="tw:flow-root">
+                      <TutorMarkdown
+                        text={turn.assistantText}
+                        figure={turn.state === "complete"
+                          ? (reference, title) => <TutorFigure turnId={turn.id} reference={reference} title={title} />
+                          : undefined}
+                      />
+                    </div>
+                  )
                 : null}
-              {turn.state === "running" ? <p role="status" className={styles.muted}>Thinking…</p> : null}
+              {turn.state === "running" ? liveAnswer : null}
               {turn.errorMessage ? <InlineNotice kind="error">{turn.errorMessage}</InlineNotice> : null}
               {!turn.evidenceCurrent && turn.state === "complete" ? (
                 <InlineNotice kind="warning">The source has changed or been removed. This answer is historical, not current evidence.</InlineNotice>
@@ -229,9 +437,11 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
                       <Icon name="help" size={16} /> Quiz me on this
                     </Button>
                   ) : null}
-                  <CopyAnswer text={turn.assistantText} />
+                  <CopyAnswer text={withoutFigures(turn.assistantText)} />
+                  {voiceAvailable ? <ReadAloudAnswer turnId={turn.id} reader={reader} /> : null}
                 </div>
               ) : null}
+              {reader.error?.turnId === turn.id ? <InlineNotice kind="error">{reader.error.message}</InlineNotice> : null}
               {turn.id === lastTurnId
                 && (turn.mode !== "hint" || hintOnly)
                 && ["failed", "canceled", "interrupted"].includes(turn.state) ? (
@@ -244,7 +454,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
         );
       })}
       {tutor.busy && !turns.some((turn) => turn.state === "running") ? (
-        <p role="status" className={cn(styles.muted, "tw:mx-auto tw:w-full tw:max-w-3xl")}>{hintOnly ? "Preparing a hint…" : "Thinking…"}</p>
+        <div className="tw:mx-auto tw:w-full tw:max-w-3xl">{liveAnswer}</div>
       ) : null}
     </div>
   );
@@ -265,31 +475,6 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
       ) : null}
     </div>
   );
-
-  const messageLabel = hintOnly ? "Hint request" : question ? "Your answer" : "Message";
-  const composerInput = (className: string, rows: number) => (
-    <>
-      <label className={styles.composerLabel} htmlFor={`${id}-message`}>{messageLabel}</label>
-      <Textarea
-        className={className}
-        id={`${id}-message`}
-        rows={rows}
-        maxLength={8000}
-        value={tutor.draft}
-        placeholder={question ? "Your answer" : turns.length ? "Ask a follow-up" : "Ask anything"}
-        disabled={locked || tutor.needsRefresh}
-        onChange={(event) => tutor.setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
-            event.preventDefault();
-            submit();
-          }
-        }}
-      />
-    </>
-  );
-  const submitLabel = hintOnly ? "Request hint" : question ? "Submit answer" : "Send";
-  const sendDisabled = locked || tutor.needsRefresh || !tutor.draft.trim();
 
   if (hintOnly) {
     return (
@@ -333,21 +518,18 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
       {inlineHistory ? <aside className={styles.historyPane}><TutorHistory tutor={tutor} /></aside> : null}
       <div className={styles.chat}>
         {header}
-        {transcriptView}
-        {notices}
-        <div className={styles.composerWrap}>
-          <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); submit(); }}>
-            {composerInput(styles.composerInput, 1)}
-            {question ? (
-              <Button size="small" variant="ghost" className="tw:mb-1" disabled={sendDisabled} onClick={() => { void tutor.send("explain"); }}>Ask instead</Button>
-            ) : null}
-            {tutor.busy || tutor.pending ? (
-              <IconButton icon="stop" label="Stop response" className={styles.stop} onClick={() => { void tutor.cancel(); }} />
-            ) : (
-              <IconButton icon="arrow-up" type="submit" label={submitLabel} className={styles.send} disabled={sendDisabled} />
-            )}
-          </form>
+        <div className={styles.transcriptFrame}>
+          {transcriptView}
+          {awayFromTail && turns.length ? (
+            <Button size="small" className={styles.jump} onClick={jumpToLatest}>
+              <Icon name="arrow-down" size={16} /> Jump to latest
+            </Button>
+          ) : null}
         </div>
+        {notices}
+        {!welcome ? <div className={styles.composerWrap}>{composer}</div> : null}
+        <audio ref={reader.audioRefs[0]} preload="auto" hidden />
+        <audio ref={reader.audioRefs[1]} preload="auto" hidden />
       </div>
       {sourceBeside && source ? (
         <aside className={styles.sourcePanel} aria-label="Source">

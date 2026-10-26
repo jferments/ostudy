@@ -292,10 +292,39 @@ fn create_linux_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::
         .iter()
         .find(|window| window.label == "main")
         .ok_or_else(|| io::Error::other("The Linux main-window configuration is missing."))?;
-    tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
+    let window = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?
         .icon(MAIN_WINDOW_ICON.clone())?
         .build()?;
+    allow_microphone(&window)?;
     Ok(())
+}
+
+/// WebKitGTK refuses media capture unless the application enables it and
+/// answers its permission requests. oStudy records audio only, for speech
+/// input, so a request for audio alone is granted and anything that asks for
+/// a camera or the screen is left to WebKit's default refusal.
+#[cfg(target_os = "linux")]
+fn allow_microphone(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    window.with_webview(|webview| {
+        use webkit2gtk::{
+            glib::prelude::Cast, PermissionRequestExt, SettingsExt, UserMediaPermissionRequest,
+            UserMediaPermissionRequestExt, WebViewExt,
+        };
+        let view = webview.inner();
+        if let Some(settings) = WebViewExt::settings(&view) {
+            settings.set_enable_media_stream(true);
+        }
+        view.connect_permission_request(|_, request| {
+            let Some(media) = request.downcast_ref::<UserMediaPermissionRequest>() else {
+                return false;
+            };
+            if media.is_for_audio_device() && !media.is_for_video_device() {
+                request.allow();
+                return true;
+            }
+            false
+        });
+    })
 }
 
 #[cfg(desktop)]

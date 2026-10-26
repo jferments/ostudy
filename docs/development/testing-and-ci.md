@@ -99,6 +99,12 @@ Complete native tests:
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 ```
 
+The speech-input tests serve the model download from a local server and need no network. The recognition-latency test needs the real model, which is not in the repository, so it returns early unless `OSTUDY_SPEECH_MODEL_DIR` names a folder holding the Moonshine files listed in `src-tauri/src/speech_input.rs`:
+
+```bash
+OSTUDY_SPEECH_MODEL_DIR=/path/to/moonshine cargo test --manifest-path src-tauri/Cargo.toml --locked speech_input -- --nocapture
+```
+
 Use isolated temporary databases/directories. Never point automated recovery/import/restore tests at the learner's live application data.
 
 ## Android qualification

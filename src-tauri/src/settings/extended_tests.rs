@@ -24,6 +24,7 @@ mod extended_tests {
             guide_pdf_theme: "sage".to_string(),
             guide_pdf_include_notes: true,
             lecture_audio_with_new_lessons: true,
+            speech_auto_send_seconds: 2,
         }
     }
 
@@ -51,6 +52,7 @@ mod extended_tests {
             guide_pdf_theme: "sage".to_string(),
             guide_pdf_include_notes: true,
             lecture_audio_with_new_lessons: true,
+            speech_auto_send_seconds: 5,
         };
         validate_settings(&expected).expect("fixture should validate");
         database
@@ -80,6 +82,10 @@ mod extended_tests {
         assert_eq!(loaded.daily_new_limit, expected.daily_new_limit);
         assert_eq!(loaded.daily_review_limit, expected.daily_review_limit);
         assert_eq!(loaded.new_day_start_hour, expected.new_day_start_hour);
+        assert_eq!(
+            loaded.speech_auto_send_seconds,
+            expected.speech_auto_send_seconds
+        );
     }
 
     #[test]
@@ -134,6 +140,16 @@ mod extended_tests {
             let mut value = settings();
             value.new_day_start_hour = hour;
             validate_settings(&value).expect("whole hours of the day are valid");
+        }
+
+        for seconds in [-1, 11] {
+            let mut value = settings();
+            value.speech_auto_send_seconds = seconds;
+            assert_eq!(
+                validate_settings(&value).unwrap_err().code,
+                "invalid_speech_auto_send",
+                "{seconds}"
+            );
         }
 
         let mut value = settings();

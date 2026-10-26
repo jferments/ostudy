@@ -25,6 +25,14 @@
   for run in runs {
     if "t" in run {
       run.t
+    } else if "b" in run {
+      text(weight: 700, run.b)
+    } else if "i" in run {
+      emph(run.i)
+    } else if "sub" in run {
+      sub(run.sub)
+    } else if "sup" in run {
+      super(run.sup)
     } else if "m" in run {
       math.equation(block: run.block, eval(run.m, mode: "math"))
     } else if "src" in run {

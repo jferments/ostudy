@@ -1,6 +1,8 @@
 import { invoke } from "./transport";
 
+import type { FigureBox } from "./documentFigures";
 import type { SourceCitation, StudyScope } from "./knowledge";
+import type { NarrationSegment } from "./lessons";
 
 export type TutorMode = "explain" | "hint" | "quiz" | "answer";
 
@@ -181,6 +183,22 @@ export async function setTutorConversationArchived(input: {
   return invoke<ConversationSummary>("set_tutor_conversation_archived", { input });
 }
 
+/** Where a figure an answer shows sits on its document's page. */
+export interface TutorFigure {
+  documentId: string;
+  figureId: string;
+  title: string;
+  pageNumber: number;
+  pageWidth: number;
+  pageHeight: number;
+  bounds: FigureBox;
+}
+
+/** A figure a finished answer shows; fails once the learner hides it. */
+export async function getTutorFigure(turnId: string, documentId: string, figureId: string): Promise<TutorFigure> {
+  return invoke<TutorFigure>("get_tutor_figure", { input: { turnId, documentId, figureId } });
+}
+
 export async function getTutorConversation(input: {
   conversationId: string;
   beforeSequence: number | null;
@@ -204,4 +222,22 @@ export async function deleteTutorConversation(input: {
  */
 export async function sendTutorTurn(input: TutorTurnInput): Promise<TutorTurn> {
   return invoke<TutorTurn>("send_tutor_turn", { input });
+}
+
+/** One piece of a reply read aloud. */
+export interface SpokenPiece {
+  segment: NarrationSegment;
+  /** How many pieces the whole reply is read in. */
+  pieces: number;
+  /** Whether the voice spoke this piece now rather than reusing kept audio. */
+  made: boolean;
+}
+
+/**
+ * Reads one piece of a finished reply aloud in the lesson voice, counted from
+ * 0, and keeps the audio. Asking for the next piece while one plays keeps a
+ * long reply from waiting on all of it.
+ */
+export async function speakTutorReply(turnId: string, piece: number): Promise<SpokenPiece> {
+  return invoke<SpokenPiece>("speak_tutor_reply", { input: { turnId, piece } });
 }

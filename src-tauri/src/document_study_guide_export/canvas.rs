@@ -14,12 +14,17 @@ use super::{
     guide_typst::{self, CanvasAnchor, CanvasPage, StudyGuidePdfTheme},
     reading_order, EffectiveGuideExport,
 };
-use crate::error::CommandError;
+use crate::{document_domain::SourceUnitKind, error::CommandError};
 
 /// The room a section heading keeps for its Practice button, in points; the
 /// template's `practice-width` and `practice-height`.
 const PRACTICE_WIDTH: f64 = 24.0 * 72.0 / 25.4;
 const PRACTICE_HEIGHT: f64 = 6.5 * 72.0 / 25.4;
+/// A citation number's box, in points. Its mark sits on the baseline and the
+/// template raises the number above it, about 4 points a digit.
+const CITE_DIGIT_WIDTH: f64 = 4.4;
+const CITE_HEIGHT: f64 = 8.0;
+const CITE_RISE: f64 = 3.5;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +37,36 @@ pub(crate) struct StudyGuideCanvasDto {
     pub contents: Vec<StudyGuideCanvasEntryDto>,
     /// Where each section's Practice button goes.
     pub practice: Vec<StudyGuideCanvasButtonDto>,
+    /// Where each key point's source numbers landed.
+    pub citations: Vec<StudyGuideCanvasCitationDto>,
+    /// The passages those numbers name, by section.
+    pub sources: Vec<StudyGuideCanvasSourceDto>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StudyGuideCanvasCitationDto {
+    pub topic_id: String,
+    pub number: usize,
+    pub page_index: usize,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StudyGuideCanvasSourceDto {
+    pub topic_id: String,
+    pub number: usize,
+    pub document_id: String,
+    /// "p. 12", as the section's Sources line prints it.
+    pub label: String,
+    /// The first cited page, when the reader can open it: a page of a PDF.
+    pub page_number: Option<i64>,
+    /// The passage as the document says it.
+    pub excerpt: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -169,6 +204,49 @@ fn assemble(
             height: PRACTICE_HEIGHT,
         })
         .collect();
+    let citations = anchors
+        .iter()
+        .filter(|anchor| anchor.kind == "cite")
+        .filter_map(|anchor| {
+            let (topic_id, number) = anchor.key.rsplit_once(':')?;
+            let number = number.parse::<usize>().ok()?;
+            Some(StudyGuideCanvasCitationDto {
+                topic_id: topic_id.to_string(),
+                number,
+                page_index: anchor.page - 1,
+                x: anchor.x,
+                y: anchor.y - CITE_RISE,
+                width: CITE_DIGIT_WIDTH * number.to_string().len() as f64,
+                height: CITE_HEIGHT,
+            })
+        })
+        .collect();
+    let sources = export
+        .sections
+        .iter()
+        .flat_map(|section| {
+            section
+                .citations
+                .iter()
+                .flat_map(|cited| &cited.sources)
+                .map(|source| StudyGuideCanvasSourceDto {
+                    topic_id: section.key.clone(),
+                    number: source.number,
+                    document_id: source.document_id.clone(),
+                    label: source
+                        .locator
+                        .as_ref()
+                        .map(guide_typst::short_source_label)
+                        .unwrap_or_default(),
+                    page_number: source
+                        .locator
+                        .as_ref()
+                        .filter(|locator| source.pdf && locator.unit_kind == SourceUnitKind::Page)
+                        .and_then(|locator| locator.unit_numbers.iter().min().copied()),
+                    excerpt: source.excerpt.clone(),
+                })
+        })
+        .collect();
     StudyGuideCanvasDto {
         document_id: document_id.to_string(),
         guide_revision: export.guide_revision,
@@ -185,6 +263,8 @@ fn assemble(
             .collect(),
         contents,
         practice,
+        citations,
+        sources,
     }
 }
 
@@ -344,6 +424,90 @@ mod tests {
             let page = &canvas.pages[button.page_index];
             assert!(button.x > page.width / 2.0 && button.x + button.width <= page.width);
             assert!(button.y > 0.0 && button.y + button.height <= page.height);
+        }
+    }
+
+    #[test]
+    fn key_points_carry_their_source_numbers_onto_the_canvas() {
+        use super::super::{
+            citations::{CitedSource, SectionCitations},
+            ExportBlock,
+        };
+        use crate::document_domain::SourceLocator;
+        let mut export = crate::document_study_guide_export::tests::test_export();
+        let page = |number| SourceLocator::new(SourceUnitKind::Page, vec![number], None).unwrap();
+        let section = &mut export.sections[0];
+        section
+            .body_lines
+            .push(ExportBlock::Heading("Key points".into()));
+        section.body_lines.push(ExportBlock::Bullets(vec![
+            "Preload is the stretch of the ventricle before it contracts.".into(),
+            "A larger end-diastolic volume raises stroke volume.".into(),
+            "Preload is not afterload.".into(),
+        ]));
+        section.citations = Some(SectionCitations {
+            key_points: vec![vec![1], vec![1, 2], Vec::new()],
+            sources: vec![
+                CitedSource {
+                    number: 1,
+                    document_id: "document-1".into(),
+                    pdf: true,
+                    locator: Some(page(2)),
+                    excerpt: "Preload is the stretch of the ventricle.".into(),
+                },
+                CitedSource {
+                    number: 2,
+                    document_id: "document-1".into(),
+                    pdf: false,
+                    locator: Some(page(3)),
+                    excerpt: "End-diastolic volume sets preload.".into(),
+                },
+            ],
+        });
+        let canvas = guide_canvas("document-1", &export, StudyGuidePdfTheme::Sage).unwrap();
+        let marks = canvas
+            .citations
+            .iter()
+            .map(|mark| (mark.topic_id.as_str(), mark.number))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            marks,
+            [
+                ("topic-preload", 1),
+                ("topic-preload", 1),
+                ("topic-preload", 2)
+            ]
+        );
+        for mark in &canvas.citations {
+            let page = &canvas.pages[mark.page_index];
+            assert!(mark.x > 0.0 && mark.x + mark.width < page.width);
+            assert!(mark.y > 0.0 && mark.y + mark.height < page.height);
+        }
+        // The second point's two numbers sit side by side on one line.
+        assert!((canvas.citations[1].y - canvas.citations[2].y).abs() < 0.5);
+        assert!(canvas.citations[2].x > canvas.citations[1].x);
+        let sources = canvas
+            .sources
+            .iter()
+            .map(|source| (source.number, source.label.as_str(), source.page_number))
+            .collect::<Vec<_>>();
+        assert_eq!(sources, [(1, "p. 2", Some(2)), (2, "p. 3", None)]);
+        if let Ok(directory) = std::env::var("OSTUDY_GUIDE_CANVAS_SVG_DIR") {
+            let mark = &canvas.citations[0];
+            let page = &canvas.pages[mark.page_index];
+            let boxes = canvas
+                .citations
+                .iter()
+                .filter(|other| other.page_index == mark.page_index)
+                .map(|other| {
+                    format!(
+                        r#"<rect x="{}" y="{}" width="{}" height="{}" fill="none" stroke="red" stroke-width="0.3"/>"#,
+                        other.x, other.y, other.width, other.height
+                    )
+                })
+                .collect::<String>();
+            let svg = page.svg.replacen("</svg>", &format!("{boxes}</svg>"), 1);
+            std::fs::write(format!("{directory}/cited-page.svg"), svg).unwrap();
         }
     }
 

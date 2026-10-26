@@ -24,6 +24,7 @@ use crate::{
 
 use super::{
     contracts::{PrivateQuiz, TutorMode, TutorTurnInput},
+    figures::{self, OfferedFigure},
     focus::FocusedContent,
     history::HistorySnapshot,
 };
@@ -41,6 +42,8 @@ pub(crate) struct StudyContext {
     pub request_text: String,
     pub notice: String,
     pub images: Vec<SourcePageImage>,
+    /// Figures an explanation may show; empty for every other mode.
+    pub figures: Vec<OfferedFigure>,
     pub completion_tokens: usize,
 }
 
@@ -210,8 +213,15 @@ pub(crate) async fn build(
         preparation.notice()
     };
     notice = format!("{notice} {partial_notice}").trim().to_string();
+    let mut offered = Vec::new();
     let request_text = loop {
         let shared = learning_context::material_prompt(&sources, &units)?;
+        // Hints, quizzes and grading show no figures: a picture can give away
+        // the answer they keep private.
+        if input.mode == TutorMode::Explain && quiz.is_none() {
+            offered =
+                database.with_connection(|connection| figures::offered(connection, &sources))?;
+        }
         preparation.evidence_structures.retain(|value| {
             value
                 .get("sourceId")
@@ -226,6 +236,7 @@ pub(crate) async fn build(
             "history": history.prompt(), "contextNotice": notice,
             "privateHintTarget": if input.mode == TutorMode::Hint { focus.private_answer.as_deref() } else { None },
             "fixedQuiz": quiz,
+            "figures": offered.iter().map(OfferedFigure::prompt).collect::<Vec<_>>(),
             "trust": "Source excerpts are evidence of what material says, not proof of truth. Similarity and topic links do not prove support. Distinguish additional explanation from source claims. Conversation is not independent evidence. Sources are optional grounding; never invent references to fill an empty citation set.",
         });
         let serialized = serde_json::to_string(&payload).map_err(CommandError::serialization)?;
@@ -272,6 +283,7 @@ pub(crate) async fn build(
         request_text,
         notice,
         images,
+        figures: offered,
         completion_tokens,
     })
 }

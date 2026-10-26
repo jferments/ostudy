@@ -6,6 +6,7 @@ mod android;
 mod desktop;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 mod mobile_stub;
+pub(crate) mod speech_recognition;
 
 /// Where a page in the system browser links to bring oStudy back to the
 /// front, on platforms whose browser is a separate app (`None` elsewhere).

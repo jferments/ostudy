@@ -1,5 +1,7 @@
 /src/main/**/generated
 /src/main/jniLibs/**/*.so
+# sherpa-onnx-sys marks the libraries it copies here with their release.
+/src/main/jniLibs/**/.sherpa-onnx-version
 /src/main/assets/tauri.conf.json
 /tauri.build.gradle.kts
 /proguard-tauri.pro

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { requiredTestValue as required } from "../test/factories";
@@ -8,6 +8,7 @@ import { getSettings, type AppSettings } from "../ipc/settings";
 import * as studyMaterials from "../ipc/studyMaterials";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { CollectionStudyGuideDialog } from "./CollectionStudyGuideDialog";
+import { openMenu } from "../test/menus";
 
 vi.mock("../ipc/documents", () => ({ openDocumentSource: vi.fn() }));
 vi.mock("../ipc/settings", () => ({ getSettings: vi.fn() }));
@@ -125,10 +126,7 @@ beforeEach(() => {
 async function openSectionActions(title: string): Promise<HTMLElement> {
   const name = new RegExp(`Section actions for ${title}`, "u");
   const trigger = screen.getByRole("button", { name });
-  for (let attempt = 0; attempt < 3 && trigger.getAttribute("aria-expanded") !== "true"; attempt += 1) {
-    await act(async () => { fireEvent.click(trigger); });
-  }
-  return screen.findByRole("menu", { name });
+  return openMenu(trigger);
 }
 
 it("renders collection sections through the shared semantic reader with one overflow menu", async () => {
