@@ -24,6 +24,15 @@ export const LIBRARY_SECTIONS = ["overview", "decks", "study-guides", "lessons",
 
 export type LibrarySection = (typeof LIBRARY_SECTIONS)[number];
 
+/** A subject's pages that only AI makes: hidden while AI is off. */
+export const AI_SUBJECT_SECTIONS: readonly SubjectSection[] = ["lessons", "study-guides", "podcasts"];
+
+/** The section shown in place of `section` while AI is off. */
+export function sectionWithoutAi(section: AppSection): AppSection {
+  if (section === "tutor") return "home";
+  return (AI_SUBJECT_SECTIONS as readonly AppSection[]).includes(section) ? "decks" : section;
+}
+
 export function isSubjectSection(section: AppSection): section is SubjectSection {
   return (SUBJECT_SECTIONS as readonly AppSection[]).includes(section);
 }

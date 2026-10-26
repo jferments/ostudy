@@ -70,6 +70,43 @@ pub(crate) fn record_document_cancellation_with_message(
     );
 }
 
+/// Settles a document prepared without AI: its text, pages and chunks are in
+/// place, so it is ready to read and mark up although no deck or guide exists.
+pub(crate) fn record_document_prepared(
+    database: &Database,
+    document_id: &str,
+) -> Result<(), CommandError> {
+    let now = unix_time_millis()?;
+    database.with_connection(|connection| {
+        let changed = connection
+            .execute(
+                "UPDATE documents
+                 SET lifecycle_state = 'ready', safe_error_code = '', safe_error_message = '',
+                     processing_duration_ms = CASE
+                         WHEN processing_started_at IS NULL THEN processing_duration_ms
+                         ELSE MAX(0, ?1 - processing_started_at)
+                     END,
+                     updated_at = ?1, completed_at = ?1, revision = revision + 1
+                 WHERE id = ?2 AND lifecycle_state = 'processing'",
+                params![now, document_id],
+            )
+            .map_err(|error| {
+                CommandError::database_at(
+                    "document_prepared_state_write_failed",
+                    format!("document={document_id}"),
+                    error,
+                )
+            })?;
+        if changed != 1 {
+            return Err(CommandError::new(
+                "document_changed",
+                "The document changed while it was being read.",
+            ));
+        }
+        Ok(())
+    })
+}
+
 pub(crate) fn flashcard_generation_canceled_error() -> CommandError {
     CommandError::new(FLASHCARD_CANCELED_CODE, FLASHCARD_CANCELED_MESSAGE)
 }
@@ -367,6 +404,53 @@ mod tests {
                 Ok(())
             })
             .unwrap();
+    }
+
+    #[test]
+    fn a_document_prepared_without_ai_settles_ready_with_nothing_made() {
+        let database = Database::open_in_memory().expect("database should open");
+        let document_id = "3".repeat(32);
+        database
+            .with_connection(|connection| {
+                connection
+                    .execute(
+                        "INSERT INTO documents (
+                         id, title, original_filename, mime_type, byte_size, sha256,
+                         source_relative_path, lifecycle_state, created_at, updated_at
+                     ) VALUES (?1, 'Read only', 'read.pdf', 'application/pdf', 1,
+                               ?2, 'documents/read/source.pdf', 'failed', 1, 1)",
+                        params![document_id, "b".repeat(64)],
+                    )
+                    .map_err(CommandError::database)
+            })
+            .expect("document fixture should initialize");
+        crate::document_store::mark_document_processing(&database, &document_id)
+            .expect("document should start processing");
+
+        record_document_prepared(&database, &document_id).expect("preparation should settle");
+
+        let (lifecycle, code, duration): (String, String, Option<i64>) = database
+            .with_connection(|connection| {
+                connection
+                    .query_row(
+                        "SELECT lifecycle_state, safe_error_code, processing_duration_ms
+                         FROM documents WHERE id = ?1",
+                        [document_id.as_str()],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .map_err(CommandError::database)
+            })
+            .unwrap();
+        assert_eq!(lifecycle, "ready");
+        assert_eq!(code, "");
+        assert!(duration.is_some());
+        // Only a document still being read is settled; a second call changes nothing.
+        assert_eq!(
+            record_document_prepared(&database, &document_id)
+                .unwrap_err()
+                .code,
+            "document_changed"
+        );
     }
 
     fn insert_guide_only_document(database: &Database, document_id: &str) {

@@ -8,6 +8,7 @@ import {
   generateMoreDocumentFlashcards,
   getDocumentGenerationProgress,
   importDocument,
+  startDocumentPreparation,
   listDocuments,
   openDocumentSource,
   renameDocument,
@@ -25,6 +26,7 @@ import {
 } from "../ipc/studyGuides";
 import { selectExternalImport } from "../platform/files";
 import { useConfirm } from "../ui/overlays/overlayContext";
+import { useAiFeatures } from "./AiFeaturesProvider";
 import { useRequestLane } from "./requestLane";
 import { useImageCollectionJobs } from "./useImageCollectionJobs";
 
@@ -72,6 +74,9 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
   const capturedInstructions = useRef(new Map<string, string | undefined>());
   const stopping = useRef(new Set<string>());
   const backgroundFlashcardIds = useRef(new Set<string>());
+  // Documents being read without AI, until they settle.
+  const preparingIds = useRef(new Set<string>());
+  const ai = useAiFeatures().enabled;
   const guideRequestIds = useRef(new Set<string>());
   const latestDocuments = useRef(documents);
   latestDocuments.current = documents;
@@ -163,6 +168,17 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
 
   useEffect(() => {
     for (const document of documents) {
+      if (preparingIds.current.has(document.id) && document.lifecycleState !== "processing") {
+        preparingIds.current.delete(document.id);
+        stopping.current.delete(`document:${document.id}`);
+        updateIdSet(setCancelingDocumentIds, document.id, false);
+        if (document.lifecycleState === "failed" && document.safeErrorCode !== "ai_request_canceled") {
+          const message = document.safeErrorMessage || "The document could not be read.";
+          setErrorMessage(message);
+          showToast("error", message);
+        }
+        continue;
+      }
       if (!backgroundFlashcardIds.current.has(document.id)
         || document.lifecycleState === "processing") continue;
 
@@ -235,6 +251,17 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
           `Generation started; refreshing Documents failed: ${getErrorMessage(error)}`,
         );
       }
+    }
+  }
+
+  /** Reads a document without AI: it settles ready to open and annotate, with nothing made from it. */
+  async function startPreparation(documentId: string): Promise<void> {
+    await startDocumentPreparation(documentId);
+    preparingIds.current.add(documentId);
+    try {
+      await refreshDocuments();
+    } catch (error: unknown) {
+      if (alive.current) setErrorMessage(`Reading started; refreshing Documents failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -370,7 +397,9 @@ export function useDocumentJobsController({ refreshDecks, showToast }: DocumentJ
       documentId = imported.documentId;
       updateIdSet(setBusyDocumentIds, documentId, true);
       await onImported?.(documentId);
-      await startBackgroundFlashcardGeneration(documentId, generationInstructions);
+      // Without AI a document is only read, so it can be opened and annotated.
+      if (ai) await startBackgroundFlashcardGeneration(documentId, generationInstructions);
+      else await startPreparation(documentId);
       return documentId;
     } catch (error: unknown) {
       await handleGenerationFailure(error);
