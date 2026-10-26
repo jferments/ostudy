@@ -81,7 +81,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertGreater(len(versions), 0)
         self.assertTrue(all(isinstance(value, int) and value >= 1 for value in versions.values()))
 
-    def test_prepare_automation_profile_stores_completed_tutorials(self) -> None:
+    def test_prepare_automation_profile_stores_completed_tutorials_and_skips_ai_introduction(self) -> None:
         state = {}
 
         def fake_request(method: str, path: str, payload=None):
@@ -90,6 +90,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             assert payload is not None
             state["key"] = payload["args"][0]
             state["value"] = payload["args"][1]
+            state["introduction"] = payload["args"][2]
             return True
 
         with patch.object(self.smoke, "request", side_effect=fake_request):
@@ -98,6 +99,7 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
         self.assertEqual(state["value"]["schemaVersion"], 1)
         self.assertEqual(state["value"]["completed"], self.smoke.tutorial_versions())
         self.assertEqual(state["value"]["dismissed"], {})
+        self.assertEqual(state["introduction"], self.smoke.AI_INTRODUCTION_STORAGE_KEY)
 
     def test_find_element_retries_only_retryable_lookup_errors(self) -> None:
         calls = 0

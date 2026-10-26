@@ -14,7 +14,6 @@ import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { Panel } from "../../ui/primitives/Panel";
-import { VisuallyHidden } from "../../ui/primitives/VisuallyHidden";
 import { DeckTransferDialog } from "../flashcards/DeckTransferDialog";
 import { ChooseSubjectsSheet } from "./ChooseSubjectsSheet";
 import { CheckTheseSheet } from "./CheckTheseSheet";
@@ -31,7 +30,6 @@ import {
   type SubjectSort,
   type SubjectTile,
 } from "./homeModel";
-import { NewSubjectSheet } from "./NewSubjectSheet";
 import { NewStudySetSheet } from "../library/NewStudySetSheet";
 import type { SubjectSection } from "../../navigation/appDestinations";
 import { useDocumentPreparations } from "./useDocumentPreparations";
@@ -41,7 +39,7 @@ import { TodayStrip } from "./TodayStrip";
 /** The order chosen on Home lasts until the app closes. */
 let sessionSort: SubjectSort = "most-due";
 
-type HomeSheet = "new-subject" | "new-study-set" | "choose-subjects" | "check-these" | "import-deck" | null;
+type HomeSheet = "new-study-set" | "choose-subjects" | "check-these" | "import-deck" | null;
 
 interface HomeScreenProps {
   /** Starts today's scheduled review over these decks. */
@@ -93,7 +91,6 @@ export function HomeScreen({
   const compact = layoutMode === "compact";
   const [sort, setSortState] = useState<SubjectSort>(sessionSort);
   const [sheet, setSheet] = useState<HomeSheet>(null);
-  const [announcement, setAnnouncement] = useState("");
   const todayHeadingId = useId();
   const subjectsHeadingId = useId();
 
@@ -137,9 +134,6 @@ export function HomeScreen({
   return (
     <PageScaffold width="workspace" data-testid="home-screen">
       <h1 className="tw:sr-only">Home</h1>
-      <VisuallyHidden as="div" aria-live="polite">
-        {announcement}
-      </VisuallyHidden>
       {readError && (!summary || !library) ? (
         <InlineNotice kind="error">
           Home could not load: {readError}{" "}
@@ -154,7 +148,7 @@ export function HomeScreen({
           <HomeFirstRun
             hasArchivedDecks={hasArchivedDecks}
             importing={jobs?.isUploading ?? false}
-            onCreateSubject={() => setSheet("new-subject")}
+            onCreateSubject={() => setSheet("new-study-set")}
             onImportDocument={() => setSheet("new-study-set")}
             onImportDeck={() => setSheet("import-deck")}
             onOpenLibrary={onOpenLibrary}
@@ -208,7 +202,7 @@ export function HomeScreen({
                         icon="plus"
                         label="New subject"
                         data-testid="home-new-subject"
-                        onClick={() => setSheet("new-subject")}
+                        onClick={() => setSheet("new-study-set")}
                       />
                       {tiles.subjects.length > 1 ? (
                         <OverflowMenu
@@ -263,16 +257,6 @@ export function HomeScreen({
             if (created) acceptLibrary(created);
             setSheet(null);
             onOpenSubject(subjectId, "documents");
-          }}
-        />
-      ) : null}
-      {sheet === "new-subject" ? (
-        <NewSubjectSheet
-          onClose={() => setSheet(null)}
-          onCreated={(created, name) => {
-            acceptLibrary(created);
-            setSheet(null);
-            setAnnouncement(`${name} created.`);
           }}
         />
       ) : null}

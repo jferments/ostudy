@@ -364,40 +364,43 @@ describe("HomeScreen", () => {
     expect(within(tile as HTMLElement).getByText("Opening your document: Week 4 notes")).toBeTruthy();
   });
 
-  it("names a new subject and shows it at once", async () => {
+  it("starts a new subject in New study set, where a name alone makes it", async () => {
     const created = makeSubject({ id: "bio", name: "Biostatistics", createdAt: 5 });
     vi.mocked(subjectsIpc.createSubject).mockResolvedValue(
       makeSubjectLibrary({ libraryRevision: 2, subjects: [cardiac, pharmacology, spanish, renal, created] }),
     );
-    renderHome();
+    const { onOpenSubject } = renderHome();
     await screen.findByTestId("home-today");
     fireEvent.click(screen.getByTestId("home-new-subject"));
-    const sheet = await screen.findByRole("dialog", { name: "New subject" });
-    const create = within(sheet).getByRole("button", { name: "Create subject" }) as HTMLButtonElement;
+    const sheet = await screen.findByRole("dialog", { name: "New study set" });
+    // The same sheet as Library's: documents, a prompt and what to make.
+    expect(within(sheet).getByRole("button", { name: "Choose files" })).toBeTruthy();
+    expect(within(sheet).getByRole("textbox", { name: "Prompt" })).toBeTruthy();
+    expect(within(sheet).getByRole("checkbox", { name: "Study guide" })).toBeTruthy();
+    const create = within(sheet).getByRole("button", { name: "Make study set" }) as HTMLButtonElement;
     expect(create.disabled).toBe(true);
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), {
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Subject" }), {
       target: { value: "  Biostatistics " },
     });
     fireEvent.click(create);
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New subject" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New study set" })).toBeNull());
     expect(subjectsIpc.createSubject).toHaveBeenCalledWith({
       name: "Biostatistics",
       expectedLibraryRevision: 1,
     });
-    expect(screen.getByRole("button", { name: "Biostatistics" })).toBeTruthy();
-    expect(screen.getByText("Biostatistics created.")).toBeTruthy();
+    expect(onOpenSubject).toHaveBeenCalledWith("bio", "documents");
   });
 
-  it("keeps the dialog open with the reason when the name is refused", async () => {
+  it("keeps New study set open with the reason when the name is refused", async () => {
     vi.mocked(subjectsIpc.createSubject).mockRejectedValue(new Error("A subject already has that name."));
     renderHome();
     await screen.findByTestId("home-today");
     fireEvent.click(screen.getByTestId("home-new-subject"));
-    const sheet = await screen.findByRole("dialog", { name: "New subject" });
-    fireEvent.change(within(sheet).getByRole("textbox", { name: "Name" }), {
+    const sheet = await screen.findByRole("dialog", { name: "New study set" });
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Subject" }), {
       target: { value: "Cardiac physiology" },
     });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Create subject" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Make study set" }));
     expect(await within(sheet).findByText("A subject already has that name.")).toBeTruthy();
   });
 
@@ -461,7 +464,7 @@ describe("HomeScreen", () => {
     fireEvent.click(within(importDialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Import deck" })).toBeNull());
     fireEvent.click(within(welcome).getByRole("button", { name: "Create a subject" }));
-    expect(await screen.findByRole("dialog", { name: "New subject" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "New study set" })).toBeTruthy();
   });
 
   it("does not call a library empty when its decks are all archived", async () => {
