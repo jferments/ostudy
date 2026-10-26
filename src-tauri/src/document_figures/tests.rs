@@ -855,7 +855,7 @@ fn a_scanned_pages_figure_is_found_above_its_garbled_caption() {
     } = figure.bounds;
     // Under the header, over the labels, and within the left column.
     assert!(
-        top >= 792.0 * 0.09 - 1.0 && top <= 90.0,
+        (792.0 * 0.09 - 1.0..=90.0).contains(&top),
         "{:?}",
         figure.bounds
     );
