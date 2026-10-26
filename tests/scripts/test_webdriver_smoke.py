@@ -47,11 +47,13 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
             "args": [],
         }
         disconnect = self.smoke.http.client.RemoteDisconnected("lost mutation response")
+        connection = MagicMock()
+        connection.getresponse.side_effect = disconnect
         with patch.object(
-            self.smoke.urllib.request,
-            "urlopen",
-            side_effect=disconnect,
-        ) as urlopen:
+            self.smoke.http.client,
+            "HTTPConnection",
+            return_value=connection,
+        ) as connect:
             with self.assertRaisesRegex(
                 self.smoke.http.client.RemoteDisconnected,
                 "lost mutation response",
@@ -61,12 +63,40 @@ class WebDriverSmokeHarnessTests(unittest.TestCase):
                     "/session/session-1/execute/sync",
                     payload,
                 )
-        urlopen.assert_called_once()
-        sent = urlopen.call_args.args[0]
-        self.assertEqual(sent.get_method(), "POST")
-        self.assertTrue(sent.full_url.endswith("/session/session-1/execute/sync"))
-        self.assertIn(b"retrySentinel", sent.data)
-        self.assertIn(b"document.readyState", sent.data)
+        connect.assert_called_once()
+        connection.request.assert_called_once()
+        method, path = connection.request.call_args.args
+        body = connection.request.call_args.kwargs["body"]
+        self.assertEqual(method, "POST")
+        self.assertEqual(path, "/session/session-1/execute/sync")
+        self.assertIn(b"retrySentinel", body)
+        self.assertIn(b"document.readyState", body)
+        connection.close.assert_called_once()
+
+    def test_request_keeps_the_driver_connection_alive(self) -> None:
+        # tauri-driver forwards Connection: close to WebKitWebDriver, which then
+        # closes the proxy's pooled connection under the next command (#272).
+        connection = MagicMock()
+        connection.getresponse.return_value.status = 200
+        connection.getresponse.return_value.read.return_value = b'{"value": 7}'
+        with patch.object(self.smoke.http.client, "HTTPConnection", return_value=connection) as connect:
+            self.assertEqual(self.smoke.request("GET", "/status"), 7)
+        self.assertEqual(connect.call_args.args[:2], ("127.0.0.1", 4444))
+        headers = connection.request.call_args.kwargs["headers"]
+        self.assertNotIn("connection", {name.lower() for name in headers})
+        connection.close.assert_called_once()
+
+    def test_request_decodes_protocol_error_from_http_status(self) -> None:
+        connection = MagicMock()
+        connection.getresponse.return_value.status = 404
+        connection.getresponse.return_value.read.return_value = (
+            b'{"value": {"error": "no such element", "message": "missing"}}'
+        )
+        with patch.object(self.smoke.http.client, "HTTPConnection", return_value=connection):
+            with self.assertRaises(self.smoke.WebDriverProtocolError) as raised:
+                self.smoke.request("POST", "/session/s/element", {"using": "css selector", "value": "x"})
+        self.assertEqual(raised.exception.status, 404)
+        self.assertEqual(raised.exception.error, "no such element")
 
     def test_protocol_error_decodes_http_error_payload(self) -> None:
         error = self.smoke._protocol_error({"value": {"error": "no such element", "message": "missing"}}, 404)
