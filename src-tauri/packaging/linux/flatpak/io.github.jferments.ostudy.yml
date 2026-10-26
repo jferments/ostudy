@@ -14,6 +14,9 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc
   - --device=dri
+  # WebKitGTK's DMA-BUF renderer crashes on start under Wayland with NVIDIA
+  # drivers ("Error 71 (Protocol error) dispatching to Wayland display").
+  - --env=WEBKIT_DISABLE_DMABUF_RENDERER=1
   # Optional AI providers and device sync on the local network.
   - --share=network
   # Lesson and speech playback.
