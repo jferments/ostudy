@@ -49,6 +49,7 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
         }
     }
 
+    let fragmented = fragmented_pages(&document.chunks);
     let mut ocr_pages = Vec::new();
     let mut native_semantic_fallback_pages = BTreeSet::new();
     for page in &document.pages {
@@ -93,6 +94,7 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
         if structured_is_suspicious
             || document.semantic_analysis_degraded
             || (raw_is_unusable && !has_good_semantic)
+            || (fragmented.contains(&page.page_number) && !raw_is_unusable)
         {
             native_semantic_fallback_pages.insert(page.page_number);
         }
@@ -102,6 +104,60 @@ pub(crate) fn plan_text_recovery(document: &ExtractedDocument) -> ExtractionReco
         ocr_pages,
         native_semantic_fallback_pages: native_semantic_fallback_pages.into_iter().collect(),
     }
+}
+
+/// A page needs this many broken chunks, making up this share of its chunks,
+/// before its structure is set aside.
+const MIN_BROKEN_CHUNKS: usize = 4;
+const MIN_BROKEN_SHARE: f64 = 0.25;
+
+/// Pages the structure reader broke into pieces. It starts a new element at
+/// every small glyph, so a paragraph with H₂CO₃, Na⁺-K⁺ or a citation number in
+/// it comes out as scraps ("-K", "+", "3") under headings that are really
+/// pieces of the sentence ("and HCO", ". The H"). Extraction rebuilds such a
+/// page from its text runs; one it could not rebuild falls back here to its
+/// page text, which keeps those paragraphs whole.
+pub(super) fn fragmented_pages(chunks: &[ExtractedSemanticChunk]) -> BTreeSet<usize> {
+    let mut counts = BTreeMap::<usize, (usize, usize)>::new();
+    for chunk in chunks {
+        let broken = is_scrap(&chunk.text)
+            || chunk
+                .heading_context
+                .as_deref()
+                .is_some_and(is_sentence_piece);
+        for page in &chunk.page_numbers {
+            let (total, broken_count) = counts.entry(*page).or_default();
+            *total += 1;
+            *broken_count += usize::from(broken);
+        }
+    }
+    counts
+        .into_iter()
+        .filter(|(_, (total, broken))| {
+            *broken >= MIN_BROKEN_CHUNKS && *broken as f64 >= MIN_BROKEN_SHARE * *total as f64
+        })
+        .map(|(page, _)| page)
+        .collect()
+}
+
+/// Text with fewer than two words of two or more letters says nothing alone.
+fn is_scrap(text: &str) -> bool {
+    text.split_whitespace()
+        .filter(|word| {
+            word.chars()
+                .filter(|character| character.is_alphabetic())
+                .count()
+                >= 2
+        })
+        .nth(1)
+        .is_none()
+}
+
+/// A heading that starts in lower case or on punctuation continues a sentence.
+pub(super) fn is_sentence_piece(heading: &str) -> bool {
+    heading.trim_start().chars().next().is_some_and(|first| {
+        first.is_lowercase() || matches!(first, '.' | ',' | ';' | ':' | ')' | '-' | '−' | '–')
+    })
 }
 
 pub(crate) fn apply_text_recovery(
@@ -286,6 +342,90 @@ mod tests {
         let damaged = "The trachea \u{fffd}\u{fffd}\u{fffd} divides into the main bronchi.";
         let plan = plan_text_recovery(&base_document(damaged, damaged));
         assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+    }
+
+    #[test]
+    fn a_page_broken_apart_at_its_marks_falls_back_to_its_text() {
+        let page = "basolateral membranes contain Na⁺-K⁺ ATPase and Cl⁻-HCO₃⁻ exchangers. \
+            The cells contain carbonic anhydrase. H₂CO₃ dissociates into H⁺ and HCO₃⁻.";
+        let mut document = base_document(page, "basolateral membranes contain Na");
+        let pieces = [
+            ("-K", "-K"),
+            ("+\n+", "-K"),
+            ("ATPase and Cl", "ATPase and Cl"),
+            ("-HCO", "-HCO"),
+            ("3", "-HCO"),
+            ("dissociates into H", "dissociates into H"),
+            ("and HCO", "and HCO"),
+        ];
+        for (index, (text, heading)) in pieces.into_iter().enumerate() {
+            document.chunks.push(ExtractedSemanticChunk {
+                chunk_index: index + 1,
+                text: text.to_string(),
+                full_text: format!("{heading}\n\n{text}"),
+                page_numbers: vec![1],
+                bounding_boxes: Vec::new(),
+                element_types: vec!["paragraph".to_string()],
+                heading_context: Some(heading.to_string()),
+                token_estimate: 2,
+                is_oversized: false,
+            });
+        }
+        let plan = plan_text_recovery(&document);
+        assert!(plan.ocr_pages.is_empty());
+        assert_eq!(plan.native_semantic_fallback_pages, vec![1]);
+
+        apply_text_recovery(&mut document, &[], &plan.native_semantic_fallback_pages);
+        assert_eq!(document.chunks.len(), 1);
+        assert_eq!(document.chunks[0].text, page);
+    }
+
+    #[test]
+    fn short_headings_and_a_few_labels_keep_the_structure() {
+        let mut document = base_document(
+            "Gastric secretion. The parietal cells secrete HCl and intrinsic factor.",
+            "The parietal cells secrete HCl and intrinsic factor.",
+        );
+        for (index, (text, heading)) in [
+            ("Gastric secretion", "Gastric secretion"),
+            ("HCl Secretion", "HCl Secretion"),
+            ("Na", "HCl Secretion"),
+            ("K⁺", "HCl Secretion"),
+            (
+                "The chief cells secrete pepsinogen into the gland.",
+                "Chief cells",
+            ),
+            (
+                "The G cells secrete gastrin into the circulation.",
+                "G cells",
+            ),
+            (
+                "Mucus has a protective, neutralizing effect.",
+                "Mucous cells",
+            ),
+            (
+                "Pepsin is a protease that starts protein digestion.",
+                "Pepsin",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            document.chunks.push(ExtractedSemanticChunk {
+                chunk_index: index + 1,
+                text: text.to_string(),
+                full_text: text.to_string(),
+                page_numbers: vec![1],
+                bounding_boxes: Vec::new(),
+                element_types: vec!["paragraph".to_string()],
+                heading_context: Some(heading.to_string()),
+                token_estimate: 10,
+                is_oversized: false,
+            });
+        }
+        assert!(plan_text_recovery(&document)
+            .native_semantic_fallback_pages
+            .is_empty());
     }
 
     #[test]

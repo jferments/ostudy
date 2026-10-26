@@ -54,6 +54,13 @@ pub(crate) fn restore_printed_notation(
     if by_page.is_empty() {
         return;
     }
+    // A chunk the extracted page text already holds word for word only needs
+    // its words rewritten; matching it again could pull in a repeated phrase.
+    let extracted_pages = semantic
+        .pages
+        .iter()
+        .map(|page| (page.page_number, page.text.clone()))
+        .collect::<BTreeMap<_, _>>();
     let mut restored = 0usize;
     for page in &mut semantic.pages {
         if let Some(words) = by_page.get(&page.page_number) {
@@ -76,6 +83,16 @@ pub(crate) fn restore_printed_notation(
             }
         }
         if words.is_empty() {
+            continue;
+        }
+        let verbatim = chunk.page_numbers.iter().any(|page| {
+            extracted_pages
+                .get(page)
+                .is_some_and(|text| text.contains(chunk.text.as_str()))
+        });
+        if verbatim {
+            chunk.text = apply_notation(&chunk.text, &words).0;
+            chunk.full_text = apply_notation(&chunk.full_text, &words).0;
             continue;
         }
         let page_text = semantic
