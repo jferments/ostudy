@@ -167,7 +167,8 @@ async fn process_initial_flashcards(
         ));
     }
 
-    let mut task = document_intelligence::load_document_task_context(database)?;
+    let mut task =
+        document_intelligence::load_verified_document_task_context(database, runtime).await?;
     task.question_policy.generation_instructions = instructions.clone();
     let capabilities = document_provider::load_document_provider_capabilities(
         database,

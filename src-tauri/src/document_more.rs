@@ -132,7 +132,8 @@ async fn generate_more_impl(
             "The retained document has no semantic source chunks available for another generation pass.",
         ));
     }
-    let mut task = document_intelligence::load_document_task_context(database)?;
+    let mut task =
+        document_intelligence::load_verified_document_task_context(database, runtime).await?;
     task.question_policy.generation_instructions = input.generation_instructions;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,

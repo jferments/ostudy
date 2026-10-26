@@ -257,6 +257,36 @@ fn saving_the_voice_checks_the_model_voice_connection_and_revision() {
 }
 
 #[test]
+fn a_saved_voice_keeps_speaking_after_its_service_is_replaced() {
+    let database = library();
+    add_openrouter(&database, OPENROUTER, 1);
+    let saved = save(&database, Some(OPENROUTER), KOKORO, "bm_george", 0).unwrap();
+    assert_eq!(saved.profile_id.as_deref(), Some(OPENROUTER));
+
+    // Removing the service clears the saved connection; a new one takes over
+    // with the chosen model and voice instead of leaving lessons silent.
+    database
+        .with_connection(|connection| {
+            connection
+                .execute(
+                    "DELETE FROM ai_provider_profiles WHERE id = ?1",
+                    params![OPENROUTER],
+                )
+                .map_err(CommandError::database)?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(settings(&database).profile_id, None);
+    add_openrouter(&database, SECOND_OPENROUTER, 2);
+    let current = settings(&database);
+    assert_eq!(current.profile_id.as_deref(), Some(SECOND_OPENROUTER));
+    assert_eq!(
+        (current.model_id.as_str(), current.voice.as_str()),
+        (KOKORO, "bm_george")
+    );
+}
+
+#[test]
 fn a_step_is_narrated_only_through_a_configured_voice_and_from_its_saved_text() {
     let database = library();
     let paths = temporary_paths("refusals");
