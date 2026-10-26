@@ -51,7 +51,7 @@ DEB="$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.deb"
 printf '\n==> Building the Flatpak bundle from the portable .deb\n'
 FLATPAK_DIR="$(mktemp -d -t ostudy-release-flatpak.XXXXXXXX)"
 trap 'rm -rf -- "$FLATPAK_DIR"' EXIT
-"$SCRIPT_DIR/build-flatpak.sh" --deb "$DEB" --output "$FLATPAK_DIR"
+"$SCRIPT_DIR/build-flatpak.sh" --container --deb "$DEB" --output "$FLATPAK_DIR"
 cp "$FLATPAK_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.flatpak" "$OUT_DIR/"
 
 git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \

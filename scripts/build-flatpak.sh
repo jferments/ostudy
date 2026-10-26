@@ -11,15 +11,24 @@ MANIFEST="$FLATPAK_DIR/$APP_ID.yml"
 OUTPUT_DIR="$ROOT_DIR/.artifacts/flatpak"
 DEB=""
 INSTALL=0
+CONTAINER=0
+ENGINE="${OSTUDY_CONTAINER_ENGINE:-}"
+CACHE_VOLUME="ostudy-flatpak-cache"
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/build-flatpak.sh [--deb PATH] [--output DIRECTORY] [--install]
+Usage: ./scripts/build-flatpak.sh [--deb PATH] [--output DIRECTORY] [--install | --container]
 
 Build the oStudy Flatpak from a verified production .deb and write a
 single-file bundle (.flatpak). Without --deb it uses the package from
 ./scripts/ostudy-dev package-deb (.artifacts/linux-package/). --install also
 installs it for the current user.
+
+--container builds inside a privileged Ubuntu 24.04 container (Docker or
+Podman, chosen by OSTUDY_CONTAINER_ENGINE) instead of on the host. The release
+runner uses it because its service sandbox stops flatpak-builder's bubblewrap
+from setting up a network namespace. The runtime is cached in the container
+volume ostudy-flatpak-cache.
 USAGE
 }
 
@@ -28,16 +37,10 @@ while (($#)); do
     --deb) [[ $# -ge 2 ]] || { usage >&2; exit 2; }; DEB="$2"; shift 2 ;;
     --output) [[ $# -ge 2 ]] || { usage >&2; exit 2; }; OUTPUT_DIR="$2"; shift 2 ;;
     --install) INSTALL=1; shift ;;
+    --container) CONTAINER=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'ERROR: unknown argument: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
-done
-
-for tool in flatpak flatpak-builder; do
-  command -v "$tool" >/dev/null 2>&1 || {
-    printf 'ERROR: %s is required. On Ubuntu/Debian: sudo apt-get install flatpak flatpak-builder\n' "$tool" >&2
-    exit 1
-  }
 done
 
 if [[ -z "$DEB" ]]; then
@@ -56,6 +59,50 @@ fi
 }
 VERSION="$(dpkg-deb -f "$DEB" Version)"
 
+if (( CONTAINER )); then
+  (( ! INSTALL )) || { printf 'ERROR: --install and --container cannot be combined.\n' >&2; exit 2; }
+  if [[ -z "$ENGINE" ]]; then
+    if command -v podman >/dev/null 2>&1; then ENGINE=podman
+    elif command -v docker >/dev/null 2>&1; then ENGINE=docker
+    else printf 'ERROR: --container needs Podman or Docker.\n' >&2; exit 1
+    fi
+  fi
+  DEB="$(cd -- "$(dirname -- "$DEB")" && pwd)/$(basename -- "$DEB")"
+  mkdir -p "$OUTPUT_DIR"
+  OUTPUT_DIR="$(cd -- "$OUTPUT_DIR" && pwd)"
+  read -r -a EXTRA_ARGS <<< "${OSTUDY_CONTAINER_ARGS:-}"
+  printf '==> Building the Flatpak in ubuntu:24.04 (%s)\n' "$ENGINE"
+  # flatpak-builder sandboxes each build step with bubblewrap, which needs
+  # namespaces an unprivileged container does not get.
+  "$ENGINE" run --rm --privileged \
+    -v "$ROOT_DIR:/source:ro" \
+    -v "$DEB:/input/ostudy.deb:ro" \
+    -v "$OUTPUT_DIR:/output" \
+    -v "$CACHE_VOLUME:/cache" \
+    -e HOME=/cache/home \
+    -e OSTUDY_FLATPAK_WORK_ROOT=/cache \
+    "${EXTRA_ARGS[@]}" \
+    ubuntu:24.04 bash -Eeuo pipefail -c '
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update -qq
+      apt-get install -y -qq flatpak flatpak-builder appstream-compose dbus bzip2 xz-utils git patch unzip >/dev/null
+      mkdir -p "$HOME" /run/dbus
+      export XDG_RUNTIME_DIR=/run/user/0
+      mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+      dbus-daemon --system --fork
+      dbus-run-session -- /source/scripts/build-flatpak.sh --deb /input/ostudy.deb --output /output
+      chown -R "$(stat -c %u:%g /output)" /output
+    '
+  exit 0
+fi
+
+for tool in flatpak flatpak-builder; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    printf 'ERROR: %s is required. On Ubuntu/Debian: sudo apt-get install flatpak flatpak-builder\n' "$tool" >&2
+    exit 1
+  }
+done
+
 RUNTIME_VERSION="$(sed -n 's/^runtime-version: "\(.*\)"$/\1/p' "$MANIFEST")"
 [[ -n "$RUNTIME_VERSION" ]] || { printf 'ERROR: manifest has no runtime-version.\n' >&2; exit 1; }
 
@@ -73,8 +120,9 @@ flatpak run --command=sh "org.gnome.Platform//$RUNTIME_VERSION" -c \
 
 # flatpak-builder needs its state, build and repo directories on one
 # filesystem, and /tmp is often a separate tmpfs, so work inside the checkout.
-mkdir -p "$ROOT_DIR/.artifacts"
-WORK="$(mktemp -d -p "$ROOT_DIR/.artifacts" flatpak-work.XXXXXXXX)"
+WORK_ROOT="${OSTUDY_FLATPAK_WORK_ROOT:-$ROOT_DIR/.artifacts}"
+mkdir -p "$WORK_ROOT"
+WORK="$(mktemp -d -p "$WORK_ROOT" flatpak-work.XXXXXXXX)"
 cleanup() { rm -rf -- "$WORK"; }
 trap cleanup EXIT
 cp -- "$MANIFEST" "$FLATPAK_DIR/$APP_ID.metainfo.xml" "$WORK/"
