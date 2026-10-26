@@ -86,7 +86,7 @@ fn reference_free_question_can_be_evaluated_against_its_saved_rubric() {
     let result = validate(
         json!({
             "text":"Feedback", "sourceIds":[], "quiz":null,
-            "feedback":{"outcome":"correct","explanation":"That is correct.","criteriaFeedback":["The number is correct."]}
+            "feedback":{"outcome":"correct","explanation":"That is correct.","criteriaFeedback":["The number is correct."],"criteriaMet":[true]}
         }),
         TutorMode::Answer,
         &scope,

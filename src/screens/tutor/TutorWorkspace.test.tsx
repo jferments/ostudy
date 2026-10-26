@@ -151,6 +151,8 @@ const detail: ConversationDetail = {
       totalTokens: null,
       createdAt: 1,
       replacedByTurnId: null,
+      question: null,
+      questionId: null,
     },
   ],
 };
@@ -388,5 +390,41 @@ describe("Tutor workspace consent and source reads", () => {
     render(<Harness />);
     await act(async () => { await controller.selectConversation(detail.conversation.id); });
     expect(screen.getByRole("button", { name: "Make flashcards" })).toBeTruthy();
+  });
+
+  it("shows a quiz question as a card, answers it on the card and asks the next one", async () => {
+    const [explained] = detail.turns;
+    const asked = {
+      ...explained!, id: "5".repeat(32), sequence: 2, mode: "quiz" as const, userText: "Quiz me, 3 questions",
+      assistantText: "Which shape has three sides?", pendingQuestion: true, citations: [],
+      question: { number: 1, total: 3, choices: ["Square", "Triangle"], answered: false },
+    };
+    vi.mocked(getTutorConversation).mockResolvedValue({ ...detail, turns: [explained!, asked] });
+    render(<Harness />);
+    await act(async () => { await controller.selectConversation(detail.conversation.id); });
+    // The options are on the card; the composer stays for messages.
+    expect(screen.getByRole("article", { name: "Question 1" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
+    const graded = {
+      ...explained!, id: "6".repeat(32), sequence: 3, mode: "answer" as const, userText: "Triangle",
+      assistantText: "Correct\n\nExpected answer: Triangle", questionId: asked.id, citations: [],
+      feedback: { outcome: "correct" as const, explanation: "", criteriaFeedback: [], criteriaMet: [], chosen: 1 },
+    };
+    vi.mocked(sendTutorTurn).mockResolvedValue(graded);
+    vi.mocked(getTutorConversation).mockResolvedValue({
+      ...detail,
+      turns: [explained!, { ...asked, pendingQuestion: false, question: { ...asked.question, answered: true, correctChoice: 1, expectedAnswer: "Triangle", explanation: "Tri means three." } }, graded],
+    });
+    fireEvent.click(screen.getByRole("radio", { name: /Triangle/u }));
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Check answer" })); });
+    expect(sendTutorTurn).toHaveBeenCalledWith(expect.objectContaining({ mode: "answer", text: "Triangle", choice: 1, questionId: asked.id }));
+    expect(controller.draft).toBe("");
+    // The graded answer shows on the card, not as a message of its own.
+    expect(screen.getByRole("article", { name: "Question 1, answered" })).toBeTruthy();
+    expect(screen.queryByText(/Expected answer: Triangle/u)).toBeNull();
+    expect(screen.getByText("Tri means three.")).toBeTruthy();
+    vi.mocked(sendTutorTurn).mockResolvedValue({ ...asked, id: "7".repeat(32), sequence: 4, userText: "" });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Next question" })); });
+    expect(sendTutorTurn).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "quiz", text: "", afterQuestionId: asked.id }));
   });
 });

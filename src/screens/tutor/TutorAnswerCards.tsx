@@ -17,13 +17,19 @@ type Drafting =
   | { state: "failed"; message: string }
   | { state: "ready"; cards: AnswerCardDraft[] };
 
+/** Cards drafted from an answer, or a card already written, such as a quiz question's. */
+export type CardSource = { turnId: string } | { card: AnswerCardDraft };
+
 /**
- * Cards the flashcard model drafts from one answer. The learner edits them,
- * leaves out the ones not wanted and adds the rest to a deck; a card the deck
- * already holds is skipped.
+ * Cards the flashcard model drafts from one answer, or a card already
+ * written. The learner edits them, leaves out the ones not wanted and adds
+ * the rest to a deck; a card the deck already holds is skipped.
  */
-export function TutorAnswerCards({ turnId, onClose }: { turnId: string; onClose: () => void }) {
-  const [drafting, setDrafting] = useState<Drafting>({ state: "writing" });
+export function TutorAnswerCards({ source, onClose }: { source: CardSource; onClose: () => void }) {
+  const turnId = "turnId" in source ? source.turnId : null;
+  const [drafting, setDrafting] = useState<Drafting>(
+    "card" in source ? { state: "ready", cards: [source.card] } : { state: "writing" },
+  );
   const [attempt, setAttempt] = useState(0);
   const [decks, setDecks] = useState<DeckSummary[] | null>(null);
   const [deckId, setDeckId] = useState("");
@@ -35,6 +41,7 @@ export function TutorAnswerCards({ turnId, onClose }: { turnId: string; onClose:
   const writing = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!turnId) return;
     const operationId = createOperationId();
     writing.current = operationId;
     setDrafting({ state: "writing" });
@@ -107,7 +114,7 @@ export function TutorAnswerCards({ turnId, onClose }: { turnId: string; onClose:
   );
 
   return (
-    <Sheet title="Make flashcards" onClose={onClose} actions={actions} busy={adding} width="medium">
+    <Sheet title={turnId ? "Make flashcards" : "Save as flashcard"} onClose={onClose} actions={actions} busy={adding} width="medium">
       {added ? (
         <p role="status">{added}</p>
       ) : drafting.state === "writing" ? (

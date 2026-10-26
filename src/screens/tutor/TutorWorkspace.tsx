@@ -27,7 +27,8 @@ import { useReadAloud, type ReadAloud } from "./useReadAloud";
 import { useVoiceAvailable } from "../lessons/useVoiceAvailable";
 import { useSpeechInput } from "./useSpeechInput";
 import { TutorStarters, useTutorStarters, type TutorStarter } from "./TutorStarters";
-import { TutorAnswerCards } from "./TutorAnswerCards";
+import { TutorAnswerCards, type CardSource } from "./TutorAnswerCards";
+import { earlierOutcomes, TutorQuizCard } from "./TutorQuizCard";
 import { useGenerationModelMissing } from "../documents/useGenerationModelMissing";
 import { styles, withoutFigures } from "./presentation";
 
@@ -117,13 +118,15 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
   const welcomeArt = artwork.enabled ? artwork.definition.image : undefined;
   const hintOnly = tutor.target?.mode === "hint";
   const locked = tutor.busy || tutor.loading || tutor.pending !== null || tutor.preparation.locked;
-  const question = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
+  const pendingQuestion = [...(tutor.detail?.turns ?? [])].reverse().find((turn) => turn.pendingQuestion);
+  // A choose-one question is answered on its card; the composer stays for messages.
+  const question = pendingQuestion?.question?.choices.length ? undefined : pendingQuestion;
   const allTurns = (tutor.detail?.turns ?? []).filter((turn) => !hintOnly || turn.mode === "hint");
   // A replaced answer is one of its slot's earlier versions, not a turn of its own.
   const turns = allTurns.filter((turn) => !turn.replacedByTurnId);
   const [shownVersion, setShownVersion] = useState<Record<string, number>>({});
   const [editing, setEditing] = useState<{ turnId: string; text: string } | null>(null);
-  const [cardsFor, setCardsFor] = useState<string | null>(null);
+  const [cardsFor, setCardsFor] = useState<CardSource | null>(null);
   const cardModelMissing = useGenerationModelMissing();
   const lastTurnId = tutor.detail?.turns.at(-1)?.id;
   const live = useLiveTurn(tutor.liveOperationId);
@@ -418,7 +421,35 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
       {tutor.detail?.hasEarlierTurns && !hintOnly ? (
         <Button className="tw:self-center" disabled={locked} onClick={() => { followTail.current = false; void tutor.loadEarlier(); }}>Load earlier messages</Button>
       ) : null}
-      {turns.map((current) => {
+      {turns.map((current, index) => {
+        // A graded answer shows on its question's card.
+        if (current.mode === "answer" && current.state === "complete"
+          && turns.some((asked) => asked.id === current.questionId && asked.question)) return null;
+        const asked = current.mode === "quiz" && current.state === "complete" ? current.question : null;
+        if (asked) {
+          const graded = turns.find((turn) => turn.questionId === current.id && turn.state === "complete") ?? null;
+          return (
+            <div className={styles.turn} key={current.id}>
+              {current.userText ? (
+                <section className={styles.userMessage} aria-label="Your message">
+                  <div className={styles.message}>{current.userText}</div>
+                </section>
+              ) : null}
+              <TutorQuizCard
+                turn={current}
+                answer={graded}
+                earlier={earlierOutcomes(turns, index)}
+                latest={!turns.slice(index + 1).some((turn) => turn.mode === "quiz" && turn.question)}
+                disabled={locked || tutor.needsRefresh}
+                citations={graded ? citations(graded) : null}
+                onChoose={(choice) => { void tutor.answerChoice(current, choice); }}
+                onNext={() => { void tutor.nextQuestion(current); }}
+                onExplain={() => { void tutor.send("explain", `Explain what I missed in question ${asked.number}.`); }}
+                onSave={() => setCardsFor({ card: { question: withoutFigures(current.assistantText), answer: asked.expectedAnswer ?? "" } })}
+              />
+            </div>
+          );
+        }
         const versions = versionsOf(current, allTurns);
         const shown = Math.min(shownVersion[current.id] ?? versions.length - 1, versions.length - 1);
         const turn = versions[shown] ?? current;
@@ -533,7 +564,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
                   ) : null}
                   {voiceAvailable ? <ReadAloudAnswer turnId={turn.id} reader={reader} /> : null}
                   {turn.mode === "explain" && !cardModelMissing ? (
-                    <Button size="small" variant="ghost" onClick={() => setCardsFor(turn.id)}>
+                    <Button size="small" variant="ghost" onClick={() => setCardsFor({ turnId: turn.id })}>
                       <Icon name="cards" size={16} /> Make flashcards
                     </Button>
                   ) : null}
@@ -655,7 +686,7 @@ export function TutorWorkspace({ showHistory = false }: { showHistory?: boolean 
           onApply={(scope) => { if (!sameStudyScope(scope, tutor.scope)) tutor.changeSources(scope); }}
         />
       ) : null}
-      {cardsFor ? <TutorAnswerCards turnId={cardsFor} onClose={() => setCardsFor(null)} /> : null}
+      {cardsFor ? <TutorAnswerCards source={cardsFor} onClose={() => setCardsFor(null)} /> : null}
       {settingsOpen ? <TutorChatSettings tutor={tutor} onClose={() => setSettingsOpen(false)} onDelete={remove} /> : null}
       {renaming && tutor.detail ? (
         <RenameConversationDialog tutor={tutor} conversation={tutor.detail.conversation} onClose={() => setRenaming(false)} />

@@ -126,6 +126,8 @@ fn input(fixture: &Fixture, mode: TutorMode) -> TutorTurnInput {
         include_conversations: false,
         question_id: None,
         replaces_turn_id: None,
+        after_question_id: None,
+        choice: None,
     }
 }
 
@@ -209,6 +211,10 @@ fn quiz_criteria_stay_private_until_answer_evaluation_and_are_fixed() {
         explanation: "PRIVATE_EXPLANATION".to_string(),
         source_ids: Vec::new(),
         knowledge_unit_ids: Vec::new(),
+        choices: Vec::new(),
+        correct_choice: None,
+        question_count: None,
+        series: None,
     };
     let answer = ProviderAnswer {
         text: quiz.question.clone(),
@@ -240,7 +246,7 @@ fn quiz_criteria_stay_private_until_answer_evaluation_and_are_fixed() {
     let answer_identity = turns::begin(&fixture.database, &response, &fixture.task).unwrap();
     let graded = output::validate(json!({
         "text":"Model text cannot replace the stored expected answer", "sourceIds":[], "quiz":null,
-        "feedback":{"outcome":"incorrect","explanation":"The requested term was not supplied.","criteriaFeedback":["Criterion not met"]}
+        "feedback":{"outcome":"incorrect","explanation":"The requested term was not supplied.","criteriaFeedback":["Criterion not met"],"criteriaMet":[false]}
     }), TutorMode::Answer, &fixture.conversation.scope, &context(), Some(&fixed)).unwrap();
     assert!(graded.text.contains("EXPECTED_SECRET"));
     assert!(graded.text.contains("PRIVATE_EXPLANATION"));
@@ -437,6 +443,8 @@ fn hints_use_native_reveal_state_and_the_exact_practice_question() {
 mod source_optional;
 
 mod learning_context;
+
+mod quiz_cards;
 
 fn answered(
     fixture: &Fixture,

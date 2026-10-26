@@ -51,6 +51,22 @@ export interface QuizFeedback {
   outcome: "correct" | "partial" | "incorrect" | "unclear";
   explanation: string;
   criteriaFeedback: string[];
+  /** Whether the answer met each criterion, in order; empty for older feedback and choose-one answers. */
+  criteriaMet: boolean[];
+  /** The option a choose-one answer picked. */
+  chosen: number | null;
+}
+
+/** A quiz question's public part. What it expected arrives once it is answered. */
+export interface TutorQuestion {
+  number: number;
+  total: number | null;
+  /** A choose-one question's options; empty for a short answer. */
+  choices: string[];
+  answered: boolean;
+  expectedAnswer?: string;
+  explanation?: string;
+  correctChoice?: number;
 }
 
 export interface TutorTurn {
@@ -65,6 +81,9 @@ export interface TutorTurn {
   evidenceCurrent: boolean;
   pendingQuestion: boolean;
   feedback: QuizFeedback | null;
+  question: TutorQuestion | null;
+  /** The question an answer answers. */
+  questionId: string | null;
   provider: string;
   model: string;
   errorCode: string;
@@ -93,6 +112,10 @@ export interface TutorTurnInput {
   questionId: string | null;
   /** The conversation's last answer this one replaces: Regenerate, or the question edited and sent again. */
   replacesTurnId?: string;
+  /** The question a quiz's Next question follows. */
+  afterQuestionId?: string;
+  /** The option picked for a choose-one question. */
+  choice?: number;
 }
 
 export async function listTutorProjects(): Promise<TutorProject[]> {

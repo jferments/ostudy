@@ -28,6 +28,7 @@ async fn source_free_question_builds_publishes_and_evaluates_without_search_setu
             input: &question_request,
             focus: &focus,
             quiz: None,
+            series: None,
             history: history::HistorySnapshot::default(),
             project_instructions: None,
         },
@@ -84,6 +85,7 @@ async fn source_free_question_builds_publishes_and_evaluates_without_search_setu
             input: &reply,
             focus: &focus,
             quiz: Some(&fixed),
+            series: None,
             history: history::HistorySnapshot::default(),
             project_instructions: None,
         },
@@ -92,7 +94,7 @@ async fn source_free_question_builds_publishes_and_evaluates_without_search_setu
     .await
     .unwrap();
     let feedback = output::validate(json!({"text":"Feedback","sourceIds":[],"quiz":null,
-        "feedback":{"outcome":"correct","explanation":"Correct.","criteriaFeedback":["Three sides."]}}),
+        "feedback":{"outcome":"correct","explanation":"Correct.","criteriaFeedback":["Three sides."],"criteriaMet":[true]}}),
         TutorMode::Answer,&f.conversation.scope,&ctx,Some(&fixed)).unwrap();
     let identity = turns::begin(&f.database, &reply, &f.task).unwrap();
     let saved = turns::complete(&f.database, &identity, &feedback, &ctx, None).unwrap();

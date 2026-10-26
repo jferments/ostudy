@@ -17,7 +17,10 @@ use crate::{
 
 use super::{
     context::StudyContext,
-    contracts::{PrivateQuiz, ProviderAnswer, QuizFeedback, TutorMode, TutorTurn, TutorTurnInput},
+    contracts::{
+        PrivateQuiz, ProviderAnswer, QuizFeedback, TutorMode, TutorQuestion, TutorTurn,
+        TutorTurnInput,
+    },
     conversations, history, projects,
 };
 
@@ -113,6 +116,9 @@ pub(crate) fn begin(
         }
         if let Some(replaced) = &input.replaces_turn_id {
             ensure_replaceable(&transaction, &input.conversation_id, replaced)?;
+        }
+        if let Some(previous) = &input.after_question_id {
+            load_asked(&transaction, &input.conversation_id, previous)?;
         }
         let sequence: i64 = transaction.query_row(
             "SELECT COALESCE(MAX(sequence), 0) + 1 FROM tutor_turns WHERE conversation_id = ?1",
@@ -280,7 +286,10 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
             "SELECT id, operation_id, sequence, mode, user_text, assistant_text, state,
                 citations_json, evidence_current, quiz_json, provider_kind, model_id,
                 safe_error_code, safe_error_message, total_tokens, created_at, conversation_id,
-                (SELECT replaced_by_turn_id FROM tutor_turn_replacements WHERE turn_id = tutor_turns.id)
+                (SELECT replaced_by_turn_id FROM tutor_turn_replacements WHERE turn_id = tutor_turns.id),
+                answered_question_id,
+                EXISTS(SELECT 1 FROM tutor_turns a WHERE a.answered_question_id = tutor_turns.id
+                       AND a.state = 'complete')
          FROM tutor_turns WHERE id = ?1",
             [id],
             |row| {
@@ -303,6 +312,8 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
                     row.get::<_, i64>(15)?,
                     row.get::<_, String>(16)?,
                     row.get::<_, Option<String>>(17)?,
+                    row.get::<_, Option<String>>(18)?,
+                    row.get::<_, bool>(19)?,
                 ))
             },
         )
@@ -326,6 +337,7 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         && row.6 == "complete"
         && row.8
         && question_is_pending(connection, &row.16, &row.0)?;
+    let question = assessment.quiz.map(|quiz| public_question(quiz, row.19));
     Ok(TutorTurn {
         id: row.0,
         operation_id: row.1,
@@ -338,6 +350,8 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         evidence_current: row.8,
         pending_question,
         feedback: assessment.feedback,
+        question,
+        question_id: row.18,
         provider: row.10,
         model: row.11,
         error_code: row.12,
@@ -346,6 +360,50 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         created_at: row.15,
         replaced_by_turn_id: row.17,
     })
+}
+
+/// A question's public part. Its expected answer and explanation show once it
+/// has been answered, as the graded answer already showed them.
+fn public_question(quiz: PrivateQuiz, answered: bool) -> TutorQuestion {
+    let series = quiz.series.unwrap_or(super::contracts::QuizSeries {
+        number: 1,
+        total: quiz.question_count,
+    });
+    TutorQuestion {
+        number: series.number,
+        total: series.total,
+        choices: quiz.choices,
+        answered,
+        expected_answer: answered.then_some(quiz.expected_answer),
+        explanation: answered.then_some(quiz.explanation),
+        correct_choice: if answered { quiz.correct_choice } else { None },
+    }
+}
+
+/// An earlier question of this conversation, answered or not, for the place
+/// of the question asked after it.
+pub(crate) fn load_asked(
+    connection: &Connection,
+    conversation_id: &str,
+    question_id: &str,
+) -> Result<PrivateQuiz, CommandError> {
+    let json: Option<String> = connection
+        .query_row(
+            "SELECT quiz_json FROM tutor_turns WHERE id = ?1 AND conversation_id = ?2
+             AND state = 'complete' AND mode = 'quiz'",
+            params![question_id, conversation_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?
+        .flatten();
+    let assessment: StoredAssessment = serde_json::from_str(
+        &json.ok_or_else(|| invalid("The earlier quiz question is unavailable."))?,
+    )
+    .map_err(CommandError::serialization)?;
+    assessment
+        .quiz
+        .ok_or_else(|| invalid("The earlier message is not a quiz question."))
 }
 
 /// Only the conversation's last turn can be replaced, once, and only an

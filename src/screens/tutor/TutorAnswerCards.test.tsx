@@ -47,7 +47,7 @@ beforeEach(() => {
 
 describe("Make flashcards from a Tutor answer", () => {
   it("adds only the kept, edited cards to the chosen deck", async () => {
-    render(<TutorAnswerCards turnId={turnId} onClose={() => undefined} />);
+    render(<TutorAnswerCards source={{ turnId }} onClose={() => undefined} />);
     expect(screen.getByText("Writing cards from this answer…")).toBeTruthy();
     expect(await screen.findByRole("textbox", { name: "Card 1 question" })).toBeTruthy();
     expect(draftTutorAnswerCards).toHaveBeenCalledWith(expect.any(String), turnId);
@@ -66,7 +66,7 @@ describe("Make flashcards from a Tutor answer", () => {
 
   it("says how many cards the deck already held", async () => {
     vi.mocked(bulkCreateCards).mockResolvedValue({ createdCount: 1, skippedDuplicates: 1 });
-    render(<TutorAnswerCards turnId={turnId} onClose={() => undefined} />);
+    render(<TutorAnswerCards source={{ turnId }} onClose={() => undefined} />);
     const add = await screen.findByRole("button", { name: "Add 2 cards" });
     await act(async () => { fireEvent.click(add); });
     expect(screen.getByRole("status").textContent).toBe("1 card added to Geometry. 1 was already there.");
@@ -75,7 +75,7 @@ describe("Make flashcards from a Tutor answer", () => {
   it("asks for a deck first when there is none, and offers to try a failed draft again", async () => {
     vi.mocked(listDecks).mockResolvedValue([]);
     vi.mocked(draftTutorAnswerCards).mockRejectedValueOnce(new Error("The model is offline."));
-    render(<TutorAnswerCards turnId={turnId} onClose={() => undefined} />);
+    render(<TutorAnswerCards source={{ turnId }} onClose={() => undefined} />);
     expect(await screen.findByText(/The model is offline\./u)).toBeTruthy();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Try again" })); });
     expect(draftTutorAnswerCards).toHaveBeenCalledTimes(2);
@@ -85,9 +85,22 @@ describe("Make flashcards from a Tutor answer", () => {
 
   it("stops cards still being written when the sheet closes", async () => {
     vi.mocked(draftTutorAnswerCards).mockReturnValue(new Promise(() => undefined));
-    const view = render(<TutorAnswerCards turnId={turnId} onClose={() => undefined} />);
+    const view = render(<TutorAnswerCards source={{ turnId }} onClose={() => undefined} />);
     const operationId = vi.mocked(draftTutorAnswerCards).mock.calls[0]?.[0];
     view.unmount();
     expect(cancelLearningTask).toHaveBeenCalledWith(operationId);
+  });
+
+  it("saves a card already written without asking the model", async () => {
+    render(<TutorAnswerCards source={{ card: { question: "Which hormone?", answer: "Secretin" } }} onClose={() => undefined} />);
+    expect(screen.getByRole("dialog", { name: "Save as flashcard" })).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Card 1 answer" }) as HTMLTextAreaElement).value).toBe("Secretin");
+    const add = await screen.findByRole("button", { name: "Add 1 card" });
+    await act(async () => { fireEvent.click(add); });
+    expect(draftTutorAnswerCards).not.toHaveBeenCalled();
+    expect(bulkCreateCards).toHaveBeenCalledWith({
+      deckId: "a".repeat(32),
+      rows: [{ question: "Which hormone?", answer: "Secretin", tags: [] }],
+    });
   });
 });
