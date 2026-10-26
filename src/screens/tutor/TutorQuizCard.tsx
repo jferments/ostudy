@@ -4,6 +4,7 @@ import type { QuizFeedback, TutorTurn } from "../../ipc/tutor";
 import { Icon } from "../../ui/icons/Icon";
 import { cn } from "../../ui/internal/cn";
 import { Button } from "../../ui/primitives/Button";
+import { RadioGroup } from "../../ui/primitives/FormControls";
 import { TutorMarkdown } from "./TutorMarkdown";
 
 type Outcome = QuizFeedback["outcome"];
@@ -28,7 +29,7 @@ const SEGMENT: Record<Outcome | "current" | "skipped" | "ahead", string> = {
 };
 
 const card = "tw:grid tw:min-w-0 tw:gap-3.5 tw:rounded-2xl tw:border tw:border-solid tw:border-border tw:bg-card tw:p-5 tw:compact:p-4";
-const option = "tw:flex tw:min-h-12 tw:min-w-0 tw:cursor-pointer tw:items-center tw:gap-3 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:px-3.5 tw:py-2.5 tw:text-left tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:reduce-motion:transition-none tw:has-[:focus-visible]:ring-3 tw:has-[:focus-visible]:ring-ring/50 tw:coarse:min-h-touch";
+const option = "tw:min-h-12 tw:min-w-0 tw:rounded-xl tw:border tw:border-solid tw:border-border tw:bg-background tw:px-3.5 tw:py-2.5 tw:text-left tw:transition-colors tw:duration-(--ostudy-motion-duration-fast) tw:reduce-motion:transition-none tw:coarse:min-h-touch";
 const letter = "tw:grid tw:size-6.5 tw:shrink-0 tw:place-items-center tw:rounded-lg tw:bg-muted tw:text-small tw:font-semibold tw:text-muted-foreground";
 
 export interface TutorQuizCardProps {
@@ -88,40 +89,38 @@ export function TutorQuizCard({ turn, answer, earlier, latest, disabled, citatio
         <TutorMarkdown text={turn.assistantText} />
       </div>
       {choices.length ? (
-        <fieldset className="tw:m-0 tw:grid tw:min-w-0 tw:grid-cols-2 tw:gap-2.5 tw:border-0 tw:p-0 tw:compact:grid-cols-1" disabled={answered || disabled || !turn.pendingQuestion}>
-          <legend className="tw:sr-only">Answers</legend>
-          {choices.map((choice, index) => {
+        <RadioGroup
+          label="Answers"
+          name={`${id}-choice`}
+          className="tw:grid-cols-2 tw:gap-2.5 tw:compact:grid-cols-1"
+          disabled={answered || disabled || !turn.pendingQuestion}
+          value={String(answered ? chosen ?? "" : picked ?? "")}
+          onValueChange={(value) => setPicked(Number(value))}
+          options={choices.map((choice, index) => {
             const right = answered && question.correctChoice === index;
             const wrong = answered && chosen === index && !right;
             const selected = !answered && picked === index;
-            return (
-              <label
-                key={index}
-                className={cn(
-                  option,
-                  selected && "tw:border-primary tw:bg-primary/8",
-                  right && "tw:border-success/30 tw:bg-success-soft",
-                  wrong && "tw:border-destructive/30 tw:bg-destructive-soft",
-                  answered && "tw:cursor-default",
-                )}
-              >
-                <input
-                  className="tw:sr-only"
-                  type="radio"
-                  name={`${id}-choice`}
-                  checked={answered ? chosen === index : picked === index}
-                  onChange={() => setPicked(index)}
-                />
-                <span className={cn(letter, selected && "tw:bg-primary tw:text-primary-foreground", right && "tw:bg-success tw:text-background", wrong && "tw:bg-destructive tw:text-background")} aria-hidden="true">
-                  {String.fromCharCode(65 + index)}
+            return {
+              value: String(index),
+              ariaLabel: `${choice}${right ? ", the right answer" : ""}${answered && chosen === index ? ", your answer" : ""}`,
+              className: cn(
+                option,
+                selected && "tw:border-primary tw:bg-primary/8",
+                right && "tw:border-success/30 tw:bg-success-soft",
+                wrong && "tw:border-destructive/30 tw:bg-destructive-soft",
+                answered && "tw:cursor-default",
+              ),
+              label: (
+                <span className="tw:flex tw:min-w-0 tw:items-center tw:gap-3">
+                  <span className={cn(letter, selected && "tw:bg-primary tw:text-primary-foreground", right && "tw:bg-success tw:text-background", wrong && "tw:bg-destructive tw:text-background")} aria-hidden="true">
+                    {String.fromCharCode(65 + index)}
+                  </span>
+                  <span className="tw:min-w-0 tw:break-words">{choice}</span>
                 </span>
-                <span className="tw:min-w-0 tw:break-words">{choice}</span>
-                {right ? <span className="tw:sr-only">, the right answer</span> : null}
-                {answered && chosen === index ? <span className="tw:sr-only">, your answer</span> : null}
-              </label>
-            );
+              ),
+            };
           })}
-        </fieldset>
+        />
       ) : null}
       {answered && !choices.length ? (
         <div className="tw:rounded-xl tw:bg-muted/50 tw:px-3.5 tw:py-2.5 tw:text-small">
