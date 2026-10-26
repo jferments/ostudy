@@ -306,10 +306,11 @@ fn step_figures(
     Ok((chosen, images))
 }
 
-/// The one picture a step's slide shows, chosen from its blocks: a process
-/// first, then a comparison, a table, a misconception, a term, a callout and
-/// a worked example. A step with none of them shows its points alone.
-fn visual(step: &LessonStepViewDto) -> Value {
+/// The block a step's slide draws beside its points: a process first, then a
+/// comparison, a table, a misconception, a term, a callout and a worked
+/// example. A step with none of them shows its points alone. The lecture
+/// writer is told about the same block, so the teacher can point at it.
+pub(crate) fn slide_block(blocks: &[LessonBlock]) -> Option<&LessonBlock> {
     let rank = |block: &LessonBlock| match block {
         LessonBlock::Process { .. } => Some(0),
         LessonBlock::Comparison { .. } => Some(1),
@@ -320,13 +321,16 @@ fn visual(step: &LessonStepViewDto) -> Value {
         LessonBlock::WorkedExample { .. } => Some(6),
         LessonBlock::Explanation { .. } | LessonBlock::KeyPoints { .. } => None,
     };
-    let Some(block) = step
-        .blocks
+    blocks
         .iter()
         .filter_map(|block| rank(block).map(|rank| (rank, block)))
         .min_by_key(|(rank, _)| *rank)
         .map(|(_, block)| block)
-    else {
+}
+
+/// The one picture a step's slide shows: its `slide_block`, drawn.
+fn visual(step: &LessonStepViewDto) -> Value {
+    let Some(block) = slide_block(&step.blocks) else {
         return Value::Null;
     };
     let list = |items: &[String]| items.iter().map(|item| rich_runs(item)).collect::<Vec<_>>();
