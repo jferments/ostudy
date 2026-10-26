@@ -15,6 +15,7 @@ import {
 import {
   createTutorProject,
   getTutorConversation,
+  getTutorImageInput,
   listTutorConversations,
   listTutorProjects,
   moveTutorConversation,
@@ -45,6 +46,7 @@ vi.mock("../../ipc/knowledge", async (importOriginal) => {
   };
 });
 vi.mock("../../ipc/tutor", () => ({
+  getTutorImageInput: vi.fn(),
   createTutorConversation: vi.fn(),
   createTutorProject: vi.fn(),
   createTutorProjectConversation: vi.fn(),
@@ -151,6 +153,7 @@ const detail: ConversationDetail = {
       totalTokens: null,
       createdAt: 1,
       replacedByTurnId: null,
+      attachments: [],
       question: null,
       questionId: null,
     },
@@ -168,6 +171,7 @@ function Harness() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getTutorImageInput).mockResolvedValue(true);
   vi.mocked(getAiTaskDefaults).mockResolvedValue({
     flashcardGenerationProfileId: null,
     tutorProfileId: null,

@@ -33,10 +33,12 @@ pub(crate) use artifact_metadata::{
     ARTIFACT_METADATA_SCHEMA_VERSION, ARTIFACT_TITLE_MAX_CHARS,
 };
 pub(crate) use context::{
-    load_document_task_context, load_verified_document_task_context,
+    load_document_task_context, load_tutor_task_context, load_verified_document_task_context,
     load_verified_tutor_task_context, DocumentTaskContext,
 };
-pub(crate) use contracts::{DocumentOutline, OutlineSection, SourcePageImage};
+pub(crate) use contracts::{
+    DocumentOutline, ImageShows, OutlineSection, SourcePageImage, MAX_INLINE_IMAGES,
+};
 pub(crate) use curation::curate_document_cards;
 pub(crate) use evidence::AuthoringEvidence;
 pub(crate) use figure_reading::{

@@ -56,7 +56,7 @@ git rev-parse origin/main
 
 If the checkout is an older clean `main`, update it with `git pull --ff-only`, then rebuild with `./scripts/build.sh` before running `./run-app.sh`. If local edits exist, preserve them and use the detached exact-SHA review-worktree procedure above instead of forcing the checkout.
 
-Interpret database identity as a **lineage plus version**, not as one globally increasing schema number. Current libraries use `ostudy-release-v1` schema 24, whose immutable baseline is schema 1; the retained pre-0.1 compatibility lineage reaches `ostudy-public-v1` schema 30. A source build that predates a release migration can refuse a newer release-v1 schema even though public-v1 uses a larger unrelated number, while a current build can admit supported release-v1 schema 1 and public-v1 inputs and migrate them through the verified release owner. Never downgrade or hand-edit schema metadata to make an older executable accept a newer lineage.
+Interpret database identity as a **lineage plus version**, not as one globally increasing schema number. Current libraries use `ostudy-release-v1` schema 25, whose immutable baseline is schema 1; the retained pre-0.1 compatibility lineage reaches `ostudy-public-v1` schema 30. A source build that predates a release migration can refuse a newer release-v1 schema even though public-v1 uses a larger unrelated number, while a current build can admit supported release-v1 schema 1 and public-v1 inputs and migrate them through the verified release owner. Never downgrade or hand-edit schema metadata to make an older executable accept a newer lineage.
 
 ## Linux: the maintainer's test-drive
 

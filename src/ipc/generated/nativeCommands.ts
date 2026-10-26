@@ -196,6 +196,7 @@ export interface NativeCommandGatewayMap {
   "get_subject_library": readonly [typeof GatewayModule44.getSubjectLibrary];
   "get_tutor_conversation": readonly [typeof GatewayModule46.getTutorConversation];
   "get_tutor_figure": readonly [typeof GatewayModule46.getTutorFigure];
+  "get_tutor_image_input": readonly [typeof GatewayModule46.getTutorImageInput];
   "get_tutor_memory": readonly [typeof GatewayModule47.getTutorMemory];
   "get_ui_checkpoint": readonly [typeof GatewayModule48.getUiCheckpoint];
   "import_deck": readonly [typeof GatewayModule9.importDeck];

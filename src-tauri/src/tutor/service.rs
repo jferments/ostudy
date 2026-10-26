@@ -6,8 +6,8 @@ use std::sync::Arc;
 use crate::{
     ai::{
         document_intelligence::{
-            load_verified_tutor_task_context, request_json_cancellable, DocumentTaskContext,
-            JsonTaskRequest,
+            load_tutor_task_context, load_verified_tutor_task_context, request_json_cancellable,
+            DocumentTaskContext, JsonTaskRequest,
         },
         observe_output, AiRuntimeState, OutputObserver,
     },
@@ -19,7 +19,7 @@ use crate::{
 
 use super::{
     context,
-    contracts::{QuizSeries, TutorMode, TutorTurn, TutorTurnInput},
+    contracts::{QuizSeries, TutorAttachmentInput, TutorMode, TutorTurn, TutorTurnInput},
     focus, history, output, turns,
 };
 
@@ -90,7 +90,18 @@ pub(crate) async fn send(
         .as_ref()
         .map(|previous| QuizSeries::next(Some(previous), None))
         .transpose()?;
-    let identity = turns::begin(database, &input, &task)?;
+    // A picture goes to the model only if it can see it; say so before sending.
+    if !task.include_page_images
+        && input
+            .attachments
+            .iter()
+            .any(|attachment| matches!(attachment, TutorAttachmentInput::Image { .. }))
+    {
+        return Err(images_unsupported());
+    }
+    let identity = turns::begin(database, Some(paths), &input, &task)?;
+    let attachments =
+        database.with_connection(|connection| turns::load_attachments(connection, &identity.id))?;
     if let Some((fixed, chosen)) = picked {
         guard.progress("checking answer", 3, 4);
         let graded = output::grade_choice(fixed, chosen);
@@ -153,6 +164,7 @@ pub(crate) async fn send(
                 series,
                 history: remembered,
                 project_instructions: identity.project_instructions.as_deref(),
+                attachments: &attachments,
             },
             &guard.signal,
         )
@@ -237,4 +249,21 @@ pub(crate) async fn send(
         Ok(turn) => Ok(turn),
         Err(error) => turns::fail(database, &identity, &error, task.usage_summary().0),
     }
+}
+
+pub(crate) fn images_unsupported() -> CommandError {
+    CommandError::new(
+        "tutor_images_unsupported",
+        "This chat's model can't see pictures, or hasn't been tested with them. Remove them, or choose and test a model that can under Settings, AI, Interactive tutor.",
+    )
+}
+
+/// Whether the Tutor's model (or `profile_id`, the chat's own choice) sees
+/// the pictures a learner attaches. False when no model is ready to answer.
+pub(crate) fn accepts_images(database: &Database, profile_id: Option<&str>) -> bool {
+    let task = match profile_id {
+        Some(id) => DocumentTaskContext::for_tutor_profile(database, id),
+        None => load_tutor_task_context(database),
+    };
+    task.is_ok_and(|task| task.include_page_images)
 }

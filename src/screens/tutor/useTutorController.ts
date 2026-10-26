@@ -28,6 +28,7 @@ import {
   type TutorTurnInput,
 } from "../../ipc/tutor";
 import { useMaterialPreparation } from "./useMaterialPreparation";
+import { resendAttachments, useTutorAttachments } from "./useTutorAttachments";
 
 const GENERAL: StudyScope = { kind: "general", id: null };
 
@@ -102,6 +103,9 @@ export function useTutorController() {
   const historyLane = useRequestLane();
   const conversationRetrievalAllowed = scope.kind !== "general" && !scopeUsesCollection(scope) && target?.mode !== "hint";
   const preparation = useMaterialPreparation(scope, includeConversations && conversationRetrievalAllowed);
+  const attachments = useTutorAttachments(profileId);
+  // The send that took the composer's attachments, which settle with its turn.
+  const attachmentsSentBy = useRef<string | null>(null);
 
   useEffect(() => {
     alive.current = true;
@@ -307,6 +311,7 @@ export function useTutorController() {
     await send(saved.mode, saved.userText, undefined, {
       ...(version ? { replacesTurnId: saved.id } : {}),
       ...(choice >= 0 ? { choice } : {}),
+      attachments: resendAttachments(saved.attachments),
     });
   }
 
@@ -321,7 +326,7 @@ export function useTutorController() {
       setError("Only the latest answer can be asked again. Send a new message instead.");
       return;
     }
-    await send("explain", text, undefined, { replacesTurnId: saved.id });
+    await send("explain", text, undefined, { replacesTurnId: saved.id, attachments: resendAttachments(saved.attachments) });
   }
 
   /** Asks the question after `question` in its quiz. */
@@ -366,6 +371,10 @@ export function useTutorController() {
       if (alive.current) setLiveOperationId(null);
     }
     if (!alive.current) return;
+    if (attachmentsSentBy.current === request.operationId) {
+      attachmentsSentBy.current = null;
+      attachments.settle(turn.state === "complete");
+    }
     setPending(turn.state === "running" ? request : null);
     if (turn.state !== "running") {
       active.current = null;
@@ -409,10 +418,15 @@ export function useTutorController() {
     mode: TutorMode,
     text = draft,
     fresh?: { scope: StudyScope; title: string },
-    extra: Pick<TutorTurnInput, "replacesTurnId" | "afterQuestionId" | "choice"> = {},
+    extra: Pick<TutorTurnInput, "replacesTurnId" | "afterQuestionId" | "choice" | "attachments"> = {},
   ): Promise<void> {
     if (mutating.current || loading || pendingRef.current || needsRefresh || preparation.locked) return;
-    if (!text.trim() && mode !== "quiz") return;
+    // A question from the composer takes what is attached there; asking again
+    // sends the attachments its question had.
+    const fromComposer = extra.attachments === undefined && mode === "explain" && !fresh;
+    if (fromComposer && attachments.adding) return;
+    const attached = extra.attachments ?? (fromComposer ? attachments.inputs() : []);
+    if (!text.trim() && mode !== "quiz" && !attached.length) return;
     mutating.current = true;
     detailLane.invalidate();
     setBusy(true);
@@ -460,8 +474,12 @@ export function useTutorController() {
         focus: fresh ? null : target?.focus ?? null, profileId,
         includeConversations: !fresh && includeConversations && conversationRetrievalAllowed && mode !== "hint",
         questionId: question?.id ?? null,
-        ...extra,
+        ...(extra.replacesTurnId ? { replacesTurnId: extra.replacesTurnId } : {}),
+        ...(extra.afterQuestionId ? { afterQuestionId: extra.afterQuestionId } : {}),
+        ...(extra.choice !== undefined ? { choice: extra.choice } : {}),
+        ...(attached.length ? { attachments: attached } : {}),
       };
+      attachmentsSentBy.current = fromComposer && attached.length ? request.operationId : null;
       await perform(request);
     } catch (failure: unknown) {
       if (!alive.current) return;
@@ -469,7 +487,8 @@ export function useTutorController() {
       const rejectedBeforeAdmission = code !== null && (
         code.startsWith("invalid_") || ["tutor_focus_changed", "tutor_answer_not_revealed", "ai_task_profile_required",
           "ai_profile_disabled", "ai_document_model_not_verified", "tutor_conversation_changed",
-          "learning_task_running", "learning_task_capacity", "tutor_conversation_missing", "tutor_turn_not_replaceable"].includes(code)
+          "learning_task_running", "learning_task_capacity", "tutor_conversation_missing", "tutor_turn_not_replaceable",
+          "tutor_images_unsupported"].includes(code) || code.startsWith("asset_")
       );
       if (request && !rejectedBeforeAdmission) setPending(request);
       else active.current = null;
@@ -675,7 +694,7 @@ export function useTutorController() {
   }
 
   return {
-    conversations, projects, profiles, choices, detail, scope, draftProjectId, target, panelOpen, draft, profileId, defaultTutorProfileId,
+    conversations, projects, profiles, choices, detail, scope, draftProjectId, target, panelOpen, draft, profileId, defaultTutorProfileId, attachments,
     loading, busy, organizing, error, pending, liveOperationId, needsRefresh, preparation, includeConversations, conversationRetrievalAllowed, setIncludeConversations,
     initialize, refresh, selectConversation,
     newConversation, newConversationInProject, changeSources, retryTurn, openContext, closePanel: () => setPanelOpen(false), setDraft, setProfileId,

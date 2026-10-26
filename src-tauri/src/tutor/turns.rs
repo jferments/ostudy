@@ -6,20 +6,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ai::document_intelligence::DocumentTaskContext,
+    asset_lifecycle::{finalize_assets_for_owner, DraftFinalization},
     database::Database,
     error::CommandError,
     knowledge::{
         contracts::{hash, invalid, SourceCitation},
         repository,
     },
+    paths::AppPaths,
     util::{generate_id, unix_time_millis},
 };
 
 use super::{
     context::StudyContext,
     contracts::{
-        PrivateQuiz, ProviderAnswer, QuizFeedback, TutorMode, TutorQuestion, TutorTurn,
-        TutorTurnInput,
+        PrivateQuiz, ProviderAnswer, QuizFeedback, TutorAttachment, TutorAttachmentInput,
+        TutorMode, TutorQuestion, TutorTurn, TutorTurnInput,
     },
     conversations, history, projects,
 };
@@ -67,8 +69,11 @@ pub(crate) fn replay(
     })
 }
 
+/// Admits a turn. `paths` keeps the pictures attached to it; a turn with
+/// none needs no managed files.
 pub(crate) fn begin(
     database: &Database,
+    paths: Option<&AppPaths>,
     input: &TutorTurnInput,
     task: &DocumentTaskContext,
 ) -> Result<TurnIdentity, CommandError> {
@@ -150,6 +155,27 @@ pub(crate) fn begin(
                 [replaced],
             ).map_err(CommandError::database)?;
         }
+        let mut kept = Vec::new();
+        for (position, attachment) in input.attachments.iter().enumerate() {
+            match attachment {
+                TutorAttachmentInput::Image { asset_id, draft_id } => {
+                    let paths = paths.ok_or_else(|| invalid("Attached pictures could not be kept."))?;
+                    let name = keep_image(&transaction, paths, &id, asset_id, draft_id.as_deref(), &mut kept)?;
+                    transaction.execute(
+                        "INSERT INTO tutor_turn_attachments (turn_id, position, kind, name, asset_id)
+                         VALUES (?1, ?2, 'image', ?3, ?4)",
+                        params![id, position as i64, name, asset_id],
+                    ).map_err(CommandError::database)?;
+                }
+                TutorAttachmentInput::Text { name, text } => {
+                    transaction.execute(
+                        "INSERT INTO tutor_turn_attachments (turn_id, position, kind, name, text)
+                         VALUES (?1, ?2, 'text', ?3, ?4)",
+                        params![id, position as i64, name, text],
+                    ).map_err(CommandError::database)?;
+                }
+            }
+        }
         transaction.execute(
             "UPDATE tutor_conversations SET revision = revision + 1, updated_at = ?1 WHERE id = ?2",
             params![now, input.conversation_id],
@@ -157,6 +183,9 @@ pub(crate) fn begin(
         let accepted_revision = conversation.revision.checked_add(1)
             .ok_or_else(|| invalid("The conversation revision exceeded its supported range."))?;
         transaction.commit().map_err(CommandError::database)?;
+        for finalization in kept {
+            finalization.cleanup();
+        }
         Ok(TurnIdentity {
             id,
             conversation_id: input.conversation_id.clone(),
@@ -338,6 +367,7 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         && row.8
         && question_is_pending(connection, &row.16, &row.0)?;
     let question = assessment.quiz.map(|quiz| public_question(quiz, row.19));
+    let attachments = load_attachments(connection, &row.0)?;
     Ok(TutorTurn {
         id: row.0,
         operation_id: row.1,
@@ -359,7 +389,94 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         total_tokens: row.14,
         created_at: row.15,
         replaced_by_turn_id: row.17,
+        attachments,
     })
+}
+
+/// Keeps an attached picture's asset for the turn and names it as the
+/// learner's file was named. A newly added picture is promoted from the
+/// import draft it was staged in; one sent before is already kept.
+fn keep_image(
+    transaction: &rusqlite::Transaction<'_>,
+    paths: &AppPaths,
+    turn_id: &str,
+    asset_id: &str,
+    draft_id: Option<&str>,
+    kept: &mut Vec<DraftFinalization>,
+) -> Result<String, CommandError> {
+    let asset: Option<(String, String, String)> = transaction
+        .query_row(
+            "SELECT lifecycle_state, mime_type, original_filename FROM assets
+             WHERE id = ?1 AND deleted_at IS NULL",
+            [asset_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    let (state, mime_type, name) = asset
+        .ok_or_else(|| invalid("An attached picture is no longer available. Attach it again."))?;
+    if !mime_type.starts_with("image/") {
+        return Err(invalid("Only pictures can be attached as images."));
+    }
+    let draft_id = match state.as_str() {
+        "staged" => Some(draft_id.ok_or_else(|| {
+            CommandError::new(
+                "asset_draft_mismatch",
+                "A new picture names the image draft it was added to.",
+            )
+        })?),
+        "ready" => None,
+        _ => {
+            return Err(invalid(
+                "An attached picture is no longer available. Attach it again.",
+            ))
+        }
+    };
+    kept.push(finalize_assets_for_owner(
+        transaction,
+        paths,
+        &[asset_id.to_string()],
+        draft_id,
+        Some(turn_id),
+    )?);
+    let name = name.trim();
+    Ok(if name.is_empty() {
+        "Picture".to_string()
+    } else {
+        name.chars().take(255).collect()
+    })
+}
+
+/// What was attached to a turn, in order.
+pub(crate) fn load_attachments(
+    connection: &Connection,
+    turn_id: &str,
+) -> Result<Vec<TutorAttachment>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT kind, name, asset_id, text FROM tutor_turn_attachments
+             WHERE turn_id = ?1 ORDER BY position",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([turn_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .map_err(CommandError::database)?;
+    rows.map(|row| {
+        let (kind, name, asset_id, text) = row.map_err(CommandError::database)?;
+        match (kind.as_str(), asset_id, text) {
+            ("image", Some(asset_id), None) => Ok(TutorAttachment::Image { asset_id, name }),
+            ("text", None, Some(text)) => Ok(TutorAttachment::Text { name, text }),
+            _ => Err(invalid("A stored Tutor attachment is invalid.")),
+        }
+    })
+    .collect()
 }
 
 /// A question's public part. Its expected answer and explanation show once it

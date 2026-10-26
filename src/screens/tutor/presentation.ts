@@ -65,6 +65,9 @@ export const styles = {
   composerWrap: "tw:px-6 tw:pt-2 tw:pb-4 tw:compact:px-3 tw:compact:pb-3",
   composer: "tw:mx-auto tw:flex tw:w-full tw:max-w-3xl tw:min-w-0 tw:items-end tw:gap-2 tw:rounded-2xl tw:border tw:border-solid tw:border-border tw:bg-background tw:py-1.5 tw:pr-1.5 tw:pl-4 tw:shadow-sm tw:focus-within:border-primary/60",
   hintComposer: "tw:grid tw:min-w-0 tw:gap-2 tw:border-0 tw:border-t tw:border-solid tw:border-border/70 tw:pt-3",
+  // With an attach button first, the composer wraps its attachments above.
+  composerAttaching: "tw:flex-wrap tw:pl-1.5",
+  composerNotice: "tw:mx-auto tw:mt-2 tw:w-full tw:max-w-3xl",
   composerInput: "tw:min-h-10 tw:max-h-48 tw:flex-1 tw:resize-none tw:border-0 tw:bg-transparent tw:px-0 tw:py-2 tw:shadow-none tw:focus-visible:ring-0",
   hintComposerInput: "tw:min-h-20 tw:max-h-48 tw:resize-y tw:bg-background",
   composerLabel: "tw:sr-only",

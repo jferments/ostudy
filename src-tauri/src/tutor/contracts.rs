@@ -140,6 +140,99 @@ pub struct TutorTurnInput {
     /// The option picked for a choose-one question, which is graded natively.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub choice: Option<usize>,
+    /// Pictures and text files sent with a question, in the order attached.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<TutorAttachmentInput>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TutorImageInputQuery {
+    /// The chat's own model; `None` for the Tutor's assigned one.
+    pub profile_id: Option<String>,
+}
+
+/// Most pictures one message carries; a provider request takes six images,
+/// which leaves room for a page of the focused material.
+pub(crate) const MAX_ATTACHED_IMAGES: usize = 4;
+pub(crate) const MAX_ATTACHMENTS: usize = 8;
+pub(crate) const MAX_ATTACHED_TEXT_CHARS: usize = 30_000;
+pub(crate) const MAX_ATTACHED_TEXT_TOTAL: usize = 60_000;
+
+/// One thing attached to a question. A picture is a managed image: a new one
+/// is still staged in its own import draft, and one sent before (when the
+/// question is asked again) is already kept. A text file is sent as its text.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum TutorAttachmentInput {
+    Image {
+        asset_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        draft_id: Option<String>,
+    },
+    Text {
+        name: String,
+        text: String,
+    },
+}
+
+/// An attachment as the chat shows it, and as Regenerate sends it again.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum TutorAttachment {
+    Image { asset_id: String, name: String },
+    Text { name: String, text: String },
+}
+
+fn validate_attachments(attachments: &[TutorAttachmentInput]) -> Result<(), CommandError> {
+    if attachments.len() > MAX_ATTACHMENTS {
+        return Err(invalid(format!(
+            "A message can carry at most {MAX_ATTACHMENTS} attachments."
+        )));
+    }
+    let mut images = std::collections::BTreeSet::new();
+    let mut characters = 0_usize;
+    for attachment in attachments {
+        match attachment {
+            TutorAttachmentInput::Image { asset_id, draft_id } => {
+                validate_entity_id(asset_id, "attached picture")?;
+                if let Some(id) = draft_id {
+                    validate_entity_id(id, "attached picture draft")?;
+                }
+                if !images.insert(asset_id.as_str()) {
+                    return Err(invalid("The same picture is attached twice."));
+                }
+            }
+            TutorAttachmentInput::Text { name, text } => {
+                bounded(name, 255, "attached file name", false)?;
+                if name.chars().any(char::is_control) {
+                    return Err(invalid("An attached file name is invalid."));
+                }
+                bounded(text, MAX_ATTACHED_TEXT_CHARS, "attached file", false)?;
+                characters = characters.saturating_add(text.chars().count());
+            }
+        }
+    }
+    if images.len() > MAX_ATTACHED_IMAGES {
+        return Err(invalid(format!(
+            "A message can carry at most {MAX_ATTACHED_IMAGES} pictures."
+        )));
+    }
+    if characters > MAX_ATTACHED_TEXT_TOTAL {
+        return Err(invalid(
+            "The attached files are too long to send together. Attach fewer or shorter files.",
+        ));
+    }
+    Ok(())
 }
 
 impl TutorTurnInput {
@@ -149,11 +242,12 @@ impl TutorTurnInput {
         if self.expected_revision < 1 {
             return Err(invalid("The conversation revision is invalid."));
         }
+        // A picture or file can be the whole question.
         bounded(
             &self.text,
             8_000,
             "tutor message",
-            self.mode == TutorMode::Quiz,
+            self.mode == TutorMode::Quiz || !self.attachments.is_empty(),
         )?;
         if let Some(id) = &self.profile_id {
             validate_entity_id(id, "tutor profile")?;
@@ -186,6 +280,10 @@ impl TutorTurnInput {
         if self.choice.is_some() && self.mode != TutorMode::Answer {
             return Err(invalid("Only a quiz answer may pick an option."));
         }
+        if !self.attachments.is_empty() && self.mode != TutorMode::Explain {
+            return Err(invalid("Only a question can carry attachments."));
+        }
+        validate_attachments(&self.attachments)?;
         if self.mode == TutorMode::Hint
             && !matches!(
                 self.focus,
@@ -398,6 +496,8 @@ pub struct TutorTurn {
     pub created_at: i64,
     /// The newer version that replaced this turn; the chat carries on from it.
     pub replaced_by_turn_id: Option<String>,
+    /// What the learner attached to this message, in order.
+    pub attachments: Vec<TutorAttachment>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -516,6 +616,7 @@ mod tests {
             replaces_turn_id: None,
             after_question_id: None,
             choice: None,
+            attachments: Vec::new(),
         };
         assert!(input.validate().is_err());
         let serialized = serde_json::to_value(input).unwrap();

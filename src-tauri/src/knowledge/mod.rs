@@ -37,7 +37,7 @@ pub(crate) mod shared_preparation;
 pub(crate) mod snapshot;
 pub(crate) mod typed_payload;
 
-pub(crate) use images::load_images;
+pub(crate) use images::{load_image_references, load_images};
 pub(crate) use runtime::has_active_tasks;
 
 pub(crate) fn reconcile_startup(

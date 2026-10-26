@@ -16,7 +16,7 @@ pub(super) const MAX_CLOZE_BLANK_CHARS: usize = 160;
 pub(super) const MAX_REQUEST_JSON_BYTES: usize = 64 * 1024 * 1024;
 pub(super) const MAX_COMPLETION_BYTES: usize = 2 * 1024 * 1024;
 pub(super) const MAX_CURATE_CARDS_PER_BATCH: usize = 32;
-pub(super) const MAX_INLINE_IMAGES: usize = 6;
+pub(crate) const MAX_INLINE_IMAGES: usize = 6;
 
 /// Provider-neutral, reusable learning outline assembled from canonical source
 /// windows. The `page_*` field names are persisted compatibility projections;
@@ -50,8 +50,18 @@ pub(crate) struct OutlineSection {
 pub(crate) struct SourcePageImage {
     pub page_number: i64,
     pub bytes: Vec<u8>,
-    /// The figure this image is a close crop of; `None` for a whole unit.
-    pub crop_of: Option<String>,
+    /// What the image is, which its caption tells the model.
+    pub shows: ImageShows,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ImageShows {
+    /// A whole source unit.
+    Unit,
+    /// A close crop of this figure on the unit.
+    CropOf(String),
+    /// A picture the learner attached to their question, by its file name.
+    Attached(String),
 }
 
 #[derive(Debug, Deserialize)]

@@ -21,7 +21,7 @@ fn asked(
     .unwrap();
     let quiz = answer.quiz.as_mut().unwrap();
     quiz.series = Some(QuizSeries::next(previous, quiz.question_count).unwrap());
-    let identity = turns::begin(&fixture.database, request, &fixture.task).unwrap();
+    let identity = turns::begin(&fixture.database, None, request, &fixture.task).unwrap();
     turns::complete(&fixture.database, &identity, &answer, &context(), None).unwrap()
 }
 
@@ -236,7 +236,7 @@ async fn next_question_takes_the_next_place_and_stops_after_the_last() {
     assert!(stray.validate().is_err());
     let mut unknown = input(&f, TutorMode::Quiz);
     unknown.after_question_id = Some("9".repeat(32));
-    assert!(turns::begin(&f.database, &unknown, &f.task).is_err());
+    assert!(turns::begin(&f.database, None, &unknown, &f.task).is_err());
     std::fs::remove_dir_all(directory).ok();
 }
 

@@ -92,7 +92,23 @@ export interface TutorTurn {
   createdAt: number;
   /** The newer version that replaced this turn; the chat carries on from it. */
   replacedByTurnId: string | null;
+  /** What the learner attached to this message, in order. */
+  attachments: TutorAttachment[];
 }
+
+/** A picture or text file attached to a message, as the chat shows it. */
+export type TutorAttachment =
+  | { kind: "image"; assetId: string; name: string }
+  | { kind: "text"; name: string; text: string };
+
+/**
+ * One attachment to send. A picture added for this message is still staged in
+ * its own import draft; one sent before (when a question is asked again) is
+ * already kept and names no draft.
+ */
+export type TutorAttachmentInput =
+  | { kind: "image"; assetId: string; draftId?: string }
+  | { kind: "text"; name: string; text: string };
 
 export interface ConversationDetail {
   conversation: ConversationSummary;
@@ -116,6 +132,8 @@ export interface TutorTurnInput {
   afterQuestionId?: string;
   /** The option picked for a choose-one question. */
   choice?: number;
+  /** Pictures and text files sent with a question. */
+  attachments?: TutorAttachmentInput[];
 }
 
 export async function listTutorProjects(): Promise<TutorProject[]> {
@@ -224,6 +242,11 @@ export interface TutorFigure {
 /** A figure a finished answer shows; fails once the learner hides it. */
 export async function getTutorFigure(turnId: string, documentId: string, figureId: string): Promise<TutorFigure> {
   return invoke<TutorFigure>("get_tutor_figure", { input: { turnId, documentId, figureId } });
+}
+
+/** Whether the chat's model sees attached pictures; `profileId` null is the Tutor's assigned model. */
+export async function getTutorImageInput(profileId: string | null): Promise<boolean> {
+  return invoke<boolean>("get_tutor_image_input", { input: { profileId } });
 }
 
 export async function getTutorConversation(input: {
