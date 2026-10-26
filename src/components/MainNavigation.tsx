@@ -1,3 +1,4 @@
+import { useAiFeatures } from "../controllers/AiFeaturesProvider";
 import type { AppSection, AppWorkflow } from "../controllers/useAppController";
 import { destinationOf, type AppDestination } from "../navigation/appDestinations";
 import type { IconName } from "../ui/icons/Icon";
@@ -11,23 +12,25 @@ interface MainNavigationProps {
   onSelect: (destination: AppDestination) => void;
 }
 
-const ITEMS: ReadonlyArray<{ destination: AppDestination; icon: IconName; label: string }> = [
+const ITEMS: ReadonlyArray<{ destination: AppDestination; icon: IconName; label: string; ai?: boolean }> = [
   { destination: "home", icon: "home", label: "Home" },
   { destination: "library", icon: "library", label: "Library" },
   { destination: "notes", icon: "sticky-note", label: "Notes" },
-  { destination: "tutor", icon: "chat", label: "Tutor" },
+  { destination: "tutor", icon: "chat", label: "Tutor", ai: true },
   { destination: "progress", icon: "analytics", label: "Progress" },
 ];
 
 /**
- * Home, Library, Notes, Tutor and Progress; Home carries today's count.
- * Settings sits at the foot of the side rail, or in a phone's top bar.
+ * Home, Library, Notes, Tutor and Progress; Home carries today's count, and
+ * the Tutor shows only while AI is on. Settings sits at the foot of the side
+ * rail, or in a phone's top bar.
  */
 export function MainNavigation({ section, activeWorkflow, dueToday, onSelect }: MainNavigationProps) {
   const active = destinationOf(section, activeWorkflow);
+  const ai = useAiFeatures().enabled;
   return (
     <AppNavigation
-      items={ITEMS.map((item) => ({
+      items={ITEMS.filter((item) => ai || !item.ai).map((item) => ({
         id: item.destination,
         label: item.label,
         icon: item.icon,

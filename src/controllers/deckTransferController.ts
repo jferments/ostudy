@@ -1,5 +1,6 @@
 import { createOperationId, getErrorCode, getErrorMessage } from "../ipc/common";
-import type { AnkiImportReport, DeckSummary } from "../ipc/decks";
+import { bulkCreateCards, type BulkCreateCardsInput, type BulkCreateResult } from "../ipc/cards";
+import { createDeck, type AnkiImportReport, type CreateDeckInput, type DeckSummary } from "../ipc/decks";
 import type { PublishReceipt, ShareLaunch, StagedExternalFile } from "../ipc/externalFiles";
 import {
   listenToOperationProgress,
@@ -11,6 +12,7 @@ import {
   shareExport,
 } from "../platform/files";
 import { DecksController } from "./decksController";
+import type { QuizletCard } from "./quizletImport";
 
 export interface DeckImportOutcome {
   deckId: string;
@@ -18,6 +20,9 @@ export interface DeckImportOutcome {
   message: string;
   ankiReport?: AnkiImportReport;
 }
+
+/** The native bulk-card limit for one write. */
+const PASTED_CARDS_PER_WRITE = 500;
 
 export interface DeckExportOutcome {
   deck: DeckSummary;
@@ -50,6 +55,8 @@ export interface DeckTransferDependencies {
     operationId: string,
     listener: (progress: OperationProgress) => void,
   ): Promise<() => void>;
+  createDeck?(input: CreateDeckInput): Promise<DeckSummary>;
+  bulkCreateCards?(input: BulkCreateCardsInput): Promise<BulkCreateResult>;
 }
 
 const defaultDependencies: DeckTransferDependencies = {
@@ -70,6 +77,8 @@ export class DeckTransferController {
   readonly #dependencies: DeckTransferDependencies;
   readonly #decks: ReturnType<DeckTransferDependencies["createDecksController"]>;
   #pendingStudydeckImport: { stagedFileId: string; operationId: string } | null = null;
+  /** The deck a pasted import made, kept so that pressing Import again fills it instead of making another. */
+  #pastedDeck: { name: string; deck: DeckSummary } | null = null;
 
   constructor(dependencies: DeckTransferDependencies = defaultDependencies) {
     this.#dependencies = dependencies;
@@ -148,6 +157,45 @@ export class DeckTransferController {
 
     this.#pendingStudydeckImport = null;
     throw new Error("Select an ostudy deck, an Anki .apkg deck, or a generated-card file.");
+  }
+
+  /**
+   * Makes a deck from pasted cards (Quizlet's Export text). The deck is made
+   * once; cards are added in native-sized writes, and the native exact-duplicate
+   * check makes a repeated write add only the cards still missing.
+   */
+  async importPastedCards(name: string, cards: readonly QuizletCard[]): Promise<DeckImportOutcome> {
+    if (cards.length === 0) throw new Error("Paste at least one card with a term and a definition.");
+    const deckName = name.trim();
+    if (deckName === "") throw new Error("Name the new deck.");
+    let deck = this.#pastedDeck?.name === deckName ? this.#pastedDeck.deck : null;
+    if (!deck) {
+      deck = await (this.#dependencies.createDeck ?? createDeck)({ name: deckName, description: "Imported from Quizlet." });
+      this.#pastedDeck = { name: deckName, deck };
+    }
+    const write = this.#dependencies.bulkCreateCards ?? bulkCreateCards;
+    let created = 0;
+    let duplicates = 0;
+    for (let start = 0; start < cards.length; start += PASTED_CARDS_PER_WRITE) {
+      const rows = cards.slice(start, start + PASTED_CARDS_PER_WRITE).map((card) => ({ ...card, tags: [] }));
+      try {
+        const result = await write({ deckId: deck.id, rows });
+        created += result.createdCount;
+        duplicates += result.skippedDuplicates;
+      } catch (error: unknown) {
+        if (start === 0) throw error;
+        throw new Error(`Added ${created} of ${cards.length} cards to “${deck.name}” before an error: ${getErrorMessage(error)} Import again to add the rest.`);
+      }
+    }
+    this.#pastedDeck = null;
+    const duplicateMessage = duplicates > 0
+      ? ` ${duplicates} exact ${duplicates === 1 ? "duplicate was" : "duplicates were"} skipped.`
+      : "";
+    return {
+      deckId: deck.id,
+      committedDeck: deck,
+      message: `Imported “${deck.name}” with ${created} ${created === 1 ? "card" : "cards"}.${duplicateMessage}`,
+    };
   }
 
   async exportDeck(deck: DeckSummary): Promise<DeckExportOutcome | null> {

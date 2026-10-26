@@ -12,12 +12,13 @@ use crate::{
 use super::super::{
     catalog::{AiTaskKind, ProviderKind},
     endpoint_policy::{validate_endpoint, NetworkScope},
-    probes::load_document_probe_evidence,
+    probes::{ensure_model_tested, load_document_probe_evidence},
     profiles::{
         load_default_profile_request, load_profile_request, load_task_profile_request,
         ProfileRequestSnapshot, ProfileSnapshot,
     },
     secrets::CredentialStorage,
+    AiRuntimeState,
 };
 
 #[derive(Clone, Debug)]
@@ -67,6 +68,21 @@ impl DocumentTaskContext {
             ReasoningPolicy::Profile,
         )?
         .with_saved_capabilities(database)
+    }
+
+    /// A chosen Tutor profile's context, after testing its model when needed.
+    pub(crate) async fn for_verified_tutor_profile(
+        database: &Database,
+        runtime: &AiRuntimeState,
+        profile_id: &str,
+    ) -> Result<Self, CommandError> {
+        ensure_model_tested(
+            database,
+            runtime,
+            &load_profile_request(database, profile_id)?.profile,
+        )
+        .await?;
+        Self::for_tutor_profile(database, profile_id)
     }
 
     fn with_saved_capabilities(mut self, database: &Database) -> Result<Self, CommandError> {
@@ -200,6 +216,31 @@ pub(crate) fn load_document_task_context(
         crate::knowledge::assessment::settings::load(connection).map(|snapshot| snapshot.policy)
     })?;
     Ok(task)
+}
+
+/// The document task context, after testing its model when no current test
+/// of that model exists (see `ensure_model_tested`).
+pub(crate) async fn load_verified_document_task_context(
+    database: &Database,
+    runtime: &AiRuntimeState,
+) -> Result<DocumentTaskContext, CommandError> {
+    ensure_model_tested(
+        database,
+        runtime,
+        &load_default_profile_request(database)?.profile,
+    )
+    .await?;
+    load_document_task_context(database)
+}
+
+/// The Tutor's task context, after testing its model when needed.
+pub(crate) async fn load_verified_tutor_task_context(
+    database: &Database,
+    runtime: &AiRuntimeState,
+) -> Result<DocumentTaskContext, CommandError> {
+    let request = load_task_profile_request(database, AiTaskKind::Tutor)?;
+    ensure_model_tested(database, runtime, &request.profile).await?;
+    load_tutor_task_context(database)
 }
 
 pub(crate) fn load_tutor_task_context(

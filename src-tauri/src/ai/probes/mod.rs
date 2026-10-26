@@ -14,6 +14,7 @@ mod runner;
 pub(crate) use contracts::AiProfileReferenceInput;
 pub(crate) use contracts::CapabilityStatus;
 pub(crate) use repository::{load_capability_records, load_document_probe_evidence};
+pub(crate) use runner::ensure_model_tested;
 #[cfg(feature = "guide-eval")]
 pub(crate) use runner::test_profile;
 

@@ -10,6 +10,8 @@ import App from "./App";
 import * as decksIpc from "./ipc/decks";
 import * as homeIpc from "./ipc/home";
 import type { SelectedPracticeRequest } from "./ipc/practice";
+import * as aiProfilesIpc from "./ipc/aiProfiles";
+import type { AiProviderProfileSummary } from "./ipc/aiProfiles";
 import * as settingsIpc from "./ipc/settings";
 import * as subjectsIpc from "./ipc/subjects";
 import * as checkpointIpc from "./ipc/uiCheckpoint";
@@ -48,6 +50,7 @@ vi.mock("./ipc/decks", () => ({ listDecks: vi.fn() }));
 vi.mock("./ipc/settings", () => ({ getSettings: vi.fn() }));
 vi.mock("./ipc/home", () => ({ getHomeSummary: vi.fn() }));
 vi.mock("./ipc/subjects", () => ({ getSubjectLibrary: vi.fn() }));
+vi.mock("./ipc/aiProfiles", () => ({ listAiProviderProfiles: vi.fn() }));
 vi.mock("./ipc/platform", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./ipc/platform")>();
   return {
@@ -248,6 +251,7 @@ vi.mock("./screens/StudyGuidesRoute", () => ({
     </section>
   ),
 }));
+vi.mock("./screens/settings/AiIntroduction", () => ({ AiIntroduction: () => null }));
 vi.mock("./screens/SettingsScreen", () => ({
   SettingsScreen: () => <h1>Settings mock</h1>,
 }));
@@ -344,6 +348,10 @@ describe("App shell", () => {
       makeHomeSummary({ today: { scheduledReviews: 10, scheduledNew: 2, deckIds: ["deck-due-a"] } }),
     );
     vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
+    // An enabled service, so AI pages show as they do once AI is set up.
+    vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockResolvedValue([
+      { id: "profile-1", enabled: true } as AiProviderProfileSummary,
+    ]);
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-motion");
     document.documentElement.removeAttribute("data-animations-enabled");
@@ -854,6 +862,20 @@ describe("App shell", () => {
     await waitFor(() => expect(currentDestination()).toBe("Notes"));
     expect(await screen.findByRole("heading", { name: "Notes mock" })).toBeTruthy();
     expect(screen.getByTestId("notes")).toBeTruthy();
+  });
+
+  it("hides the Tutor and the AI-made subject pages until an AI service is set up", async () => {
+    vi.mocked(aiProfilesIpc.listAiProviderProfiles).mockResolvedValue([]);
+    vi.mocked(settingsIpc.getSettings).mockResolvedValue(makeSettings());
+    vi.mocked(decksIpc.listDecks).mockResolvedValue([makeDeck()]);
+    await openDecks();
+    await waitFor(() => expect(within(mainNavigation()).queryByRole("button", { name: "Tutor" })).toBeNull());
+    expect(within(mainNavigation()).getByRole("button", { name: "Notes" })).toBeTruthy();
+    const pages = screen.getByRole("navigation", { name: "Subject pages" });
+    expect(within(pages).queryByRole("button", { name: "Study guides" })).toBeNull();
+    expect(within(pages).queryByRole("button", { name: "Lessons" })).toBeNull();
+    expect(within(pages).queryByRole("button", { name: "Podcasts" })).toBeNull();
+    expect(within(pages).getByRole("button", { name: "Documents" })).toBeTruthy();
   });
 
   it("returns to Home on Android Back from another destination", async () => {

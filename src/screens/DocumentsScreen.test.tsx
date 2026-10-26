@@ -11,6 +11,7 @@ import * as studyMaterialsIpc from "../ipc/studyMaterials";
 import * as subjectsIpc from "../ipc/subjects";
 import * as platformFiles from "../platform/files";
 import { makeSubject, makeSubjectLibrary } from "../test/factories";
+import { AiFeaturesProvider } from "../controllers/AiFeaturesProvider";
 import { OverlayProvider } from "../ui/overlays/OverlayProvider";
 import { DocumentsScreen } from "./DocumentsScreen";
 import { openMenu } from "../test/menus";
@@ -49,6 +50,7 @@ vi.mock("../ipc/documents", () => ({
   getDocumentGenerationProgress: vi.fn(),
   importDocument: vi.fn(),
   startDocumentFlashcardGeneration: vi.fn(),
+  startDocumentPreparation: vi.fn(),
   retryDocumentFlashcardGeneration: vi.fn(),
   generateMoreDocumentFlashcards: vi.fn(),
   cancelDocumentFlashcardGeneration: vi.fn(),
@@ -282,6 +284,48 @@ describe("DocumentsScreen", () => {
     expect(within(dialog).getByText("PDF · 2.0 KB")).toBeTruthy();
     expect(within(dialog).getByText("12 sec")).toBeTruthy();
     expect(within(dialog).getByText("45,678")).toBeTruthy();
+  });
+
+  it("reads a new document without AI and offers only reading, marking up and filing", async () => {
+    const prepared = makeDocument({ generatedDeckId: null, generatedCardCount: 0, generatedNoteCount: 0, apiTokenCount: null });
+    vi.mocked(platformFiles.selectExternalImport).mockResolvedValue({
+      id: "1".repeat(32),
+      purpose: "document",
+      detectedKind: "pdf",
+      displayName: "cardiac-physiology.pdf",
+      mediaType: "application/pdf",
+      byteSize: 128,
+      sha256: "0".repeat(64),
+      expiresAt: Date.now() + 60_000,
+    });
+    vi.mocked(documentIpc.importDocument).mockResolvedValue({ documentId });
+    vi.mocked(documentIpc.startDocumentPreparation).mockResolvedValue(undefined);
+    vi.mocked(documentIpc.listDocuments).mockImplementation(async () => (
+      vi.mocked(documentIpc.importDocument).mock.calls.length > 0 ? [prepared] : []
+    ));
+    render(
+      <AiFeaturesProvider value={{ enabled: false, known: true, hasServices: false, refresh: () => undefined }}>
+        <OverlayProvider>
+          <DocumentsScreen refreshDecks={vi.fn().mockResolvedValue([])} showToast={vi.fn()} />
+        </OverlayProvider>
+      </AiFeaturesProvider>,
+    );
+    await screen.findByRole("heading", { name: "No documents yet" });
+
+    // Upload is one button: no Images… (an AI reading) and no question about a PDF's images.
+    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    await waitFor(() => expect(documentIpc.startDocumentPreparation).toHaveBeenCalledWith(documentId));
+    expect(screen.queryByRole("dialog", { name: "Import document" })).toBeNull();
+    expect(documentIpc.importDocument).toHaveBeenCalledWith("1".repeat(32), {});
+    expect(documentIpc.startDocumentFlashcardGeneration).not.toHaveBeenCalled();
+
+    expect(await screen.findByRole("heading", { name: "Cardiac physiology" })).toBeTruthy();
+    expect(screen.queryByText("Nothing made yet")).toBeNull();
+    const menu = await openDocumentActions();
+    expect(within(menu).getByRole("menuitem", { name: "Annotate" })).toBeTruthy();
+    for (const name of ["Figures", "Retry", "Make a study guide", "Make more cards…"]) {
+      expect(within(menu).queryByRole("menuitem", { name })).toBeNull();
+    }
   });
 
   it("imports a PDF without its images when the learner turns them off, and not at all on cancel", async () => {

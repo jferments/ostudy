@@ -41,8 +41,8 @@ use crate::{
     ai::{
         concurrency::{document_request_parallelism, run_bounded_provider_queue, QueueControl},
         document_intelligence::{
-            generate_lesson, load_document_task_context, DocumentTaskContext, LessonAuthoring,
-            LESSON_PROMPT_VERSION,
+            generate_lesson, load_verified_document_task_context, DocumentTaskContext,
+            LessonAuthoring, LESSON_PROMPT_VERSION,
         },
         document_provider, generation, AiRuntimeState,
     },
@@ -244,7 +244,7 @@ async fn rewrite_lesson(
     {
         return Err(part_gone());
     }
-    let mut task = load_document_task_context(database)?;
+    let mut task = load_verified_document_task_context(database, runtime).await?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,
@@ -353,7 +353,7 @@ async fn write_lessons(
     if plans.is_empty() {
         return Err(nothing_to_teach());
     }
-    let mut task = load_document_task_context(database)?;
+    let mut task = load_verified_document_task_context(database, runtime).await?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,

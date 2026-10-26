@@ -189,3 +189,53 @@ describe("DeckTransferController", () => {
     expect(controller.invalidate).toHaveBeenCalledOnce();
   });
 });
+
+describe("DeckTransferController pasted cards", () => {
+  function pasteHarness() {
+    const made = deck("a", "Spanish verbs");
+    const createDeck = vi.fn().mockResolvedValue(made);
+    const bulkCreateCards = vi.fn().mockResolvedValue({ createdCount: 500, skippedDuplicates: 0 });
+    const transfer = new DeckTransferController({
+      selectImport: vi.fn(),
+      publish: vi.fn(),
+      share: vi.fn(),
+      createDecksController: () => ({ prepareExport: vi.fn(), importStudydeck: vi.fn(), importGenerated: vi.fn(), invalidate: vi.fn() }),
+      createOperationId: vi.fn(() => "operation-1"),
+      createDeck,
+      bulkCreateCards,
+    });
+    return { made, createDeck, bulkCreateCards, transfer };
+  }
+  const cards = (count: number) => Array.from({ length: count }, (_, index) => ({ question: `q${index}`, answer: `a${index}` }));
+
+  it("makes one deck and writes the cards in native-sized batches", async () => {
+    const { made, createDeck, bulkCreateCards, transfer } = pasteHarness();
+    bulkCreateCards.mockResolvedValueOnce({ createdCount: 500, skippedDuplicates: 0 })
+      .mockResolvedValueOnce({ createdCount: 99, skippedDuplicates: 1 });
+
+    const outcome = await transfer.importPastedCards(" Spanish verbs ", cards(600));
+
+    expect(createDeck).toHaveBeenCalledWith({ name: "Spanish verbs", description: "Imported from Quizlet." });
+    expect(bulkCreateCards.mock.calls.map(([input]) => input.rows.length)).toEqual([500, 100]);
+    expect(bulkCreateCards.mock.calls[0]?.[0].rows[0]).toEqual({ question: "q0", answer: "a0", tags: [] });
+    expect(outcome).toEqual({
+      deckId: made.id,
+      committedDeck: made,
+      message: "Imported “Spanish verbs” with 599 cards. 1 exact duplicate was skipped.",
+    });
+  });
+
+  it("fills the same deck when a failed import is tried again", async () => {
+    const { createDeck, bulkCreateCards, transfer } = pasteHarness();
+    bulkCreateCards.mockResolvedValueOnce({ createdCount: 500, skippedDuplicates: 0 })
+      .mockRejectedValueOnce(new Error("disk full."));
+
+    await expect(transfer.importPastedCards("Spanish verbs", cards(600)))
+      .rejects.toThrow("Added 500 of 600 cards to “Spanish verbs” before an error: disk full. Import again to add the rest.");
+
+    bulkCreateCards.mockResolvedValueOnce({ createdCount: 0, skippedDuplicates: 500 })
+      .mockResolvedValueOnce({ createdCount: 100, skippedDuplicates: 0 });
+    await expect(transfer.importPastedCards("Spanish verbs", cards(600))).resolves.toMatchObject({ deckId: "a".repeat(32) });
+    expect(createDeck).toHaveBeenCalledTimes(1);
+  });
+});

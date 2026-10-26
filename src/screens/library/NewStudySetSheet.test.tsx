@@ -7,6 +7,7 @@ import * as sourceNotesIpc from "../../ipc/sourceNotes";
 import * as subjectsIpc from "../../ipc/subjects";
 import * as files from "../../platform/files";
 import { makeSubject, makeSubjectLibrary } from "../../test/factories";
+import { AiFeaturesProvider } from "../../controllers/AiFeaturesProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { takeStudySet } from "../documents/pendingStudySets";
 import { NewStudySetSheet } from "./NewStudySetSheet";
@@ -123,6 +124,28 @@ describe("NewStudySetSheet", () => {
     expect(jobs.importStagedDocument).toHaveBeenCalledWith(expect.objectContaining({ id: "a".repeat(32) }), undefined, expect.any(Function));
     expect(jobs.importStagedDocument).toHaveBeenCalledWith(expect.objectContaining({ id: "b".repeat(32) }), undefined, expect.any(Function));
     expect(takeStudySet(physiology.id)).toEqual(expect.objectContaining({ lessons: false, podcast: false, lectureAudio: false }));
+  });
+
+  it("without AI, makes a subject from a name and documents and queues nothing to make", async () => {
+    vi.mocked(files.selectExternalImports).mockResolvedValueOnce({ files: [staged("a".repeat(32), "Chapter 4.pdf")], skipped: [] });
+    const onCreated = vi.fn();
+    render(
+      <AiFeaturesProvider value={{ enabled: false, known: true, hasServices: false, refresh: () => undefined }}>
+        <OverlayProvider>
+          <NewStudySetSheet subjects={[physiology]} onClose={vi.fn()} onCreated={onCreated} />
+        </OverlayProvider>
+      </AiFeaturesProvider>,
+    );
+    const sheet = screen.getByRole("dialog", { name: "New subject" });
+    expect(within(sheet).queryByRole("textbox", { name: "Prompt" })).toBeNull();
+    expect(within(sheet).queryByRole("checkbox", { name: "Flashcards" })).toBeNull();
+    fireEvent.change(within(sheet).getByRole("textbox", { name: "Subject" }), { target: { value: "Krebs cycle" } });
+    fireEvent.click(within(sheet).getByRole("button", { name: /Choose files/u }));
+    expect(await within(sheet).findByText("Chapter 4.pdf")).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole("button", { name: "Create subject" }));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(created.id, after));
+    expect(jobs.importStagedDocument).toHaveBeenCalledWith(expect.objectContaining({ id: "a".repeat(32) }), undefined, expect.any(Function));
+    expect(takeStudySet(created.id)).toBeNull();
   });
 
   it("files a library document in the subject and makes its first cards", async () => {

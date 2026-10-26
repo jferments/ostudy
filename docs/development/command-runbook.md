@@ -80,7 +80,7 @@ pnpm install --frozen-lockfile
 pnpm desktop
 ```
 
-`pnpm desktop` (or `./scripts/ostudy-dev desktop`) runs `scripts/dev.sh`: Tauri hot reload with the `src-tauri/tauri.dev.conf.json` overlay, so it runs as `io.github.jferments.ostudy.dev` with the development library. It is how the maintainer tries a branch in `~/code/ostudy` ([Local testing](local-testing-and-handoff.md#linux-the-maintainers-test-drive)). Install first: `pnpm-workspace.yaml` sets `verifyDepsBeforeRun: error`, so scripts refuse to start when `node_modules` is older than the lockfile. Never use bare `pnpm tauri dev`; that debug build resolves the production identifier and startup refuses it.
+`pnpm desktop` (or `./scripts/ostudy-dev desktop`) runs `scripts/dev.sh`: Tauri hot reload with the `src-tauri/tauri.dev.conf.json` overlay, so it runs as `io.github.jferments.ostudy.dev` with the development library. It is how the maintainer tries a branch in `~/code/ostudy` ([Local testing](local-testing-and-handoff.md#linux-the-maintainers-test-drive)). Install first: `pnpm-workspace.yaml` sets `verifyDepsBeforeRun: error`, so scripts refuse to start when `node_modules` is older than the lockfile. Never use bare `pnpm tauri dev`; that debug build resolves the production identifier and startup refuses it. `VITE_OSTUDY_AI=off pnpm desktop` runs the version with no AI features at all ([UI architecture](../architecture/ui.md#without-ai)).
 
 `pnpm dev` is the frontend Vite server; `pnpm build` produces frontend assets. Neither is a complete native install or native runtime acceptance test.
 
