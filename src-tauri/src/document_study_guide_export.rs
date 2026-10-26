@@ -258,6 +258,20 @@ pub(crate) fn prepare_document_study_guide_pdf(
     })
 }
 
+/// Lays out a document's guide as the reader and export do, with its figures
+/// and notes, for the headless guide evaluation.
+#[cfg(feature = "guide-eval")]
+pub(crate) fn render_document_guide_pdf(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &PdfRenderRuntime,
+    document_id: &str,
+    destination: &std::path::Path,
+) -> Result<(), CommandError> {
+    let effective = load_effective_export(database, paths, Some(runtime), document_id, true)?;
+    guide_typst::render(&effective, StudyGuidePdfTheme::Sage, destination)
+}
+
 #[tauri::command]
 pub(crate) fn prepare_collection_study_guide_pdf(
     database: State<'_, Database>,
@@ -830,9 +844,14 @@ fn generated_content_blocks(
         blocks.push(ExportBlock::Heading("Key points".to_string()));
         blocks.push(ExportBlock::Bullets(content.key_points.clone()));
     }
+    // An explanation of how or why stands apart from the key points in a box
+    // of its own, so a section does not read as one run of text.
     for explanation in &content.explanations {
-        blocks.push(ExportBlock::Heading(explanation.heading.clone()));
-        blocks.push(ExportBlock::Paragraph(explanation.body.clone()));
+        blocks.push(ExportBlock::Callout {
+            label: "How it works".to_string(),
+            title: explanation.heading.clone(),
+            body: explanation.body.clone(),
+        });
     }
     if !content.important_terms.is_empty() {
         blocks.push(ExportBlock::Heading("Important terms".to_string()));
@@ -1244,17 +1263,47 @@ mod tests {
     }
 
     #[test]
+    fn a_long_guide_keeps_its_cram_sheet_to_one_page() {
+        let mut export = test_export();
+        for index in 0..30 {
+            let mut section = rich_section(&format!("Section {index}"));
+            section.body_lines[2] = ExportBlock::Bullets(
+                (0..8)
+                    .map(|point| {
+                        format!(
+                            "Key point {point} of section {index} states one idea in about twenty words, as a guide's key points do."
+                        )
+                    })
+                    .collect(),
+            );
+            export.sections.push(section);
+        }
+        let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Sage);
+        let cram = pages
+            .iter()
+            .position(|page| page.contains("The key ideas of the whole guide on one page."))
+            .expect("cram sheet page");
+        // The next page is the self-test, and every section is on the sheet.
+        assert!(pages[cram + 1].contains("answers follow the questions"));
+        assert!(pages[cram].contains("Section 0") && pages[cram].contains("Section 29"));
+        assert!(pages[cram].contains("Key point 0 of section 29"));
+    }
+
+    #[test]
     fn cram_sheet_and_self_test_come_from_the_guide_content() {
         let mut export = test_export();
         export.sections.push(rich_section("Afterload"));
         let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
         let cram = pages
             .iter()
-            .find(|page| page.contains("The whole guide on one page."))
+            .find(|page| page.contains("The key ideas of the whole guide on one page."))
             .expect("cram sheet page");
         assert!(cram.contains("Frank-Starling mechanism"));
         assert!(cram.contains("Higher afterload lowers stroke volume."));
         assert!(cram.contains("Afterload is not filling."));
+        // Each section's key points, under its title.
+        assert!(cram.contains("Raised by hypertension."));
+        assert!(cram.contains("Afterload"));
         let test_page = pages
             .iter()
             .find(|page| page.contains("answers follow the questions"))

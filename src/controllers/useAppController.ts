@@ -9,7 +9,8 @@ import type {
   CardPracticeRequest,
   SelectedPracticeRequest,
 } from "../ipc/practice";
-import { getSettings, type AppSettings } from "../ipc/settings";
+import { getSettings, saveSettings, type AppSettings } from "../ipc/settings";
+import type { StudyGuidePdfTheme } from "../ipc/studyGuides";
 import {
   getUiCheckpoint,
   saveUiCheckpoint,
@@ -884,6 +885,15 @@ export function useAppController() {
     // clear an unrelated AI profile or credential draft.
   }
 
+  /** The study guide theme chosen while reading a guide: the same setting Settings shows. */
+  async function saveGuideTheme(theme: StudyGuidePdfTheme): Promise<void> {
+    try {
+      saveSettingsLocally(await saveSettings({ ...savedSettings, guidePdfTheme: theme }));
+    } catch (error: unknown) {
+      showToast("error", getErrorMessage(error));
+    }
+  }
+
   return {
     section,
     activeWorkflow: practiceWorkflow?.kind ?? null,
@@ -893,6 +903,7 @@ export function useAppController() {
     decks,
     savedSettings,
     activeSettings,
+    saveGuideTheme,
     isLoading,
     fatalError,
     toast,
@@ -1044,6 +1055,12 @@ function normalizeSettings(settings: AppSettings): AppSettings {
     dailyNewLimit: settings.dailyNewLimit,
     dailyReviewLimit: settings.dailyReviewLimit,
     newDayStartHour: settings.newDayStartHour,
+    // Settings saves the whole record, so a field left out here would be
+    // written back as its default.
+    guidePdfTheme: settings.guidePdfTheme ?? "sage",
+    guidePdfIncludeNotes: settings.guidePdfIncludeNotes ?? true,
+    lectureAudioWithNewLessons: settings.lectureAudioWithNewLessons ?? true,
+    speechAutoSendSeconds: settings.speechAutoSendSeconds ?? 2,
   };
 }
 

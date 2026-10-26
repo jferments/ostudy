@@ -157,7 +157,7 @@ impl WritingBudget {
     pub(super) fn instructions(self) -> String {
         let key_points = self.key_points_asked();
         format!(
-            "Length guide: this section has about {} words across all fields. Write at most {key_points} keyPoints, one per key idea, each one sentence of at most {KEY_POINT_WORDS} words; when the topic has more ideas than {key_points}, join related ones into one key point. Write the overview as one sentence of at most 30 words, and exactly one retrievalCheck. A table or an explanation takes the place of a key point: add one only when a key idea cannot be stated without it, and then write one key point fewer. Leave everything else to the source and the flashcards, but do not drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
+            "Length guide: this section has about {} words across all fields. Write at most {key_points} keyPoints, one per key idea, each one sentence of at most {KEY_POINT_WORDS} words; when the topic has more ideas than {key_points}, join related ones into one key point. Write the overview as one sentence of at most 30 words, and exactly one retrievalCheck. The callout and importantTerms share these words: write one key point fewer for them. A table takes the place of the key points it would list, and an explanation takes the place of one key point. Leave everything else to the source and the flashcards, but do not drop a qualification a key idea needs. Optional arrays may be empty. Finish a complete JSON object within the visible output allowance.",
             self.words_asked()
         )
     }

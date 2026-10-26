@@ -6,7 +6,10 @@
 //!
 //! The provider key, when the provider needs one, comes from
 //! OSTUDY_EVAL_API_KEY. The run writes <out>/outcome.json and keeps the
-//! isolated library in <out>/library for usage reports.
+//! isolated library in <out>/library for usage reports. With --pdf it also
+//! writes <out>/guide.pdf, the guide laid out as the reader shows it with its
+//! figures; `guide-eval --relayout <out>` lays that run's guide out again
+//! without generating it.
 
 use std::{path::PathBuf, process::ExitCode};
 
@@ -14,10 +17,24 @@ use ostudy_lib::guide_eval::{self, GuideEvalProvider, GuideEvalRequest};
 
 const USAGE: &str =
     "usage: guide-eval --source FILE --out DIR --provider llama_cpp|deepseek|openrouter \
---base-url URL --model ID [--reasoning EFFORT] [--timeout-ms N] [--allow-insecure-http] [--cards]";
+--base-url URL --model ID [--reasoning EFFORT] [--timeout-ms N] [--allow-insecure-http] [--cards] [--pdf]
+       guide-eval --relayout DIR";
 
 fn main() -> ExitCode {
-    match parse(std::env::args().skip(1).collect()) {
+    let arguments = std::env::args().skip(1).collect::<Vec<_>>();
+    if let [flag, out] = arguments.as_slice() {
+        if flag == "--relayout" {
+            let out = PathBuf::from(out);
+            return match guide_eval::relayout(out.join("library"), None, &out.join("guide.pdf")) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("guide-eval could not lay the guide out: {message}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+    }
+    match parse(arguments) {
         Ok((request, out)) => run(request, out),
         Err(message) => {
             eprintln!("{message}\n{USAGE}");
@@ -67,6 +84,7 @@ fn parse(arguments: Vec<String>) -> Result<(GuideEvalRequest, PathBuf), String> 
     let mut request_timeout_ms = 300_000_i64;
     let mut allow_insecure_http = false;
     let mut cards = false;
+    let mut pdf = false;
     let mut arguments = arguments.into_iter();
     while let Some(flag) = arguments.next() {
         if flag == "--allow-insecure-http" {
@@ -75,6 +93,10 @@ fn parse(arguments: Vec<String>) -> Result<(GuideEvalRequest, PathBuf), String> 
         }
         if flag == "--cards" {
             cards = true;
+            continue;
+        }
+        if flag == "--pdf" {
+            pdf = true;
             continue;
         }
         let value = arguments
@@ -125,6 +147,7 @@ fn parse(arguments: Vec<String>) -> Result<(GuideEvalRequest, PathBuf), String> 
         },
         resource_dir: None,
         cards,
+        pdf: pdf.then(|| out.join("guide.pdf")),
     };
     Ok((request, out))
 }

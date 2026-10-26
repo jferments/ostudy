@@ -41,7 +41,7 @@ pub(crate) fn plain_sans_font() -> &'static [u8] {
     BUNDLED_FONTS[0]
 }
 const MAX_CRAM_TERMS: usize = 40;
-const MAX_CRAM_WARNINGS: usize = 8;
+const MAX_CRAM_WARNINGS: usize = 5;
 // Kept LaTeX has no natural break points, so long source gets zero-width break
 // opportunities at this interval.
 const SOURCE_BREAK_CHARS: usize = 48;
@@ -471,7 +471,7 @@ fn guide_data(
         "mathNoticeText": math_source::NOTICE,
         "chapters": chapters,
         "sections": sections,
-        "keyIdeas": cram.key_ideas,
+        "cram": cram.groups,
         "terms": cram.terms,
         "warnings": cram.warnings,
         "checks": cram.checks,
@@ -700,11 +700,13 @@ fn term_list(terms: &[(String, String)]) -> Value {
     )
 }
 
-/// End-of-guide review pages, gathered from the guide's own content: key-idea
-/// callouts, terms, warnings and misconceptions, and every retrieval check.
+/// End-of-guide review pages, gathered from the guide's own content. The cram
+/// sheet holds each section's key idea and key points under its number, then
+/// the guide's terms and warnings; the template sets it as small as one page
+/// needs. The self-test holds every retrieval check.
 #[derive(Default)]
 struct CramSheet {
-    key_ideas: Vec<Value>,
+    groups: Vec<Value>,
     terms: Vec<Value>,
     warnings: Vec<Value>,
     checks: Vec<Value>,
@@ -714,17 +716,21 @@ impl CramSheet {
     fn collect(export: &EffectiveGuideExport) -> Self {
         let mut sheet = Self::default();
         let mut seen_terms = std::collections::HashSet::new();
-        for section in &export.sections {
+        let numbers = section_numbers(export);
+        for (index, section) in export.sections.iter().enumerate() {
+            let mut ideas = Vec::new();
+            let mut points = Vec::new();
             let mut previous_heading = None::<&str>;
             for block in &section.body_lines {
                 match block {
-                    ExportBlock::Callout { label, title, body } if label == "Key idea" => {
-                        sheet
-                            .key_ideas
-                            .push(json!({ "title": runs(title), "body": runs(body) }));
+                    ExportBlock::Callout { label, body, .. } if label == "Key idea" => {
+                        ideas.push(runs(body));
                     }
                     ExportBlock::Callout { label, body, .. } if label == "Watch out" => {
                         sheet.warnings.push(runs(body));
+                    }
+                    ExportBlock::Bullets(items) if previous_heading == Some("Key points") => {
+                        points.extend(items.iter().map(|item| runs(item)));
                     }
                     ExportBlock::Bullets(items)
                         if previous_heading == Some("Common misconceptions") =>
@@ -752,11 +758,36 @@ impl CramSheet {
                     _ => None,
                 };
             }
+            if ideas.is_empty() && points.is_empty() {
+                continue;
+            }
+            sheet.groups.push(json!({
+                "number": numbers[index],
+                "title": runs(&section.title),
+                "ideas": ideas,
+                "points": points,
+            }));
         }
         sheet.terms.truncate(MAX_CRAM_TERMS);
         sheet.warnings.truncate(MAX_CRAM_WARNINGS);
         sheet
     }
+}
+
+/// Each section's number as its heading prints it: "2.3" in a guide with
+/// chapters, "4" in one without.
+fn section_numbers(export: &EffectiveGuideExport) -> Vec<String> {
+    let mut numbers = (1..=export.sections.len())
+        .map(|number| number.to_string())
+        .collect::<Vec<_>>();
+    for (chapter, entry) in export.chapters.iter().enumerate() {
+        for (position, &section) in entry.section_indices.iter().enumerate() {
+            if let Some(number) = numbers.get_mut(section) {
+                *number = format!("{}.{}", chapter + 1, position + 1);
+            }
+        }
+    }
+    numbers
 }
 
 #[cfg(test)]

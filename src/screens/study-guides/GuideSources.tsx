@@ -21,9 +21,9 @@ interface GuideSourcesSheetProps {
 }
 
 /**
- * A section's sources beside its pages: each passage its key points cite, as
- * the document says it, with the page it is on. A passage on a page of a PDF
- * opens there, so the learner can check a key point against its source.
+ * A section's sources beside its pages: each page or range its key points
+ * cite, with the passages on it as the document says them. A page of a PDF
+ * opens in place, so the learner can check a key point against its source.
  */
 export function GuideSourcesSheet({
   sources, current, sectionTitle, documentId, documentTitle, onOpen, onClose,
@@ -46,9 +46,11 @@ export function GuideSourcesSheet({
                   <strong className="tw:text-primary">{source.number}</strong>
                   <span className="tw:text-muted-foreground">{source.label || "Source"}</span>
                 </p>
-                <blockquote className="tw:m-0 tw:border-0 tw:border-s-2 tw:border-solid tw:border-border-strong tw:ps-3 tw:text-small tw:break-words">
-                  {source.excerpt}
-                </blockquote>
+                {source.excerpts.map((excerpt, index) => (
+                  <blockquote key={index} className="tw:m-0 tw:border-0 tw:border-s-2 tw:border-solid tw:border-border-strong tw:ps-3 tw:text-small tw:break-words">
+                    {excerpt}
+                  </blockquote>
+                ))}
                 {pageNumber !== null ? (
                   <Button size="small" className="tw:justify-self-start" onClick={() => onOpen({
                     documentId: source.documentId,

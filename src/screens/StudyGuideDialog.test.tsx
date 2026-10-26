@@ -23,6 +23,7 @@ import {
   type StudyGuideCanvas,
   type PreparedStudyGuidePdf,
   type StudyGuideOverlay,
+  type StudyGuidePdfTheme,
 } from "../ipc/studyGuides";
 import {
   getStudyGuideReading,
@@ -798,18 +799,40 @@ describe("StudyGuideDialog", () => {
     expect(within(required(items[1], "second source")).queryByRole("button")).toBeNull();
   });
 
-  it("opens the guide in the system's PDF reader in the chosen theme", async () => {
-    window.localStorage.setItem("ostudy.guidePageStyle", "plum");
+  it("opens the guide in the system's PDF reader in the study guide theme", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "pages");
     vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
     vi.mocked(readMaterialInk).mockResolvedValue({ marks: [], unavailableLinkIds: [] });
     vi.mocked(openDocumentStudyGuidePdf).mockResolvedValue(undefined);
     Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
     mockedGetGuide.mockResolvedValue(guide());
-    renderGuide();
+    renderGuide({ theme: "plum" });
 
+    await waitFor(() => expect(getDocumentStudyGuideCanvas).toHaveBeenCalledWith(documentId, "plum"));
     fireEvent.click(await screen.findByRole("button", { name: "Open in PDF reader" }));
     await waitFor(() => expect(openDocumentStudyGuidePdf).toHaveBeenCalledWith(documentId, "plum"));
+  });
+
+  it("reads in Sage by default, and a theme chosen on the Page menu is the Settings theme", async () => {
+    window.localStorage.setItem("ostudy.guidePageStyle", "navy");
+    vi.mocked(getDocumentStudyGuideCanvas).mockResolvedValue(guideCanvas());
+    vi.mocked(readMaterialInk).mockResolvedValue({ marks: [], unavailableLinkIds: [] });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, writable: true, value: vi.fn(() => "blob:page") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, writable: true, value: vi.fn() });
+    mockedGetGuide.mockResolvedValue(guide());
+    const onThemeChange = vi.fn();
+    renderGuide({ onThemeChange });
+
+    // A theme an older build kept on this device only means pages; Settings picks the theme.
+    await waitFor(() => expect(getDocumentStudyGuideCanvas).toHaveBeenCalledWith(documentId, "sage"));
+    const trigger = screen.getByRole("button", { name: "Page: Sage" });
+    await waitFor(() => expect(trigger.getAttribute("aria-expanded")).toBe("false"));
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: "Slate" }));
+    await waitFor(() => expect(onThemeChange).toHaveBeenCalledWith("slate"));
+    expect(window.localStorage.getItem("ostudy.guidePageStyle")).toBe("pages");
   });
 
   it("offers the plain text when the pages cannot be laid out", async () => {
@@ -1365,8 +1388,8 @@ function guideCanvas(): StudyGuideCanvas {
       { topicId, number: 2, pageIndex: 1, x: 320, y: 180, width: 4.2, height: 7 },
     ],
     sources: [
-      { topicId, number: 1, documentId, label: "p. 3", pageNumber: 3, excerpt: "Preload is the stretch of the ventricle before it contracts." },
-      { topicId, number: 2, documentId, label: "slide 4", pageNumber: null, excerpt: "End-diastolic volume sets preload." },
+      { topicId, number: 1, documentId, label: "p. 3", pageNumber: 3, excerpts: ["Preload is the stretch of the ventricle before it contracts."] },
+      { topicId, number: 2, documentId, label: "slide 4", pageNumber: null, excerpts: ["End-diastolic volume sets preload."] },
     ],
   };
 }
@@ -1389,6 +1412,8 @@ function renderGuide({
   source = null,
   layout,
   tutor = null,
+  theme,
+  onThemeChange,
 }: {
   showToast?: ShowToast;
   onClose?: () => void;
@@ -1396,6 +1421,8 @@ function renderGuide({
   /** Renders inside the layout provider at a simulated viewport; omitted, the reader is wide. */
   layout?: ViewportLayout;
   tutor?: TutorController | null;
+  theme?: StudyGuidePdfTheme;
+  onThemeChange?: (theme: StudyGuidePdfTheme) => void;
 } = {}) {
   let reader = (
     <OverlayProvider><StudyGuideDialog
@@ -1403,6 +1430,8 @@ function renderGuide({
       documentTitle="Physiology"
       source={source}
       showToast={showToast}
+      theme={theme}
+      onThemeChange={onThemeChange}
       onPracticeCards={onPracticeCards}
       onClose={onClose}
     /></OverlayProvider>

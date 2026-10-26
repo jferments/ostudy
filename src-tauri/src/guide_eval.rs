@@ -24,7 +24,7 @@ use crate::{
     database::Database,
     document_import::import_staged_document,
     document_initial_generation::{
-        ensure_document_derivatives, process_and_generate_initial_flashcards,
+        ensure_document_derivatives, process_and_generate_initial_flashcards, FigureSearch,
     },
     document_learning::load_active_document_learning_plan,
     document_store,
@@ -64,6 +64,9 @@ pub struct GuideEvalRequest {
     /// Run the document's whole first generation (flashcards and study guide
     /// together, as the Documents page does) instead of the guide alone.
     pub cards: bool,
+    /// Where to write the guide laid out as the reader shows it, in Sage, once
+    /// the PDF's figure search is done; none skips the layout.
+    pub pdf: Option<PathBuf>,
 }
 
 /// What a run produced. `guide` is `None` when generation failed; `error` then
@@ -150,16 +153,16 @@ async fn evaluate(
     outcome.timings_ms.configure = started.elapsed().as_millis();
 
     let started = std::time::Instant::now();
-    let document_id =
+    let (document_id, figure_search) =
         match import_and_ingest(database, paths, render_runtime.clone(), &request.source).await {
-            Ok(document_id) => document_id,
+            Ok(imported) => imported,
             Err(error) => {
                 outcome.error = Some(fail("ingest", error));
                 return outcome;
             }
         };
     outcome.timings_ms.ingest = started.elapsed().as_millis();
-    let render_runtime_for_cards = render_runtime;
+    let render_runtime_for_cards = render_runtime.clone();
     outcome.document_id = Some(document_id.clone());
     match source_snapshot(database, &document_id) {
         Ok(source) => outcome.source = Some(source),
@@ -211,7 +214,25 @@ async fn evaluate(
         .and_then(|guide| serde_json::to_value(guide).map_err(CommandError::serialization))
     {
         Ok(guide) => outcome.guide = Some(guide),
-        Err(error) => outcome.error = Some(fail("generate", error)),
+        Err(error) => {
+            outcome.error = Some(fail("generate", error));
+            return outcome;
+        }
+    }
+    if let Some(destination) = &request.pdf {
+        // The reader lays a guide out after its figures are found.
+        if let Some(search) = figure_search {
+            let _ = search.await;
+        }
+        if let Err(error) = crate::document_study_guide_export::render_document_guide_pdf(
+            database,
+            paths,
+            &render_runtime,
+            &document_id,
+            destination,
+        ) {
+            outcome.error = Some(fail("layout", error));
+        }
     }
     outcome
 }
@@ -295,7 +316,7 @@ async fn import_and_ingest(
     paths: &AppPaths,
     render_runtime: PdfRenderRuntime,
     source: &Path,
-) -> Result<String, CommandError> {
+) -> Result<(String, Option<FigureSearch>), CommandError> {
     let operation_id = database.with_connection(|connection| generate_id(connection))?;
     let staged = stage_local_import(
         database,
@@ -305,9 +326,41 @@ async fn import_and_ingest(
         source,
     )?;
     let imported = import_staged_document(database, paths, &staged.id, None)?;
-    ensure_document_derivatives(database, paths, render_runtime, &imported.document_id).await?;
-    // The eval reads text and page renders; it does not wait for figures.
-    Ok(imported.document_id)
+    let (_, figure_search) =
+        ensure_document_derivatives(database, paths, render_runtime, &imported.document_id).await?;
+    // Generation reads text and page renders; it does not wait for figures.
+    Ok((imported.document_id, figure_search))
+}
+
+/// Lays out again the guide of the one document in an earlier run's library,
+/// so a layout change can be seen without generating the guide again.
+pub fn relayout(
+    library_dir: PathBuf,
+    resource_dir: Option<PathBuf>,
+    destination: &Path,
+) -> Result<(), String> {
+    let paths = AppPaths::new(library_dir).map_err(|error| error.to_string())?;
+    let database = Database::open(paths.database_path())?;
+    let render_runtime = PdfRenderRuntime::new(resource_dir).map_err(|error| error.to_string())?;
+    let document_id = database
+        .with_connection(|connection| {
+            connection
+                .query_row(
+                    "SELECT id FROM documents ORDER BY created_at LIMIT 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .map_err(CommandError::database)
+        })
+        .map_err(|error| error.message)?;
+    crate::document_study_guide_export::render_document_guide_pdf(
+        &database,
+        &paths,
+        &render_runtime,
+        &document_id,
+        destination,
+    )
+    .map_err(|error| error.message)
 }
 
 /// Canonical chunks with their locators: the text a judge checks guide claims

@@ -327,6 +327,8 @@ function App() {
                                   }
                                   subject={librarySubject}
                                   showToast={controller.showToast}
+                                  guideTheme={controller.savedSettings.guidePdfTheme ?? "sage"}
+                                  onGuideThemeChange={(theme) => void controller.saveGuideTheme(theme)}
                                   onPracticeCards={controller.practiceCards}
                                   onSetUpAi={() => void controller.openAiSetup()}
                                   onPracticeDeck={(deckId) => controller.practiceDeck(deckId)}

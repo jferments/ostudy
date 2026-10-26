@@ -61,12 +61,12 @@ pub(crate) struct StudyGuideCanvasSourceDto {
     pub topic_id: String,
     pub number: usize,
     pub document_id: String,
-    /// "p. 12", as the section's Sources line prints it.
+    /// "p. 12" or "pp. 12–14", as the section's Sources line prints it.
     pub label: String,
     /// The first cited page, when the reader can open it: a page of a PDF.
     pub page_number: Option<i64>,
-    /// The passage as the document says it.
-    pub excerpt: String,
+    /// The cited passages on these pages, as the document says them.
+    pub excerpts: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -243,7 +243,7 @@ fn assemble(
                         .as_ref()
                         .filter(|locator| source.pdf && locator.unit_kind == SourceUnitKind::Page)
                         .and_then(|locator| locator.unit_numbers.iter().min().copied()),
-                    excerpt: source.excerpt.clone(),
+                    excerpts: source.excerpts.clone(),
                 })
         })
         .collect();
@@ -453,14 +453,14 @@ mod tests {
                     document_id: "document-1".into(),
                     pdf: true,
                     locator: Some(page(2)),
-                    excerpt: "Preload is the stretch of the ventricle.".into(),
+                    excerpts: vec!["Preload is the stretch of the ventricle.".into()],
                 },
                 CitedSource {
                     number: 2,
                     document_id: "document-1".into(),
                     pdf: false,
                     locator: Some(page(3)),
-                    excerpt: "End-diastolic volume sets preload.".into(),
+                    excerpts: vec!["End-diastolic volume sets preload.".into()],
                 },
             ],
         });
