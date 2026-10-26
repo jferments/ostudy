@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import time
 import urllib.error
-import urllib.request
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -74,39 +74,42 @@ def _protocol_error(decoded: Any, status: int) -> WebDriverProtocolError | None:
 
 
 def request(method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+    """Send one WebDriver command on its own keep-alive HTTP/1.1 connection.
+
+    urllib always sends ``Connection: close``. tauri-driver forwards that header
+    to WebKitWebDriver, which then closes its side of the proxy's pooled
+    connection after answering. tauri-driver can hand the next command to that
+    closing connection before it notices, fails it without retrying, and drops
+    our connection with no answer. Leaving the header out keeps the proxy's
+    upstream connection open, so commands are never sent on a closed socket.
+    """
     body = None if payload is None else json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        WEBDRIVER_URL + path,
-        data=body,
-        method=method,
-        headers={"Content-Type": "application/json"},
-    )
+    endpoint = urllib.parse.urlsplit(WEBDRIVER_URL)
+    connection = http.client.HTTPConnection(endpoint.hostname, endpoint.port, timeout=15)
     try:
-        with urllib.request.urlopen(req, timeout=15) as response:
-            decoded = json.loads(response.read().decode("utf-8"))
-            status = response.status
-    except urllib.error.HTTPError as http_error:
-        raw = http_error.read().decode("utf-8", errors="replace")
-        try:
-            decoded = json.loads(raw)
-        except json.JSONDecodeError as decode_error:
-            raise WebDriverProtocolError(
-                http_error.code,
-                "http_error",
-                raw[:1_000] or http_error.reason,
-            ) from decode_error
-        protocol_error = _protocol_error(decoded, http_error.code)
-        if protocol_error is not None:
-            raise protocol_error from http_error
+        connection.request(method, path, body=body, headers={"Content-Type": "application/json"})
+        response = connection.getresponse()
+        status = response.status
+        raw = response.read().decode("utf-8", errors="replace")
+    finally:
+        connection.close()
+
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError as decode_error:
+        if status < 400:
+            raise
         raise WebDriverProtocolError(
-            http_error.code,
+            status,
             "http_error",
-            raw[:1_000] or http_error.reason,
-        ) from http_error
+            raw[:1_000] or response.reason,
+        ) from decode_error
 
     protocol_error = _protocol_error(decoded, status)
     if protocol_error is not None:
         raise protocol_error
+    if status >= 400:
+        raise WebDriverProtocolError(status, "http_error", raw[:1_000] or response.reason)
     return decoded.get("value") if isinstance(decoded, dict) else decoded
 
 
