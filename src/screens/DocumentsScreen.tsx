@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import type { ShowToast } from "../components/Toast";
+import { useAiFeatures } from "../controllers/AiFeaturesProvider";
 import { DocumentJobsProvider, useDocumentJobs } from "../controllers/DocumentJobsProvider";
 import { isActiveArtifactJob, useDocumentArtifactProgress } from "../controllers/useDocumentArtifactProgress";
 import type { DocumentGenerationProgress, DocumentSummary } from "../ipc/documents";
@@ -96,6 +97,8 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
   // Phones drop the row's Open button, so Open leads the row's menu there.
   const compact = useLayoutMode().layoutMode === "compact";
   const filing = useDocumentFiling();
+  // Without AI, documents are read and marked up; nothing is made from them.
+  const ai = useAiFeatures().enabled;
   const modelMissing = useGenerationModelMissing();
   const setUpAi = modelMissing ? props.onSetUpAi : undefined;
   const [moreCards, setMoreCards] = useState<{ document: DocumentSummary; instructions: string } | null>(null);
@@ -115,7 +118,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     fileName: string;
     resolve: (options: ImportDocumentOptions | null) => void;
   } | null>(null);
-  const chooseImportOptions = (selected: StagedExternalFile) => selected.detectedKind === "pdf"
+  const chooseImportOptions = (selected: StagedExternalFile) => ai && selected.detectedKind === "pdf"
     ? new Promise<ImportDocumentOptions | null>((resolve) => setImporting({ fileName: selected.displayName, resolve }))
     : Promise.resolve({});
   const finishImporting = (options: ImportDocumentOptions | null) => {
@@ -270,7 +273,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
     const filedIn = subjectOf(document);
     const ranges = filing.rangesOf(document.id);
     const leftOut = filedIn !== null && filing.isLeftOut(document.id);
-    const range = filedIn === null ? null : leftOut ? "left out of study materials" : rangeLabel(document, ranges);
+    const range = filedIn === null || !ai ? null : leftOut ? "left out of study materials" : rangeLabel(document, ranges);
     // A loose document's one filing action sits on the row; elsewhere it is in the menu.
     const addTo = filedIn === null && subjects.length > 0 && !processing;
     // Work under way shows as one bar in the row; a failed guide or card run keeps its panel below.
@@ -282,15 +285,15 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       id: "annotate", label: "Annotate", disabled: deleting,
       onSelect: () => setAnnotating({ id: document.id, title: document.title, subjectId: subjectOf(document) }),
     });
-    if (canAnnotateDocument(document)) items.push({
+    if (ai && canAnnotateDocument(document)) items.push({
       id: "figures", label: "Figures", disabled: deleting,
       onSelect: () => setViewingFigures({ id: document.id, title: document.title }),
     });
-    if (filedIn !== null && document.sourceUnitCount > 0 && !processing) items.push({
+    if (ai && filedIn !== null && document.sourceUnitCount > 0 && !processing) items.push({
       id: "range", label: "Reading range…", disabled: filing.busy,
       onSelect: () => setRanging(document),
     });
-    if (filedIn !== null && !processing) items.push({
+    if (ai && filedIn !== null && !processing) items.push({
       id: "left-out", label: leftOut ? "Use in study materials" : "Leave out of study materials", disabled: filing.busy,
       onSelect: () => {
         const others = (library?.leftOutDocumentIds ?? []).filter((id) => id !== document.id && (placements.get(id) ?? null) === filedIn);
@@ -305,15 +308,15 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
       id: "unfile", label: "Remove from subject", disabled: filing.busy,
       onSelect: () => void filing.moveDocument(document.id, null),
     });
-    if (document.generatedDeckId !== null && document.lifecycleState === "ready") items.push({
+    if (ai && document.generatedDeckId !== null && document.lifecycleState === "ready") items.push({
       id: "generate-more", label: cardBusy ? "Making cards…" : "Make more cards…", disabled: busy,
       onSelect: setUpAi ?? (() => setMoreCards({ document, instructions })),
     });
-    if (document.generatedDeckId === null && !processing) items.push({
+    if (ai && document.generatedDeckId === null && !processing) items.push({
       id: "retry", label: cardBusy ? "Retrying…" : "Retry", disabled: busy || generationInstructionsError(instructions) !== null,
       onSelect: setUpAi ?? (() => void retry(document, instructions)),
     });
-    if (!guideGenerating && !processing) items.push({
+    if (ai && !guideGenerating && !processing) items.push({
       id: "study-guide", label: guideJob === null ? "Make a study guide" : "Remake the study guide", disabled: busy,
       onSelect: setUpAi ?? (() => {
         if (guideJob) setRemadeGuideJobIds((ids) => ({ ...ids, [document.id]: guideJob.id }));
@@ -350,11 +353,11 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
             {rowProgress ? <DocumentRowProgress label={rowProgress.label} value={rowProgress.value} /> : (
               <span className="tw:truncate tw:text-small tw:text-muted-foreground" title={document.originalFilename}>
                 {[documentMeta(document), range].filter(Boolean).join(" · ")}
-                <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, latestGuideJob)}</span>
+                {ai ? <span className="tw:hidden tw:compact:inline"> · {materialSummary(document, latestGuideJob)}</span> : null}
               </span>
             )}
           </div>
-          {rowProgress ? null : <>
+          {rowProgress || !ai ? null : <>
             <span className="tw:w-44 tw:shrink-0 tw:text-small tw:text-muted-foreground tw:tabular-nums tw:compact:hidden tw:medium:w-auto">
               {materialSummary(document, latestGuideJob)}
             </span>
@@ -407,7 +410,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
         compact
         actions={
           <div className="tw:flex tw:flex-wrap tw:items-center tw:justify-end tw:gap-2">
-            {subjectId !== null ? (
+            {ai && subjectId !== null ? (
               <SubjectStudyActions
                 key={subjectId}
                 subjectId={subjectId}
@@ -425,7 +428,7 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 onSetUpAi={setUpAi}
               />
             ) : null}
-            <OverflowMenu
+            {ai ? <OverflowMenu
               label={isUploading ? "Choose a document…" : "Upload"}
               triggerPresentation="text"
               triggerVariant="primary"
@@ -434,7 +437,11 @@ function DocumentsScreenContent(input: DocumentsScreenContentProps) {
                 { id: "document", label: "Document…", onSelect: upload },
                 { id: "images", label: "Images…", onSelect: () => setImageWorkspaceDocumentId(null) },
               ]}
-            />
+            /> : (
+              <Button variant="primary" disabled={isUploading} onClick={upload}>
+                <Icon name="upload" size={16} />{isUploading ? "Choose a document…" : "Upload"}
+              </Button>
+            )}
           </div>
         }
       />

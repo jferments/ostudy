@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 
 import type { ShowToast } from "../../components/Toast";
+import { useAiFeatures } from "../../controllers/AiFeaturesProvider";
 import { useOptionalHomeSummary } from "../../controllers/HomeSummaryProvider";
 import { renderDocumentPageTile } from "../../ipc/documentAnnotations";
 import type { SubjectCover } from "../../ipc/home";
@@ -140,8 +141,11 @@ interface MaterialButton {
   count: number;
 }
 
-/** A button for each kind of material the subject holds; Flashcards and Documents always show. */
-function materialButtons(tile: SubjectTile): MaterialButton[] {
+/**
+ * A button for each kind of material the subject holds; Flashcards and
+ * Documents always show, and the AI-made kinds only while AI is on.
+ */
+function materialButtons(tile: SubjectTile, ai: boolean): MaterialButton[] {
   const { summary } = tile;
   const buttons: MaterialButton[] = [
     { page: "decks", icon: "cards", label: "Flashcards", count: summary.cardCount },
@@ -150,16 +154,16 @@ function materialButtons(tile: SubjectTile): MaterialButton[] {
     { page: "podcasts", icon: "headphones", label: summary.podcastCount === 1 ? "Podcast" : "Podcasts", count: summary.podcastCount },
     { page: "documents", icon: "document", label: "Documents", count: summary.sourceCount },
   ];
-  return buttons.filter((button) => button.page === "decks" || button.page === "documents" || button.count > 0);
+  return buttons.filter((button) => button.page === "decks" || button.page === "documents" || (ai && button.count > 0));
 }
 
-function tileMeta(tile: SubjectTile): string {
+function tileMeta(tile: SubjectTile, ai: boolean): string {
   const { summary } = tile;
   const parts = [
     countLabel(summary.cardCount, "card"),
-    summary.guideCount > 0 ? countLabel(summary.guideCount, "guide") : null,
-    summary.lessonCount > 0 ? countLabel(summary.lessonCount, "lesson") : null,
-    summary.podcastCount > 0 ? countLabel(summary.podcastCount, "podcast") : null,
+    ai && summary.guideCount > 0 ? countLabel(summary.guideCount, "guide") : null,
+    ai && summary.lessonCount > 0 ? countLabel(summary.lessonCount, "lesson") : null,
+    ai && summary.podcastCount > 0 ? countLabel(summary.podcastCount, "podcast") : null,
     countLabel(summary.sourceCount, "document"),
   ];
   return parts.filter(Boolean).join(" · ");
@@ -174,6 +178,7 @@ interface LibrarySubjectTileProps {
 /** One subject: its figure, name, what it holds or is preparing, and its pages. */
 export function LibrarySubjectTile({ tile, onOpen, actions }: LibrarySubjectTileProps) {
   const metaId = useId();
+  const ai = useAiFeatures().enabled;
   const color = tile.colorIndex === null ? null : SUBJECT_COLORS[tile.colorIndex];
   return (
     <article
@@ -227,12 +232,12 @@ export function LibrarySubjectTile({ tile, onOpen, actions }: LibrarySubjectTile
         <p id={metaId} className="tw:m-0 tw:flex tw:items-center tw:gap-1.5 tw:text-small tw:text-muted-foreground">
           {tile.preparing ? <Icon name="sparkles" size={14} className="tw:shrink-0" /> : null}
           <span className="tw:min-w-0 tw:truncate">
-            {tile.preparing ? `${tile.preparing.step}: ${tile.preparing.documentTitle}` : tileMeta(tile)}
+            {tile.preparing ? `${tile.preparing.step}: ${tile.preparing.documentTitle}` : tileMeta(tile, ai)}
           </span>
         </p>
       </div>
       <div className="tw:mt-auto tw:flex tw:flex-wrap tw:gap-1.5 tw:px-4 tw:pb-4 tw:compact:w-full tw:compact:px-3 tw:compact:pb-3">
-        {materialButtons(tile).map((button) => (
+        {materialButtons(tile, ai).map((button) => (
           <Button
             key={button.page}
             size="small"

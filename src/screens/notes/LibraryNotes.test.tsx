@@ -78,10 +78,14 @@ describe("Library notes", () => {
     expect(screen.queryByRole("button", { name: "Open Loose ideas" })).toBeNull();
   });
 
-  it("has nothing to show for a subject without notes but New notebook", async () => {
+  it("explains notebooks before the first one, with New notebook and New folder", async () => {
     renderNotes({ kind: "subject", subjectId: "6".repeat(32) });
-    expect(await screen.findByText("No notes yet")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "New notebook" })).toBeTruthy();
+    const welcome = await screen.findByTestId("notes-welcome");
+    expect(within(welcome).getByRole("heading", { name: "Your notebooks live here" })).toBeTruthy();
+    expect(within(welcome).getByRole("list", { name: "What notebooks do" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "Sort notes" })).toBeNull();
+    fireEvent.click(within(welcome).getByRole("button", { name: "New notebook" }));
+    expect(await screen.findByRole("dialog", { name: "New notebook" })).toBeTruthy();
   });
 
   it("creates a notebook in the chosen subject and opens it", async () => {

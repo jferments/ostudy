@@ -25,6 +25,8 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 TUTORIAL_REGISTRY_PATH = ROOT_DIR / "src/ui/tutorials/tutorialRegistry.ts"
 TUTORIAL_STORAGE_KEY = "ostudy.tutorials.v1"
 AI_INTRODUCTION_STORAGE_KEY = "ostudy.aiIntroduction.v1"
+# The smokes drive the Tutor and other AI-only pages offline, without a service.
+AI_FEATURES_WITHOUT_SERVICE_STORAGE_KEY = "ostudy.aiFeaturesWithoutService.v1"
 TRANSIENT_CLICK_ERRORS = {"element click intercepted", "element not interactable"}
 RETRYABLE_FIND_ERRORS = {"no such element", "stale element reference"}
 RETRYABLE_PROFILE_ERRORS = {"no such window", "unknown error"}
@@ -139,8 +141,8 @@ def tutorial_versions() -> dict[str, int]:
 
 
 def prepare_automation_profile(session_id: str) -> None:
-    """Disable contextual tutorials and the first-run AI introduction in the
-    disposable native-smoke browser profile."""
+    """Disable contextual tutorials and the first-run AI introduction, and show
+    AI-only pages without a service, in the disposable native-smoke profile."""
     versions = tutorial_versions()
     state = {
         "schemaVersion": 1,
@@ -160,10 +162,16 @@ def prepare_automation_profile(session_id: str) -> None:
                         const state = arguments[1];
                         window.localStorage.setItem(key, JSON.stringify(state));
                         window.localStorage.setItem(arguments[2], "shown");
+                        window.localStorage.setItem(arguments[3], "shown");
                         window.location.reload();
                         return true;
                     """,
-                    "args": [TUTORIAL_STORAGE_KEY, state, AI_INTRODUCTION_STORAGE_KEY],
+                    "args": [
+                        TUTORIAL_STORAGE_KEY,
+                        state,
+                        AI_INTRODUCTION_STORAGE_KEY,
+                        AI_FEATURES_WITHOUT_SERVICE_STORAGE_KEY,
+                    ],
                 },
             )
             return

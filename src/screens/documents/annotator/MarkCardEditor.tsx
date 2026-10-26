@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ShowToast } from "../../../components/Toast";
+import { useAiFeatures } from "../../../controllers/AiFeaturesProvider";
 import { RICH_DOCUMENT_SCHEMA_VERSION } from "../../../editor/adapter";
 import { EMPTY_RICH_DOCUMENT, cloneDocument } from "../../../editor/richText";
 import { draftMarkQuestion, linkCardNoteToAnnotation } from "../../../ipc/annotationCards";
@@ -48,6 +49,7 @@ type DeckLoad =
  * Each card saved here is linked to the mark, which also cites its page.
  */
 export function MarkCardEditor({ mark, suggestedDeckId, onClose, onSaved, showToast }: MarkCardEditorProps) {
+  const ai = useAiFeatures().enabled;
   const [load, setLoad] = useState<DeckLoad>({ state: "loading" });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -138,7 +140,7 @@ export function MarkCardEditor({ mark, suggestedDeckId, onClose, onSaved, showTo
   }
   return (
     <div>
-      {mark.quote.trim() !== "" ? (
+      {ai && mark.quote.trim() !== "" ? (
         <div className="tw:grid tw:gap-2 tw:pt-3" aria-live="polite">
           {writing ? (
             <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-2 tw:text-small tw:text-muted-foreground">

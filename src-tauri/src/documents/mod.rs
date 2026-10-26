@@ -3,6 +3,7 @@ mod contracts;
 mod generation;
 pub(crate) mod image_sets;
 mod lifecycle;
+mod preparation;
 mod reconciliation;
 mod repository;
 mod source;
@@ -16,5 +17,6 @@ pub(crate) use lifecycle::{
     flashcard_generation_canceled_error, record_document_cancellation_with_message,
     record_document_failure,
 };
+pub(crate) use preparation::prepare_reserved_document;
 pub(crate) use reconciliation::reconcile_startup;
 pub(crate) use source::{expected_document_source_relative_path, resolve_document_source};

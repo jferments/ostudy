@@ -335,6 +335,7 @@ export interface NativeCommandGatewayMap {
   "start_card_practice": readonly [typeof GatewayModule31.startCardPractice];
   "start_device_pairing": readonly [typeof GatewayModule10.startDevicePairing];
   "start_document_flashcard_generation": readonly [typeof GatewayModule15.startDocumentFlashcardGeneration];
+  "start_document_preparation": readonly [typeof GatewayModule15.startDocumentPreparation];
   "start_openrouter_sign_in": readonly [typeof GatewayModule0.startOpenRouterSignIn];
   "start_selected_practice": readonly [typeof GatewayModule31.startSelectedPractice];
   "stream_publish_prepared_export": readonly [typeof GatewayModule18.publishPreparedExport];

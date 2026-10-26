@@ -1,6 +1,7 @@
 import { useArtwork } from "../../ui/artwork/Artwork";
 import { Icon } from "../../ui/icons/Icon";
 import { Button } from "../../ui/primitives/Button";
+import { HomeGettingStarted } from "./HomeGettingStarted";
 
 interface HomeFirstRunProps {
   /** Archived decks are kept in Library, so the library is not empty. */
@@ -10,14 +11,17 @@ interface HomeFirstRunProps {
   onImportDocument: () => void;
   onImportDeck: () => void;
   onOpenLibrary: () => void;
+  onSetUpAi: () => void;
+  onTakeTour: () => void;
 }
 
 /**
  * Home for a library with nothing in it: the mascot welcomes (a plain icon
  * when mascot art is off), creating a subject is the one main action, and a
- * document or a deck can come in beside it. A library whose decks are all
+ * document can come in beside it. A library whose decks are all
  * archived has nothing to study but is not empty, so it offers Library, where
- * those decks are.
+ * those decks are. Below it sit ways to begin: importing a deck, the tour,
+ * and AI while none is set up.
  */
 export function HomeFirstRun({
   hasArchivedDecks,
@@ -26,6 +30,8 @@ export function HomeFirstRun({
   onImportDocument,
   onImportDeck,
   onOpenLibrary,
+  onSetUpAi,
+  onTakeTour,
 }: HomeFirstRunProps) {
   const { definition, enabled } = useArtwork("empty.library");
   const image = enabled ? definition.image : undefined;
@@ -33,7 +39,7 @@ export function HomeFirstRun({
     <section
       aria-labelledby="home-first-run-heading"
       data-testid="home-first-run"
-      className="tw:grid tw:min-h-[min(36rem,70dvh)] tw:place-content-center tw:justify-items-center tw:gap-5 tw:px-4 tw:py-10 tw:text-center tw:compact:py-8"
+      className="tw:grid tw:min-h-[min(36rem,70dvh)] tw:content-center tw:justify-items-center tw:gap-5 tw:px-4 tw:py-10 tw:text-center tw:compact:py-8"
     >
       {image ? (
         <img
@@ -66,15 +72,15 @@ export function HomeFirstRun({
           <Button loading={importing} onClick={onImportDocument}>
             <Icon name="upload" size={18} /> Import a document
           </Button>
-          <Button onClick={onImportDeck}>
-            <Icon name="import" size={18} /> Import a deck
-          </Button>
           {hasArchivedDecks ? (
             <Button variant="text" onClick={onOpenLibrary}>
               Open Library
             </Button>
           ) : null}
         </div>
+      </div>
+      <div className="tw:mt-4 tw:w-full tw:max-w-5xl">
+        <HomeGettingStarted onSetUpAi={onSetUpAi} onImportDeck={onImportDeck} onTakeTour={onTakeTour} />
       </div>
     </section>
   );

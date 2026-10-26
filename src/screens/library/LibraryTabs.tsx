@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-import { SUBJECT_SECTIONS, type SubjectSection } from "../../navigation/appDestinations";
+import { useAiFeatures } from "../../controllers/AiFeaturesProvider";
+import { AI_SUBJECT_SECTIONS, SUBJECT_SECTIONS, type SubjectSection } from "../../navigation/appDestinations";
 import { cn } from "../../ui/internal/cn";
 import { ItemTrigger } from "../../ui/primitives/Item";
 
@@ -24,11 +25,14 @@ interface LibraryTabsProps {
 
 /**
  * A subject's pages as folder tabs: Lessons, Flashcards (the Workbench),
- * Study guides, Podcasts and Documents. The open
+ * Study guides, Podcasts and Documents; while AI is off only Flashcards and
+ * Documents. The open
  * page's tab is in front, joined to the page below it; the others sit back on
  * a shaded face.
  */
 export function LibraryTabs({ view, onSelectView, actions, className }: LibraryTabsProps) {
+  const ai = useAiFeatures().enabled;
+  const sections = ai ? SUBJECT_SECTIONS : SUBJECT_SECTIONS.filter((section) => !AI_SUBJECT_SECTIONS.includes(section));
   return (
     <div
       className={cn(
@@ -39,7 +43,7 @@ export function LibraryTabs({ view, onSelectView, actions, className }: LibraryT
       {/* The row overlaps the line below it so the front tab can cover it. */}
       <nav aria-label="Subject pages" data-tour-anchor="library.views" className="tw:-mb-px tw:min-w-0 tw:overflow-x-auto">
         <ul className="tw:m-0 tw:flex tw:list-none tw:items-end tw:gap-1 tw:p-0">
-          {SUBJECT_SECTIONS.map((section) => {
+          {sections.map((section) => {
             const active = section === view;
             return (
               <li key={section} className="tw:shrink-0">

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AiFeaturesProvider } from "../../controllers/AiFeaturesProvider";
 import { HomeSummaryProvider } from "../../controllers/HomeSummaryProvider";
 import type { DeckSummary } from "../../ipc/decks";
 import type { DocumentSummary } from "../../ipc/documents";
@@ -21,6 +22,7 @@ import { matchesLayoutQuery } from "../../test/viewport";
 import { AppearanceProvider } from "../../ui/appearance/AppearanceProvider";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
+import { HOME_AI_TIP_STORAGE_KEY } from "./HomeGettingStarted";
 import { HomeScreen } from "./HomeScreen";
 import { openMenu } from "../../test/menus";
 
@@ -128,7 +130,8 @@ function renderHome({
   width = 1440,
   decorativeArtwork = true,
   decks = DECKS,
-}: { width?: number; decorativeArtwork?: boolean; decks?: DeckSummary[] } = {}) {
+  ai = true,
+}: { width?: number; decorativeArtwork?: boolean; decks?: DeckSummary[]; ai?: boolean } = {}) {
   setViewport(width);
   const onStartReview = vi.fn();
   const onOpenSubject = vi.fn();
@@ -137,7 +140,9 @@ function renderHome({
   const onPracticeSubject = vi.fn();
   const onOpenProgress = vi.fn();
   const onOpenDeck = vi.fn();
+  const onOpenAiSetup = vi.fn();
   const view = render(
+    <AiFeaturesProvider value={{ enabled: ai, known: true, hasServices: ai, refresh: () => undefined }}>
     <LayoutModeProvider>
       <AppearanceProvider
         settings={{ theme: "light", uiFont: "system", cardFont: "system", uiScale: 100, cardBaseSize: 18, decorativeArtwork }}
@@ -154,13 +159,15 @@ function renderHome({
               onOpenDeck={onOpenDeck}
               refreshDecks={vi.fn(async () => decks)}
               showToast={vi.fn()}
+              onOpenAiSetup={onOpenAiSetup}
             />
           </HomeSummaryProvider>
         </OverlayProvider>
       </AppearanceProvider>
-    </LayoutModeProvider>,
+    </LayoutModeProvider>
+    </AiFeaturesProvider>,
   );
-  return { onStartReview, onOpenSubject, onOpenLesson, onOpenLibrary, onPracticeSubject, onOpenProgress, unmount: view.unmount };
+  return { onStartReview, onOpenSubject, onOpenLesson, onOpenLibrary, onPracticeSubject, onOpenProgress, onOpenAiSetup, unmount: view.unmount };
 }
 
 const DECKS = [makeDeck()];
@@ -185,6 +192,7 @@ function tileNames(): string[] {
 
 describe("HomeScreen", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.clearAllMocks();
     jobs.current = { ...jobs.current, documents: [], isUploading: false, uploadDocument: vi.fn() };
     vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(populatedSummary());
@@ -444,15 +452,17 @@ describe("HomeScreen", () => {
     expect(subjectsIpc.dismissSubjectFilingReview).toHaveBeenCalledWith({ entityKind: "deck", entityId: "d1" });
   });
 
-  it("welcomes an empty library with the mascot, no explanation and three ways to start", async () => {
+  it("welcomes an empty library with the mascot and ways to start", async () => {
     vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(makeHomeSummary());
     vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
     renderHome();
     const welcome = await screen.findByTestId("home-first-run");
     expect(within(welcome).getByRole("heading", { name: "Your library is empty" })).toBeTruthy();
     expect(welcome.querySelector('img[data-artwork-slot="empty.library"]')).not.toBeNull();
-    expect(welcome.querySelector("p")).toBeNull();
     expect(within(welcome).queryByRole("button", { name: "Open Library" })).toBeNull();
+    const start = within(welcome).getByRole("list", { name: "Getting started" });
+    expect(within(start).getByRole("heading", { name: "Bring your flashcards" })).toBeTruthy();
+    expect(within(start).getByRole("heading", { name: "Take a tour" })).toBeTruthy();
     expect(screen.queryByTestId("home-today")).toBeNull();
     // A document always goes into a subject, so importing one starts a study set.
     fireEvent.click(within(welcome).getByRole("button", { name: "Import a document" }));
@@ -463,8 +473,36 @@ describe("HomeScreen", () => {
     const importDialog = await screen.findByRole("dialog", { name: "Import deck" });
     fireEvent.click(within(importDialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Import deck" })).toBeNull());
+    fireEvent.click(within(start).getByRole("button", { name: "Start the tour" }));
+    const tour = await screen.findByRole("dialog", { name: "Tour of oStudy" });
+    fireEvent.click(within(tour).getByRole("button", { name: "Next" }));
+    expect(within(tour).getByText("2 of 7")).toBeTruthy();
+    fireEvent.click(within(tour).getByRole("button", { name: "Back" }));
+    fireEvent.click(within(tour).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Tour of oStudy" })).toBeNull());
     fireEvent.click(within(welcome).getByRole("button", { name: "Create a subject" }));
     expect(await screen.findByRole("dialog", { name: "New study set" })).toBeTruthy();
+  });
+
+  it("suggests AI on Home until it is set up or hidden for good", async () => {
+    vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(makeHomeSummary());
+    vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
+    const { onOpenAiSetup } = renderHome({ ai: false });
+    const start = await screen.findByRole("list", { name: "Getting started" });
+    expect(within(start).getByRole("heading", { name: "Want more? Add AI" })).toBeTruthy();
+    fireEvent.click(within(start).getByRole("button", { name: "Set up AI" }));
+    expect(onOpenAiSetup).toHaveBeenCalledOnce();
+    fireEvent.click(within(start).getByRole("checkbox", { name: "Don't show this again" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Want more? Add AI" })).toBeNull());
+    expect(window.localStorage.getItem(HOME_AI_TIP_STORAGE_KEY)).toBe("hidden");
+  });
+
+  it("does not suggest AI once a service is set up", async () => {
+    vi.mocked(homeIpc.getHomeSummary).mockResolvedValue(makeHomeSummary());
+    vi.mocked(subjectsIpc.getSubjectLibrary).mockResolvedValue(makeSubjectLibrary());
+    renderHome();
+    await screen.findByRole("list", { name: "Getting started" });
+    expect(screen.queryByRole("heading", { name: "Want more? Add AI" })).toBeNull();
   });
 
   it("does not call a library empty when its decks are all archived", async () => {
