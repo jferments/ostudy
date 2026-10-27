@@ -54,7 +54,7 @@ vi.mock("../../ipc/lessons", () => ({
   prepareLessonLecturePptx: vi.fn(),
   writeLessonLectureScript: vi.fn(),
 }));
-vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn() }));
+vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(), getDeviceVoices: vi.fn(async () => ({ supported: false, models: [] })) }));
 vi.mock("../../ipc/materialInk", () => ({ getMaterialInk: vi.fn() }));
 vi.mock("../ink/InkEditor", () => ({
   InkEditor: ({ pageKey, pages, onClose }: { pageKey?: string; pages: { key: string }[]; onClose: () => void }) => (

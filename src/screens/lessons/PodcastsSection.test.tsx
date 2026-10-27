@@ -15,7 +15,7 @@ vi.mock("../../ipc/podcasts", async (original) => ({
   writePodcast: vi.fn(),
   deletePodcast: vi.fn(),
 }));
-vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn() }));
+vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(), getDeviceVoices: vi.fn(async () => ({ supported: false, models: [] })) }));
 
 function lesson(index: number): LessonSummary {
   return {
@@ -47,9 +47,9 @@ const drama: SpeechSettings = {
       label: "Kokoro",
       voices: ["af_heart", "am_michael"],
       defaultVoice: "af_heart",
-      clonesVoices: false,
+      clonesVoices: false, onDevice: false,
     },
-    { id: "fish-audio/drama-3", label: "Drama 3", voices: [], defaultVoice: "", clonesVoices: true },
+    { id: "fish-audio/drama-3", label: "Drama 3", voices: [], defaultVoice: "", clonesVoices: true, onDevice: false },
   ],
   connections: [{ id: "profile-1", name: "OpenRouter" }],
   voices: [

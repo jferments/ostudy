@@ -9,7 +9,8 @@ import {
   writePodcast,
   type Podcast,
 } from "../../ipc/podcasts";
-import { getSpeechSettings, type SpeechSettings } from "../../ipc/speech";
+import { type SpeechSettings } from "../../ipc/speech";
+import { loadVoice } from "./voiceReady";
 import { Icon } from "../../ui/icons/Icon";
 import { Dialog } from "../../ui/overlays/Dialog";
 import { Button } from "../../ui/primitives/Button";
@@ -70,16 +71,18 @@ export function MakePodcastDialog({
   const [picked, setPicked] = useState<string[]>(() => lessons.slice(0, FIRST_PICKED).map((lesson) => lesson.id));
   const [minutes, setMinutes] = useState<number>(PODCAST_MINUTES.default);
   const [settings, setSettings] = useState<SpeechSettings | null>(null);
+  const [ready, setReady] = useState(true);
   const [voices, setVoices] = useState<[string, string] | null>(null);
   const [writing, setWriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
-    getSpeechSettings().then(
-      (value) => {
+    loadVoice().then(
+      ({ speech: value, ready: speaks }) => {
         if (!live) return;
         setSettings(value);
+        setReady(speaks);
         setVoices(defaultVoices(value, voiceChoices(value)));
       },
       () => undefined,
@@ -193,15 +196,17 @@ export function MakePodcastDialog({
           ))}
         </div>
       ) : null}
-      {settings && !settings.profileId ? (
+      {settings && !ready ? (
         <InlineNotice kind="info">
-          The hosts speak through OpenRouter. Add an OpenRouter connection in Settings to listen.
+          {model?.onDevice
+            ? `The hosts speak with ${model.label}. Download it in Settings → AI, under Voice, to listen.`
+            : "The hosts speak through OpenRouter. Add an OpenRouter connection in Settings, or choose a free voice on this device, to listen."}
         </InlineNotice>
       ) : null}
       <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
         One request to your AI model writes the conversation, then {model?.label ?? "the voice"} reads about{" "}
-        {(minutes * PODCAST_CHARACTERS_PER_MINUTE).toLocaleString()} characters as you listen. The audio is kept, so
-        replays are free.
+        {(minutes * PODCAST_CHARACTERS_PER_MINUTE).toLocaleString()} characters as you listen
+        {model?.onDevice ? ", for free" : ""}. The audio is kept, so replays are free.
       </p>
       {error ? <InlineNotice kind="error">The podcast was not written: {error}</InlineNotice> : null}
     </Dialog>

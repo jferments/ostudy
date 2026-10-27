@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getDeviceVoices,
   getSpeechSettings,
+  installDeviceVoice,
   keepSpeechVoice,
   removeSpeechVoice,
   renameSpeechVoice,
@@ -20,6 +22,8 @@ vi.mock("../../ipc/common", () => ({
 }));
 vi.mock("../../ipc/speech", () => ({
   getSpeechSettings: vi.fn(),
+  getDeviceVoices: vi.fn(async () => ({ supported: false, models: [] })),
+  installDeviceVoice: vi.fn(),
   saveSpeechSettings: vi.fn(),
   trySpeechVoice: vi.fn(),
   keepSpeechVoice: vi.fn(),
@@ -59,14 +63,14 @@ function settings(overrides: Partial<SpeechSettings> = {}): SpeechSettings {
         label: "Kokoro",
         voices: ["af_heart", "bm_george"],
         defaultVoice: "af_heart",
-        clonesVoices: false,
+        clonesVoices: false, onDevice: false,
       },
       {
         id: DRAMA,
         label: "Drama 3",
         voices: [],
         defaultVoice: "",
-        clonesVoices: true,
+        clonesVoices: true, onDevice: false,
       },
     ],
     connections: [{ id: router, name: "OpenRouter" }],
@@ -88,6 +92,9 @@ describe("LessonVoiceSettings", () => {
     vi.mocked(renameSpeechVoice).mockReset();
     vi.mocked(removeSpeechVoice).mockReset();
     vi.mocked(createManagedMediaObjectUrl).mockClear();
+    vi.mocked(getDeviceVoices).mockReset();
+    vi.mocked(getDeviceVoices).mockResolvedValue({ supported: false, models: [] });
+    vi.mocked(installDeviceVoice).mockReset();
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
   });
@@ -349,5 +356,91 @@ describe("LessonVoiceSettings", () => {
     expect(voiceLabel("af_heart")).toBe("Heart (American female)");
     expect(voiceLabel("bm_lewis")).toBe("Lewis (British male)");
     expect(voiceLabel("narrator")).toBe("narrator");
+    expect(voiceLabel("expr-voice-3-f")).toBe("Female 3");
+    expect(voiceLabel("expr-voice-4-m")).toBe("Male 4");
+  });
+
+  describe("voices on this device", () => {
+    const KOKORO = "device/kokoro-v1.0-int8";
+    const KITTEN = "device/kitten-nano-v0.2";
+    const withDevice = (overrides: Partial<SpeechSettings> = {}): SpeechSettings => {
+      const base = settings();
+      return {
+        ...base,
+        models: [
+          ...base.models,
+          { id: KOKORO, label: "Kokoro on this device", voices: ["af_heart"], defaultVoice: "af_heart", clonesVoices: false, onDevice: true },
+          { id: KITTEN, label: "KittenTTS on this device", voices: ["expr-voice-3-f", "expr-voice-4-m"], defaultVoice: "expr-voice-3-f", clonesVoices: false, onDevice: true },
+        ],
+        ...overrides,
+      };
+    };
+    const device = (installed: string[] = [], installingBytes: number | null = null) => ({
+      supported: true,
+      models: [
+        { modelId: KOKORO, label: "Kokoro", summary: "The most natural voices.", downloadBytes: 142_404_640, sample: "/voices/device/kokoro.mp3", installed: installed.includes(KOKORO), installingBytes: null, installError: null },
+        { modelId: KITTEN, label: "KittenTTS", summary: "A small, quick download.", downloadBytes: 23_814_153, sample: "/voices/device/kitten.mp3", installed: installed.includes(KITTEN), installingBytes, installError: null },
+      ],
+    });
+
+    it("offers them with no connection, plays each sample, and downloads the one chosen", async () => {
+      vi.mocked(getSpeechSettings).mockResolvedValue(withDevice({ profileId: null, connections: [] }));
+      vi.mocked(getDeviceVoices).mockResolvedValue(device());
+      vi.mocked(installDeviceVoice).mockResolvedValue(device([KITTEN]));
+      vi.mocked(saveSpeechSettings).mockResolvedValue(
+        withDevice({ profileId: null, connections: [], modelId: KITTEN, voice: "expr-voice-3-f", revision: 1 }),
+      );
+      const onAddOpenRouter = vi.fn();
+      render(<LessonVoiceSettings connectionsKey={1} onAddOpenRouter={onAddOpenRouter} />);
+      const service = await screen.findByRole("combobox", { name: "Lesson voice connection" });
+      expect([...(service as HTMLSelectElement).options].map((option) => option.text)).toEqual([
+        "This device (free)",
+        "No OpenRouter service",
+      ]);
+      fireEvent.change(service, { target: { value: "device" } });
+      const dialog = await screen.findByRole("dialog", { name: "Free voices on this device" });
+      const list = within(dialog).getByRole("list", { name: "Voices on this device" });
+      expect(list.textContent).toContain("142 MB download");
+      expect(list.textContent).toContain("24 MB download");
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Listen to KittenTTS" }));
+      expect(dialog.querySelector("audio")?.getAttribute("src")).toBe("/voices/device/kitten.mp3");
+      expect(within(dialog).getByRole("button", { name: "Stop the KittenTTS sample" })).toBeTruthy();
+
+      const items = within(list).getAllByRole("listitem");
+      fireEvent.click(within(items[1]!).getByRole("button", { name: "Download and use" }));
+      await waitFor(() => expect(installDeviceVoice).toHaveBeenCalledWith(KITTEN));
+      await waitFor(() => expect(saveSpeechSettings).toHaveBeenCalledWith(null, KITTEN, "expr-voice-3-f", 0));
+      expect(await within(dialog).findByText("In use")).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+      await waitFor(() => expect(select("Lesson voice connection").value).toBe("device"));
+      expect(select("Lesson voice").value).toBe("expr-voice-3-f");
+    });
+
+    it("lists only the device's models, marks one not downloaded, and goes back online with Drama", async () => {
+      vi.mocked(getSpeechSettings).mockResolvedValue(withDevice({ modelId: KITTEN, voice: "expr-voice-4-m" }));
+      vi.mocked(getDeviceVoices).mockResolvedValue(device([KITTEN]));
+      vi.mocked(saveSpeechSettings).mockResolvedValue(withDevice({ modelId: DRAMA, voice: "", revision: 1 }));
+      render(<LessonVoiceSettings connectionsKey={1} />);
+      await waitFor(() => expect(select("Lesson voice connection").value).toBe("device"));
+      await waitFor(() =>
+        expect([...select("Lesson voice model").options].map((option) => option.text)).toEqual([
+          "Kokoro on this device (not downloaded)",
+          "KittenTTS on this device",
+        ]),
+      );
+      expect([...select("Lesson voice").options].map((option) => option.text)).toEqual([
+        "Female 3",
+        "Male 4",
+      ]);
+      // Choosing the one not downloaded asks to download it first.
+      fireEvent.change(select("Lesson voice model"), { target: { value: KOKORO } });
+      expect(await screen.findByRole("dialog", { name: "Free voices on this device" })).toBeTruthy();
+      expect(saveSpeechSettings).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+      fireEvent.change(select("Lesson voice connection"), { target: { value: router } });
+      expect(saveSpeechSettings).toHaveBeenCalledWith(router, DRAMA, "", 0);
+    });
   });
 });

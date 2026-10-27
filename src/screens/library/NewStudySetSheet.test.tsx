@@ -25,7 +25,10 @@ vi.mock("../../ipc/subjects", () => ({
 }));
 vi.mock("../../platform/files", () => ({ selectExternalImports: vi.fn() }));
 vi.mock("../../ipc/settings", () => ({ getSettings: vi.fn(async () => ({ lectureAudioWithNewLessons: true })) }));
-vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(async () => ({ profileId: "voice" })) }));
+vi.mock("../../ipc/speech", () => ({
+  getSpeechSettings: vi.fn(async () => ({ profileId: "voice", modelId: "fish-audio/drama-3", models: [] })),
+  getDeviceVoices: vi.fn(async () => ({ supported: false, models: [] })),
+}));
 
 const physiology = makeSubject({ id: "p".repeat(32), name: "Physiology" });
 const created = makeSubject({ id: "n".repeat(32), name: "Krebs cycle" });

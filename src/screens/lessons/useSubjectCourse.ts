@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/common";
 import { getSettings } from "../../ipc/settings";
-import { getSpeechSettings } from "../../ipc/speech";
+import { loadVoice } from "./voiceReady";
 import {
   cancelSubjectCourseWriting,
   getSubjectCourseWritingProgress,
@@ -129,8 +129,8 @@ export async function makeLectureAudio(
 ): Promise<string | undefined> {
   if (wanted === false) return undefined;
   try {
-    const [settings, speech] = await Promise.all([getSettings(), getSpeechSettings()]);
-    if (speech.profileId === null || (wanted === undefined && settings.lectureAudioWithNewLessons === false)) return undefined;
+    const [settings, voice] = await Promise.all([getSettings(), loadVoice()]);
+    if (!voice.ready || (wanted === undefined && settings.lectureAudioWithNewLessons === false)) return undefined;
   } catch {
     return undefined;
   }
