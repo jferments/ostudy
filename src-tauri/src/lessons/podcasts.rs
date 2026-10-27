@@ -54,8 +54,6 @@ const MAX_SCRIPT_BYTES: usize = 524_288;
 const PURPOSE: &str = "podcast_authoring";
 /// The voices that come with ostudy each host speaks in by default.
 const DEFAULT_CLONED_HOSTS: [&str; 2] = ["calm-older-woman", "relaxed-man"];
-/// Preset voices each host speaks in by default.
-const DEFAULT_PRESET_HOSTS: [&str; 2] = ["af_heart", "am_michael"];
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -467,7 +465,7 @@ pub(crate) fn default_voices(model: &SpeechModel) -> [String; 2] {
     if model.clones_voices {
         DEFAULT_CLONED_HOSTS.map(voices::built_in_key)
     } else {
-        DEFAULT_PRESET_HOSTS.map(str::to_string)
+        model.default_hosts.map(str::to_string)
     }
 }
 

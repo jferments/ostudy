@@ -1,8 +1,10 @@
-//! Downloading the speech model. Each file is fetched from the pinned revision
-//! into a staging folder, its size and SHA-256 are checked as it arrives, and
-//! the folder is renamed into place only when every file matches.
+//! Downloading a speech model: the speech input model, or a voice that reads
+//! aloud on the device. Each file is fetched from the pinned revision into a
+//! staging folder, its size and SHA-256 are checked as it arrives, and the
+//! folder is renamed into place only when every file matches.
 
 use std::{
+    collections::BTreeMap,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -13,7 +15,7 @@ use std::{
 use reqwest::{redirect::Policy, Client};
 use sha2::{Digest, Sha256};
 
-use super::{status, ModelFile, SpeechInputModel, SpeechInputStatusDto, MOONSHINE_BASE_EN};
+use super::{status, ModelFile, SpeechInputStatusDto, MOONSHINE_BASE_EN};
 use crate::{error::CommandError, paths::AppPaths};
 
 const MODELS_DIRECTORY: &str = "speech-models";
@@ -22,57 +24,88 @@ const CONNECT_TIMEOUT_SECONDS: u64 = 15;
 /// A stalled download fails instead of waiting forever.
 const READ_TIMEOUT_SECONDS: u64 = 60;
 
+/// A model as published at a pinned revision of a Hugging Face repository.
+pub(crate) struct PinnedModel<'a> {
+    /// The folder it is installed in, under `speech-models/`.
+    pub id: &'a str,
+    pub repository: &'a str,
+    /// The commit its files are read from.
+    pub revision: &'a str,
+    pub files: Vec<&'a ModelFile>,
+}
+
+impl PinnedModel<'_> {
+    pub(crate) fn download_bytes(&self) -> u64 {
+        self.files.iter().map(|file| file.bytes).sum()
+    }
+
+    pub(crate) fn url(&self, file: &ModelFile) -> String {
+        format!(
+            "https://huggingface.co/{}/resolve/{}/{}",
+            self.repository, self.revision, file.name
+        )
+    }
+}
+
 #[derive(Clone, Debug, Default)]
-pub(super) struct Progress {
+pub(crate) struct Progress {
+    /// Bytes received so far while the model downloads.
     pub received: Option<u64>,
+    /// Why the last download failed, until another one starts.
     pub error: Option<String>,
 }
 
-static PROGRESS: Mutex<Progress> = Mutex::new(Progress {
-    received: None,
-    error: None,
-});
+/// Each model's download, by model id.
+static PROGRESS: Mutex<BTreeMap<String, Progress>> = Mutex::new(BTreeMap::new());
 
-pub(super) fn progress() -> Progress {
+pub(crate) fn progress(model: &PinnedModel<'_>) -> Progress {
     PROGRESS
         .lock()
-        .map(|progress| progress.clone())
+        .ok()
+        .and_then(|progress| progress.get(model.id).cloned())
         .unwrap_or_default()
 }
 
-pub(super) fn model_directory(paths: &AppPaths, model: &SpeechInputModel) -> PathBuf {
+pub(crate) fn model_directory(paths: &AppPaths, model: &PinnedModel<'_>) -> PathBuf {
     paths.app_data_dir().join(MODELS_DIRECTORY).join(model.id)
 }
 
 /// Installed when every file is in place at its published size; the hashes
 /// were checked when the files were downloaded.
-pub(super) fn is_installed(paths: &AppPaths, model: &SpeechInputModel) -> bool {
+pub(crate) fn is_installed(paths: &AppPaths, model: &PinnedModel<'_>) -> bool {
     let directory = model_directory(paths, model);
-    model.files().iter().all(|file| {
+    model.files.iter().all(|file| {
         fs::metadata(directory.join(file.name))
             .map(|metadata| metadata.is_file() && metadata.len() == file.bytes)
             .unwrap_or(false)
     })
 }
 
-/// Downloads the model unless it is already installed. A second call while a
-/// download runs returns at once with the running download's progress.
+/// Downloads the speech input model unless it is already installed.
 pub(crate) async fn install_speech_input_model(
     paths: &AppPaths,
 ) -> Result<SpeechInputStatusDto, CommandError> {
-    let model = &MOONSHINE_BASE_EN;
-    if !super::SUPPORTED || is_installed(paths, model) {
-        return Ok(status(paths));
+    if super::SUPPORTED {
+        install(paths, &MOONSHINE_BASE_EN.pinned()).await?;
+    }
+    Ok(status(paths))
+}
+
+/// Downloads `model` unless it is already installed. A second call while its
+/// download runs returns at once and leaves that download running.
+pub(crate) async fn install(paths: &AppPaths, model: &PinnedModel<'_>) -> Result<(), CommandError> {
+    if is_installed(paths, model) {
+        return Ok(());
     }
     {
         let mut progress = PROGRESS
             .lock()
             .map_err(|_| install_error("the download lock was poisoned"))?;
-        if progress.received.is_some() {
-            drop(progress);
-            return Ok(status(paths));
+        let current = progress.entry(model.id.to_string()).or_default();
+        if current.received.is_some() {
+            return Ok(());
         }
-        *progress = Progress {
+        *current = Progress {
             received: Some(0),
             error: None,
         };
@@ -80,13 +113,15 @@ pub(crate) async fn install_speech_input_model(
     let client = client()?;
     let result = download(&client, paths, model, |url| url).await;
     if let Ok(mut progress) = PROGRESS.lock() {
-        *progress = Progress {
-            received: None,
-            error: result.as_ref().err().map(|error| error.message.clone()),
-        };
+        progress.insert(
+            model.id.to_string(),
+            Progress {
+                received: None,
+                error: result.as_ref().err().map(|error| error.message.clone()),
+            },
+        );
     }
-    result?;
-    Ok(status(paths))
+    result
 }
 
 pub(super) fn client() -> Result<Client, CommandError> {
@@ -108,7 +143,7 @@ pub(super) fn client() -> Result<Client, CommandError> {
 pub(super) async fn download(
     client: &Client,
     paths: &AppPaths,
-    model: &SpeechInputModel,
+    model: &PinnedModel<'_>,
     locate: impl Fn(String) -> String,
 ) -> Result<(), CommandError> {
     let destination = model_directory(paths, model);
@@ -116,8 +151,16 @@ pub(super) async fn download(
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging).map_err(CommandError::io)?;
     let mut received = 0;
-    for file in model.files() {
-        let fetched = fetch(client, &locate(model.url(file)), file, &staging, received).await;
+    for file in &model.files {
+        let fetched = fetch(
+            client,
+            model.id,
+            &locate(model.url(file)),
+            file,
+            &staging,
+            received,
+        )
+        .await;
         if let Err(error) = fetched {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
@@ -131,6 +174,7 @@ pub(super) async fn download(
 
 async fn fetch(
     client: &Client,
+    model_id: &str,
     url: &str,
     file: &ModelFile,
     staging: &Path,
@@ -166,7 +210,9 @@ async fn fetch(
         hasher.update(&chunk);
         output.write_all(&chunk).map_err(CommandError::io)?;
         if let Ok(mut progress) = PROGRESS.lock() {
-            progress.received = Some(received_before + length);
+            if let Some(current) = progress.get_mut(model_id) {
+                current.received = Some(received_before + length);
+            }
         }
     }
     output.sync_all().map_err(CommandError::io)?;

@@ -77,9 +77,9 @@ fn recordings_with_a_bad_rate_or_shape_or_length_are_refused() {
 
 #[test]
 fn the_model_is_pinned_to_a_revision_and_hashes() {
-    let model = &MOONSHINE_BASE_EN;
+    let model = MOONSHINE_BASE_EN.pinned();
     assert_eq!(model.revision.len(), 40);
-    for file in model.files() {
+    for file in &model.files {
         assert_eq!(file.sha256.len(), 64, "{}", file.name);
         assert!(file.sha256.chars().all(|c| c.is_ascii_hexdigit()));
         let url = model.url(file);
@@ -98,7 +98,10 @@ fn a_library_without_the_model_reports_what_the_first_use_downloads() {
     let status = status(&paths);
     assert_eq!(status.supported, SUPPORTED);
     assert!(!status.installed);
-    assert_eq!(status.download_bytes, MOONSHINE_BASE_EN.download_bytes());
+    assert_eq!(
+        status.download_bytes,
+        MOONSHINE_BASE_EN.pinned().download_bytes()
+    );
 }
 
 /// Serves each request's path from `files` once per connection, answering 404
@@ -170,12 +173,12 @@ fn a_model_whose_files_match_their_hashes_is_installed() {
     tauri::async_runtime::block_on(install::download(
         &install::client().unwrap(),
         &paths,
-        &model,
+        &model.pinned(),
         locate,
     ))
     .unwrap();
-    assert!(install::is_installed(&paths, &model));
-    let directory = install::model_directory(&paths, &model);
+    assert!(install::is_installed(&paths, &model.pinned()));
+    let directory = install::model_directory(&paths, &model.pinned());
     assert_eq!(
         std::fs::read(directory.join("tokens.txt")).unwrap(),
         b"tokens"
@@ -195,13 +198,13 @@ fn a_file_that_does_not_match_its_hash_installs_nothing() {
     let error = tauri::async_runtime::block_on(install::download(
         &install::client().unwrap(),
         &paths,
-        &model,
+        &model.pinned(),
         locate,
     ))
     .unwrap_err();
     assert_eq!(error.code, "speech_model_download_failed");
-    assert!(!install::is_installed(&paths, &model));
-    let directory = install::model_directory(&paths, &model);
+    assert!(!install::is_installed(&paths, &model.pinned()));
+    let directory = install::model_directory(&paths, &model.pinned());
     assert!(!directory.exists());
     assert!(!directory.with_extension("partial").exists());
 }
@@ -215,11 +218,11 @@ fn a_missing_file_installs_nothing() {
     assert!(tauri::async_runtime::block_on(install::download(
         &install::client().unwrap(),
         &paths,
-        &model,
+        &model.pinned(),
         locate
     ))
     .is_err());
-    assert!(!install::is_installed(&paths, &model));
+    assert!(!install::is_installed(&paths, &model.pinned()));
 }
 
 /// The samples of a 16-bit mono PCM WAV file.

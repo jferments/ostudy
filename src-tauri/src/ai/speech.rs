@@ -1,15 +1,17 @@
 //! Spoken audio from an OpenAI-style `/audio/speech` endpoint.
 //!
 //! Speech is a separate request from text generation: the caller hands over
-//! finished text and gets audio bytes back. OpenRouter is the only route
-//! implemented; a local Kokoro server speaks the same request shape and plugs
-//! in here later. The catalog below names the models ostudy has tried, with
-//! the voices and request size each accepts.
+//! finished text and gets audio bytes back. OpenRouter is the only provider
+//! route. The catalog below names the models ostudy has tried, with the voices
+//! and request size each accepts, and also the voices that speak on the
+//! learner's own device (`device_voices`), which need no connection.
 
 use base64::Engine as _;
 use serde_json::{json, Value};
 
 use rusqlite::Connection;
+
+use crate::device_voices::{self, DeviceVoiceModel};
 
 use super::{
     catalog::{AiTaskKind, ProviderKind},
@@ -23,8 +25,12 @@ use super::{
 };
 use crate::{error::CommandError, task_cancellation::CancellationSignal};
 
-/// The only audio format every catalog model returns.
+/// The only audio format every provider model returns.
 pub(crate) const SPEECH_FORMAT: &str = "mp3";
+/// What a voice on the device returns.
+pub(crate) const DEVICE_SPEECH_FORMAT: &str = "wav";
+/// The engine name kept with audio spoken on the device.
+pub(crate) const DEVICE_ENGINE: &str = "device";
 /// A spoken segment's audio is far below this; it bounds a broken response.
 const MAX_SPEECH_RESPONSE_BYTES: usize = 24 * 1024 * 1024;
 /// Speech takes longer than its text's length suggests; a segment of a
@@ -43,6 +49,22 @@ pub(crate) struct SpeechModel {
     pub clones_voices: bool,
     /// The most characters sent in one request.
     pub max_characters: usize,
+    /// The preset voices a podcast's two hosts speak in by default; empty for
+    /// a model that copies voices.
+    pub default_hosts: [&'static str; 2],
+    /// Set for a voice that speaks on the device, with no connection.
+    pub device: Option<&'static DeviceVoiceModel>,
+}
+
+impl SpeechModel {
+    /// The audio format its pieces are kept in.
+    pub(crate) fn format(&self) -> &'static str {
+        if self.device.is_some() {
+            DEVICE_SPEECH_FORMAT
+        } else {
+            SPEECH_FORMAT
+        }
+    }
 }
 
 pub(crate) const KOKORO: &str = "hexgrad/kokoro-82m";
@@ -69,6 +91,8 @@ pub(crate) const SPEECH_MODELS: &[SpeechModel] = &[
         clones_voices: false,
         // OpenRouter lists a 4,096-character context.
         max_characters: 1_500,
+        default_hosts: ["af_heart", "am_michael"],
+        device: None,
     },
     SpeechModel {
         id: DRAMA,
@@ -77,6 +101,53 @@ pub(crate) const SPEECH_MODELS: &[SpeechModel] = &[
         default_voice: "",
         clones_voices: true,
         max_characters: 1_500,
+        default_hosts: ["", ""],
+        device: None,
+    },
+    SpeechModel {
+        id: device_voices::KOKORO.id,
+        label: "Kokoro on this device",
+        voices: &[
+            "af_heart",
+            "af_bella",
+            "af_nicole",
+            "af_sarah",
+            "af_sky",
+            "am_michael",
+            "am_adam",
+            "am_fenrir",
+            "am_puck",
+            "bf_emma",
+            "bf_isabella",
+            "bm_george",
+            "bm_lewis",
+            "bm_fable",
+        ],
+        default_voice: "af_heart",
+        clones_voices: false,
+        // A shorter piece is ready to play sooner on a slow computer.
+        max_characters: 600,
+        default_hosts: ["af_heart", "am_michael"],
+        device: Some(&device_voices::KOKORO),
+    },
+    SpeechModel {
+        id: device_voices::KITTEN.id,
+        label: "KittenTTS on this device",
+        voices: &[
+            "expr-voice-3-f",
+            "expr-voice-4-m",
+            "expr-voice-2-f",
+            "expr-voice-2-m",
+            "expr-voice-3-m",
+            "expr-voice-4-f",
+            "expr-voice-5-f",
+            "expr-voice-5-m",
+        ],
+        default_voice: "expr-voice-3-f",
+        clones_voices: false,
+        max_characters: 600,
+        default_hosts: ["expr-voice-3-f", "expr-voice-4-m"],
+        device: Some(&device_voices::KITTEN),
     },
 ];
 
@@ -84,8 +155,8 @@ pub(crate) fn speech_model(id: &str) -> Option<&'static SpeechModel> {
     SPEECH_MODELS.iter().find(|model| model.id == id)
 }
 
-/// The engine name stored with kept audio, so audio from one route is never
-/// mistaken for another's.
+/// The engine name stored with kept audio from a provider, so audio from one
+/// route is never mistaken for another's (`DEVICE_ENGINE` on the device).
 pub(crate) fn engine(provider: ProviderKind) -> Result<&'static str, CommandError> {
     match provider {
         ProviderKind::Openrouter => Ok("openrouter"),
@@ -277,6 +348,30 @@ mod tests {
                 model.id
             );
             assert!(model.max_characters >= 200);
+            if !model.clones_voices {
+                assert!(model
+                    .default_hosts
+                    .iter()
+                    .all(|host| model.voices.contains(host)));
+            }
+        }
+    }
+
+    #[test]
+    fn every_voice_on_the_device_is_in_its_model_and_listed_alike() {
+        for model in SPEECH_MODELS {
+            let Some(device) = model.device else {
+                assert_eq!(model.format(), SPEECH_FORMAT);
+                continue;
+            };
+            assert_eq!(model.id, device.id);
+            assert_eq!(model.format(), DEVICE_SPEECH_FORMAT);
+            let listed: Vec<_> = device
+                .speakers
+                .iter()
+                .map(|speaker| speaker.voice)
+                .collect();
+            assert_eq!(listed, model.voices, "{}", model.id);
         }
     }
 

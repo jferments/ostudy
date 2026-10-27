@@ -34,6 +34,7 @@ mod deletion_purge;
 #[rustfmt::skip]
 mod device_sync;
 mod device_sync_qr_commands;
+mod device_voices;
 mod diagnostics;
 mod document_annotations;
 mod document_artifacts;
@@ -505,6 +506,8 @@ pub fn run() {
             question_of_the_day::get_question_of_the_day,
             speech_input::get_speech_input_status,
             library_session::commands::leased_install_speech_input_model,
+            device_voices::get_device_voices,
+            library_session::commands::leased_install_device_voice,
             library_session::commands::leased_transcribe_speech,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,
