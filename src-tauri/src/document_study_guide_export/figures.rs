@@ -327,7 +327,7 @@ pub(crate) fn choose_for(
                         figure_id: figure.figure_id.clone(),
                         page_number: figure.page_number,
                         title: candidate.title.clone(),
-                        caption: caption(&candidate.shows, figure.page_number),
+                        caption: caption(&candidate.shows),
                     })
                 })
                 .collect()
@@ -467,15 +467,13 @@ fn about_the_subject(text: &str) -> String {
     }
 }
 
-/// What the figure shows and why it matters, and where it is from.
-fn caption(shows: &str, page_number: i64) -> String {
+/// What the figure shows or why it matters, as a sentence.
+fn caption(shows: &str) -> String {
     let text = shows.trim().trim_end_matches(['.', ' ']);
-    if text.is_empty() {
-        format!("Source page {page_number}")
-    } else if text.ends_with('…') {
-        format!("{text} Source page {page_number}")
+    if text.is_empty() || text.ends_with('…') {
+        text.to_string()
     } else {
-        format!("{text}. Source page {page_number}")
+        format!("{text}.")
     }
 }
 

@@ -167,7 +167,7 @@ fn an_unread_numbered_figure_shows_once_when_its_caption_matches_the_section() {
         "Mechanism of HCl secretion by gastric parietal cells"
     );
     // The abbreviation key is left out.
-    assert_eq!(figures[0].caption, "Source page 23");
+    assert_eq!(figures[0].caption, "");
 
     assert_eq!(
         caption_detail("Initial saliva is produced by acinar cells. ACh, Acetylcholine; ATP,"),
@@ -212,7 +212,7 @@ fn an_unread_figure_with_a_garbled_caption_shows_on_its_own_page() {
     assert!(ids(&chosen, 'b').is_empty());
     let figure = &chosen.get(&"a".repeat(32)).unwrap()[0];
     assert_eq!(figure.title, "Figure 22.1 in the source");
-    assert_eq!(figure.caption, "Source page 28");
+    assert_eq!(figure.caption, "");
     // Another language's accents are words, not a broken text layer.
     assert!(!garbled(
         "Mécanisme de la sécrétion gastrique par les cellules pariétales"
@@ -220,12 +220,9 @@ fn an_unread_figure_with_a_garbled_caption_shows_on_its_own_page() {
 }
 
 #[test]
-fn captions_are_short_and_name_the_source_page() {
-    assert_eq!(
-        caption("Arrows trace the path.", 12),
-        "Arrows trace the path. Source page 12"
-    );
-    assert_eq!(caption("", 3), "Source page 3");
+fn captions_are_short_sentences() {
+    assert_eq!(caption("Arrows trace the path."), "Arrows trace the path.");
+    assert_eq!(caption(""), "");
     let long = format!("{}. {}", "a".repeat(120), "b".repeat(200));
     let cut = clipped(&long, MAX_SHOWS_CHARS);
     assert_eq!(cut, "a".repeat(120));
@@ -258,6 +255,6 @@ fn a_read_figures_caption_is_about_its_subject() {
     let chosen = choose(&sections, &[read]);
     assert_eq!(
         chosen.get(&"a".repeat(32)).unwrap()[0].caption,
-        "Why preload sets stroke volume. Source page 12"
+        "Why preload sets stroke volume."
     );
 }
