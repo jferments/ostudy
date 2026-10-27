@@ -125,6 +125,9 @@
   // flows around them.
   let at = s.figureAfter
   let start = if s.blocks.len() == 0 { 0 } else if s.blocks.at(at).kind == "bullets" { at } else { at + 1 }
+  // The heading over those key points goes with them into the flow: a sticky
+  // heading kept outside it takes the whole figure block to the next page.
+  if start > 0 and start < s.blocks.len() and s.blocks.at(start - 1).kind == "heading" { start -= 1 }
   for b in s.blocks.slice(0, start) { block-view(b) }
   flow(units-of(s.blocks.slice(start)), s.figures, number)
   if s.sources.len() > 0 { sources-view(s.key, s.sources) }

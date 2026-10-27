@@ -276,6 +276,11 @@
   let rest = units
   let figs = figures
   let index = first
+  // The page room left where the section's figures start (A4 less its 15 mm
+  // foot margin). A figure block taller than that would leave the page
+  // empty below the heading, so the first one is fitted to it.
+  let room = 282mm - here().position().y - 3mm
+  let fitted = false
   while figs.len() > 0 {
     let f = figs.first()
     let n = number + "." + str(index)
@@ -314,8 +319,12 @@
       if group.len() == 2 and height-at(float-min-width, group) > text-at(float-min-width, side-units) * 1.15 + 6mm {
         group = (f,)
       }
+      let fit = not fitted and room > 60mm
+      if fit and group.len() == 2 and height-at(widest(group), group) > room {
+        group = (f,)
+      }
       let width = widest(group)
-      while width > float-min-width and height-at(width, group) > text-at(width, side-units) + 4mm {
+      while width > float-min-width and (height-at(width, group) > text-at(width, side-units) + 4mm or (fit and height-at(width, group) > room)) {
         width = calc.max(float-min-width, width - 4mm)
       }
       let tall = height-at(width, group)
@@ -330,12 +339,23 @@
       while count > 0 and count < rest.len() and side-units.at(count - 1).kind == "block" and side-units.at(count - 1).block.kind == "heading" {
         count -= 1
       }
+      // Fitted to the page: the text beside the figure stops where the page does.
+      if fit and tall <= room {
+        while count > 1 and measure(block(width: column, units-view(side-units.slice(0, count)))).height > room {
+          count -= 1
+        }
+      }
+      fitted = true
       if count == 0 {
         floated(figure-row(f, n))
         group = (f,)
       } else {
-        block(above: 2mm, below: 3mm, breakable: false, grid(columns: (1fr, width), column-gutter: gutter,
-          units-view(rest.slice(0, count)), side(width, group)))
+        // Breakable, though it is fitted to the page: an unbreakable block
+        // holding a layout is moved to the next page even when it fits,
+        // leaving the page under the section's heading empty. The figures
+        // themselves never break.
+        block(above: 2mm, below: 3mm, breakable: true, grid(columns: (1fr, width), column-gutter: gutter,
+          units-view(rest.slice(0, count)), block(breakable: false, side(width, group))))
         rest = rest.slice(count)
       }
       figs = figs.slice(group.len())
