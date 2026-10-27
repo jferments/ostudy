@@ -801,3 +801,212 @@ fn crops_and_pages_are_drawn_within_one_tile() {
     assert!(large.is_valid());
     assert!(large.width <= 1024 && large.height <= 1024);
 }
+
+/// A page of a scanned book: one picture of the whole page, with the text
+/// layer its scanner wrote over it.
+fn scanned_page(page_number: usize, runs: Vec<PageTextRun>) -> PageLayout {
+    page(
+        page_number,
+        vec![graphic(PageGraphicKind::Image, [0.0, 0.0, 612.0, 792.0])],
+        runs,
+    )
+}
+
+/// Running text in a column: lines of many words, 12 points apart.
+fn prose(left: f64, top: f64, width: f64, lines: usize) -> Vec<PageTextRun> {
+    (0..lines)
+        .map(|line| {
+            run(
+                "the drug lowers blood pressure by relaxing the smooth muscle of arteries",
+                left,
+                top + line as f64 * 12.0,
+                width,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_scanned_pages_figure_is_found_above_its_garbled_caption() {
+    // Left column: a running header, the figure's labels, its caption (whose
+    // font map prints "Fig. 22.1" as "Figú 22ú1") and text under it; the right
+    // column is text from top to bottom.
+    let mut runs = vec![run("UNIT IV Drugs Affecting the Heart", 60.0, 30.0, 200.0)];
+    runs.extend([
+        run("Cortex", 90.0, 90.0, 40.0),
+        run("Sympathetic", 180.0, 120.0, 70.0),
+        run("Kidney", 100.0, 200.0, 40.0),
+        run("Beta blockers", 150.0, 260.0, 80.0),
+        run("Figú 22ú1", 60.0, 300.0, 40.0),
+        run("Sites of action of the", 104.0, 300.0, 120.0),
+        run("antihypertensive drugs.", 60.0, 312.0, 130.0),
+    ]);
+    runs.extend(prose(60.0, 340.0, 230.0, 20));
+    runs.extend(prose(320.0, 80.0, 230.0, 50));
+    let figures = detect::detect_layouts(&[scanned_page(28, runs)]);
+    assert_eq!(figures.len(), 1, "{figures:?}");
+    let figure = &figures[0];
+    assert_eq!(figure.caption.as_ref().unwrap().label, "Figure 22.1");
+    let detect::Rect {
+        left,
+        top,
+        width,
+        height,
+    } = figure.bounds;
+    // Under the header, over the labels, and within the left column.
+    assert!(
+        (792.0 * 0.09 - 1.0..=90.0).contains(&top),
+        "{:?}",
+        figure.bounds
+    );
+    assert!(top + height <= 300.0);
+    assert!(left <= 60.0 && left + width < 320.0, "{:?}", figure.bounds);
+}
+
+#[test]
+fn a_scanned_figure_across_the_page_ends_at_the_text_above_it() {
+    // A paragraph, then a figure whose labels reach past its caption's ends.
+    let mut runs = prose(60.0, 80.0, 490.0, 6);
+    runs.extend([
+        run("Preload", 50.0, 190.0, 50.0),
+        run("Afterload", 500.0, 230.0, 60.0),
+        run("Contractility", 260.0, 320.0, 70.0),
+        run(
+            "Figure 27.2 Factors that set the heart's output and how",
+            90.0,
+            400.0,
+            430.0,
+        ),
+        run(
+            "the drugs for heart failure act on them.",
+            90.0,
+            412.0,
+            240.0,
+        ),
+    ]);
+    runs.extend(prose(60.0, 440.0, 490.0, 20));
+    let figures = detect::detect_layouts(&[scanned_page(113, runs)]);
+    assert_eq!(figures.len(), 1, "{figures:?}");
+    let detect::Rect {
+        left,
+        top,
+        width,
+        height,
+    } = figures[0].bounds;
+    assert!(
+        top > 80.0 + 5.0 * 12.0 + 10.0 && top <= 190.0,
+        "{:?}",
+        figures[0].bounds
+    );
+    assert!(top + height <= 400.0);
+    assert!(
+        left <= 50.0 && left + width >= 560.0,
+        "{:?}",
+        figures[0].bounds
+    );
+}
+
+#[test]
+fn a_scanned_pages_text_that_names_a_figure_is_not_one() {
+    // "Fig. 22.1" at the start of a line of running text, with text above it.
+    let mut runs = prose(60.0, 80.0, 490.0, 10);
+    runs.push(run(
+        "Figú 22ú1 shows where each class of drug acts on the body",
+        60.0,
+        200.0,
+        490.0,
+    ));
+    runs.extend(prose(60.0, 212.0, 490.0, 30));
+    assert!(detect::detect_layouts(&[scanned_page(30, runs)]).is_empty());
+}
+
+/// A white image `width` by `height` with ink over each of `blocks`, given as
+/// left, top, right and bottom; a block with `lines` is set as text lines.
+fn drawn(width: u32, height: u32, blocks: &[[u32; 4]], lines: &[[u32; 4]]) -> image::RgbaImage {
+    let mut pixels = image::RgbaImage::from_pixel(width, height, image::Rgba([255, 255, 255, 255]));
+    let ink = image::Rgba([30, 30, 30, 255]);
+    for [left, top, right, bottom] in blocks {
+        for y in *top..*bottom {
+            for x in *left..*right {
+                pixels.put_pixel(x, y, ink);
+            }
+        }
+    }
+    for [left, top, right, bottom] in lines {
+        for y in *top..*bottom {
+            for x in (*left..*right).step_by(3) {
+                pixels.put_pixel(x, y, ink);
+            }
+        }
+    }
+    pixels
+}
+
+#[test]
+fn a_rendered_figure_is_segmented_from_the_caption_under_it() {
+    // 2 pixels a point: a figure, two caption lines whose printed letters sit
+    // 8 points above where the text layer puts them, and a strip of the
+    // page's header cut by the top edge.
+    let pixels = drawn(
+        400,
+        400,
+        &[[40, 30, 300, 260], [320, 0, 400, 12]],
+        &[[20, 284, 380, 300], [20, 306, 250, 322]],
+    );
+    let found = segment::segment(&pixels, 2.0, Some(300.0)).unwrap();
+    assert_eq!(
+        found.caption,
+        Some(segment::Band {
+            start: 284,
+            end: 322
+        })
+    );
+    assert_eq!(
+        found.figure.0,
+        segment::Band {
+            start: 30,
+            end: 260
+        }
+    );
+    assert_eq!(
+        found.figure.1,
+        segment::Band {
+            start: 40,
+            end: 300
+        }
+    );
+
+    // Labels inside the figure, above where its caption starts, stay with it.
+    let labelled = drawn(
+        400,
+        400,
+        &[[40, 30, 300, 200]],
+        &[[60, 220, 200, 236], [20, 284, 380, 300]],
+    );
+    let found = segment::segment(&labelled, 2.0, Some(296.0)).unwrap();
+    assert_eq!(
+        found.figure.0,
+        segment::Band {
+            start: 30,
+            end: 236
+        }
+    );
+    assert_eq!(
+        found.caption,
+        Some(segment::Band {
+            start: 284,
+            end: 300
+        })
+    );
+
+    // Without a caption on the page the whole image is the figure.
+    let found = segment::segment(&labelled, 2.0, None).unwrap();
+    assert_eq!(
+        found.figure.0,
+        segment::Band {
+            start: 30,
+            end: 300
+        }
+    );
+    assert_eq!(found.caption, None);
+}

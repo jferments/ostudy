@@ -7,6 +7,10 @@
 //! in words, never by a model: a model asked to cite would invent provenance.
 //! A key point that no unit holds well enough cites nothing rather than the
 //! wrong page.
+//!
+//! A section cites pages, not passages: the passages its key points name are
+//! gathered into runs of neighbouring pages, so each page is listed once, as
+//! "p. 12" or "pp. 12–14", however many key points come from it.
 
 use std::collections::{HashMap, HashSet};
 
@@ -14,7 +18,7 @@ use rusqlite::{params, Connection};
 
 use crate::{
     database::Database,
-    document_domain::SourceLocator,
+    document_domain::{SourceLocator, SourceUnitKind},
     document_study_guides::DocumentStudyGuideSection,
     error::CommandError,
     knowledge::{contracts::KnowledgeUnit, evidence::EvidenceSelector},
@@ -32,8 +36,12 @@ const MIN_POINT_WORDS: usize = 3;
 /// Words are compared by their first letters, so "secretes" meets "secretion".
 const STEM_CHARS: usize = 6;
 const MAX_EXCERPT_CHARS: usize = 600;
+/// The most pages one source names. Neighbouring cited pages join into one
+/// range up to this length, so a long section still points at its pages
+/// rather than at all of them at once.
+const MAX_RANGE_PAGES: i64 = 3;
 
-/// One source passage a section cites, numbered from 1 in the order its key
+/// The pages or range a section cites, numbered from 1 in the order its key
 /// points first cite it.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct CitedSource {
@@ -42,7 +50,8 @@ pub(super) struct CitedSource {
     /// The cited document is a PDF, whose pages the reader can open.
     pub pdf: bool,
     pub locator: Option<SourceLocator>,
-    pub excerpt: String,
+    /// The cited passages on these pages, in page order.
+    pub excerpts: Vec<String>,
 }
 
 /// A section's citations: the source numbers of each key point, in order,
@@ -171,34 +180,156 @@ fn citable(unit: &KnowledgeUnit, document_id: String, pdf: bool) -> Option<Citab
     })
 }
 
-/// Matches each key point to the units that hold most of its words.
+/// Matches each key point to the units that hold most of its words, and
+/// cites the pages those units are on.
 pub(super) fn cite(key_points: &[String], units: &[CitableUnit]) -> SectionCitations {
+    let chosen = key_points
+        .iter()
+        .map(|point| {
+            let words = stems(point);
+            if words.len() < MIN_POINT_WORDS {
+                return Vec::new();
+            }
+            choose(&words, units)
+        })
+        .collect::<Vec<_>>();
+    let spans = spans(chosen.iter().flatten().copied());
     let mut citations = SectionCitations::default();
-    let mut numbers = HashMap::<&str, usize>::new();
-    for point in key_points {
-        let words = stems(point);
+    // Spans are numbered as the key points first cite them.
+    let mut numbers = HashMap::<usize, usize>::new();
+    for point in &chosen {
         let mut cited = Vec::new();
-        if words.len() >= MIN_POINT_WORDS {
-            for unit in choose(&words, units) {
-                let next = numbers.len() + 1;
-                let number = *numbers.entry(unit.id.as_str()).or_insert_with(|| {
-                    citations.sources.push(CitedSource {
-                        number: next,
-                        document_id: unit.document_id.clone(),
-                        pdf: unit.pdf,
-                        locator: unit.locator.clone(),
-                        excerpt: unit.excerpt.clone(),
-                    });
-                    next
-                });
-                if !cited.contains(&number) {
-                    cited.push(number);
-                }
+        for unit in point {
+            let Some(span) = spans.iter().position(|span| span.holds(&unit.id)) else {
+                continue;
+            };
+            let next = numbers.len() + 1;
+            let number = *numbers.entry(span).or_insert_with(|| {
+                citations.sources.push(spans[span].source(next));
+                next
+            });
+            if !cited.contains(&number) {
+                cited.push(number);
             }
         }
+        cited.sort_unstable();
         citations.key_points.push(cited);
     }
     citations
+}
+
+/// Pages of one document that a section cites together, and the cited
+/// passages on them.
+struct Span<'a> {
+    document_id: &'a str,
+    pdf: bool,
+    /// The kind of unit and the first and last of them; none for a passage
+    /// with no place in its document, which is a source of its own.
+    pages: Option<(SourceUnitKind, i64, i64)>,
+    units: Vec<&'a CitableUnit>,
+}
+
+impl Span<'_> {
+    fn holds(&self, unit_id: &str) -> bool {
+        self.units.iter().any(|unit| unit.id == unit_id)
+    }
+
+    fn source(&self, number: usize) -> CitedSource {
+        let mut excerpts = Vec::<String>::new();
+        for unit in &self.units {
+            if !excerpts.contains(&unit.excerpt) {
+                excerpts.push(unit.excerpt.clone());
+            }
+        }
+        CitedSource {
+            number,
+            document_id: self.document_id.to_string(),
+            pdf: self.pdf,
+            locator: self.pages.and_then(|(kind, first, last)| {
+                SourceLocator::with_evidence(kind, (first..=last).collect(), None, Vec::new(), None)
+                    .ok()
+            }),
+            excerpts,
+        }
+    }
+}
+
+/// Gathers the cited units into runs of neighbouring pages, each page in one
+/// run only. A unit's pages go to the run its first page is in, and a run is
+/// cut at `MAX_RANGE_PAGES` unless one unit alone is longer.
+fn spans<'a>(cited: impl Iterator<Item = &'a CitableUnit>) -> Vec<Span<'a>> {
+    let mut placed = HashSet::<&str>::new();
+    let mut paged = Vec::new();
+    let mut spans = Vec::new();
+    for unit in cited {
+        if !placed.insert(unit.id.as_str()) {
+            continue;
+        }
+        match unit
+            .locator
+            .as_ref()
+            .filter(|locator| locator.time_range_ms.is_none())
+        {
+            Some(locator) => paged.push((unit, locator)),
+            None => spans.push(Span {
+                document_id: &unit.document_id,
+                pdf: unit.pdf,
+                pages: None,
+                units: vec![unit],
+            }),
+        }
+    }
+    paged.sort_by(|(a, a_locator), (b, b_locator)| {
+        (
+            &a.document_id,
+            a_locator.unit_kind.as_str(),
+            a_locator.first(),
+            a_locator.last(),
+        )
+            .cmp(&(
+                &b.document_id,
+                b_locator.unit_kind.as_str(),
+                b_locator.first(),
+                b_locator.last(),
+            ))
+    });
+    let mut runs = Vec::<Span<'_>>::new();
+    for (unit, locator) in paged {
+        let (kind, first, last) = (locator.unit_kind, locator.first(), locator.last());
+        if let Some(run) = runs.last_mut().filter(|run| {
+            run.document_id == unit.document_id
+                && run.pages.is_some_and(|(run_kind, _, _)| run_kind == kind)
+        }) {
+            let (_, run_first, run_last) = run.pages.unwrap_or((kind, first, last));
+            if last <= run_last {
+                // Its pages are already listed.
+                run.units.push(unit);
+                continue;
+            }
+            if first <= run_last + 1 && last - run_first < MAX_RANGE_PAGES {
+                run.pages = Some((kind, run_first, last));
+                run.units.push(unit);
+                continue;
+            }
+            // A new run starts after the pages already listed.
+            let first = first.max(run_last + 1);
+            runs.push(Span {
+                document_id: &unit.document_id,
+                pdf: unit.pdf,
+                pages: Some((kind, first, last)),
+                units: vec![unit],
+            });
+            continue;
+        }
+        runs.push(Span {
+            document_id: &unit.document_id,
+            pdf: unit.pdf,
+            pages: Some((kind, first, last)),
+            units: vec![unit],
+        });
+    }
+    runs.extend(spans);
+    runs
 }
 
 fn choose<'a>(words: &HashSet<String>, units: &'a [CitableUnit]) -> Vec<&'a CitableUnit> {
@@ -357,11 +488,106 @@ mod tests {
         let secretin = citations
             .sources
             .iter()
-            .find(|source| source.excerpt.starts_with("Secretin"))
+            .find(|source| source.excerpts[0].starts_with("Secretin"))
             .unwrap()
             .number;
         assert_eq!(citations.key_points[1], [secretin]);
         assert_eq!(citations.sources.len(), 2);
+    }
+
+    #[test]
+    fn neighbouring_pages_are_one_range_and_each_page_is_listed_once() {
+        let units = vec![
+            unit(
+                "a",
+                113,
+                "Stage A patients are at high risk of heart failure without structural disease.",
+            ),
+            unit(
+                "b",
+                113,
+                "Stage B patients have structural disease without symptoms of heart failure.",
+            ),
+            unit(
+                "c",
+                116,
+                "Daily weights at the same time are the best indicator of fluid gain.",
+            ),
+            unit(
+                "d",
+                117,
+                "Valsartan with sacubitril replaces an ACE inhibitor and reduces hospitalization.",
+            ),
+            unit(
+                "e",
+                118,
+                "Digoxin increases the force of contraction and slows the heart rate.",
+            ),
+            unit(
+                "f",
+                119,
+                "Hypokalemia potentiates digoxin toxicity so potassium is checked first.",
+            ),
+        ];
+        let citations = cite(
+            &[
+                "Stage A is high risk without structural disease; stage B is structural disease."
+                    .into(),
+                "Stage B means structural disease without heart failure symptoms.".into(),
+                "Daily weights at the same time best show fluid gain.".into(),
+                "Sacubitril with valsartan replaces an ACE inhibitor, reducing hospitalization."
+                    .into(),
+                "Digoxin strengthens contraction and slows the heart rate.".into(),
+                "Hypokalemia potentiates digoxin toxicity, so check potassium.".into(),
+            ],
+            &units,
+        );
+        let labels = citations
+            .sources
+            .iter()
+            .map(|source| {
+                let locator = source.locator.as_ref().unwrap();
+                (source.number, locator.first(), locator.last())
+            })
+            .collect::<Vec<_>>();
+        // Page 113 once; 116 to 118 as one range; 119 starts the next.
+        assert_eq!(labels, [(1, 113, 113), (2, 116, 118), (3, 119, 119)]);
+        assert_eq!(
+            citations.key_points,
+            [vec![1], vec![1], vec![2], vec![2], vec![2], vec![3]]
+        );
+        assert_eq!(citations.sources[0].excerpts.len(), 2);
+    }
+
+    #[test]
+    fn a_passage_over_listed_pages_starts_its_range_after_them() {
+        let mut long = unit(
+            "long",
+            12,
+            "Secretin is released by S cells of the duodenum in response to acid.",
+        );
+        long.locator =
+            Some(SourceLocator::new(SourceUnitKind::Page, vec![12, 13, 14], None).unwrap());
+        let mut later = unit(
+            "later",
+            14,
+            "Cholecystokinin stimulates gallbladder contraction and enzyme secretion.",
+        );
+        later.locator =
+            Some(SourceLocator::new(SourceUnitKind::Page, vec![14, 15, 16], None).unwrap());
+        let citations = cite(
+            &[
+                "Secretin is released by duodenal S cells in response to acid.".into(),
+                "Cholecystokinin stimulates gallbladder contraction and enzyme secretion.".into(),
+            ],
+            &[long, later],
+        );
+        let ranges = citations
+            .sources
+            .iter()
+            .map(|source| source.locator.as_ref().unwrap().unit_numbers.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(ranges, [vec![12, 13, 14], vec![15, 16]]);
     }
 
     #[test]

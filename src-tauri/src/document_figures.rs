@@ -19,6 +19,7 @@
 
 pub(crate) mod detect;
 pub(crate) mod reading;
+pub(crate) mod segment;
 
 #[cfg(test)]
 mod tests;
@@ -294,6 +295,32 @@ pub(crate) async fn read_after_search(
     if let Err(error) = read {
         log_failure(input.document_id, &error.message);
     }
+}
+
+/// Reads a document's figures that are not read yet with the document
+/// model, as generation does after an import. Used by the guide evaluation.
+#[cfg(feature = "guide-eval")]
+pub(crate) async fn read_unread_figures(
+    database: &Database,
+    paths: &AppPaths,
+    render: &PdfRenderRuntime,
+    runtime: &AiRuntimeState,
+    document_id: &str,
+) -> Result<(), CommandError> {
+    let task = figure_task(database)?;
+    read_after_search(
+        ReadAfterSearch {
+            database,
+            paths,
+            render,
+            runtime,
+            task: &task,
+            document_id,
+        },
+        None,
+    )
+    .await;
+    Ok(())
 }
 
 /// Records the learner's choice for a document they are importing.

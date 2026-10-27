@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import type { ShowToast } from "../components/Toast";
-import type { StudyGuidePageItem, StudyGuideLibrarySort, StudyGuideSubjectFilter } from "../ipc/studyGuides";
+import type { StudyGuidePageItem, StudyGuidePdfTheme, StudyGuideLibrarySort, StudyGuideSubjectFilter } from "../ipc/studyGuides";
 import { getErrorMessage } from "../ipc/common";
 import { openDocumentSource } from "../ipc/documents";
 import { PerformanceProfiler } from "../testing/PerformanceProfiler";
@@ -37,9 +37,12 @@ interface StudyGuidesScreenProps {
   /** Where links on a guide's pages lead: a deck's Practice, and a notes page. */
   onPracticeDeck?: (deckId: string) => void | Promise<void>;
   onOpenNotebook?: (notebookId: string, pageId: string) => void;
+  /** The study guide theme from Settings, which the reader shows and can change. */
+  guideTheme?: StudyGuidePdfTheme;
+  onGuideThemeChange?: (theme: StudyGuidePdfTheme) => void;
 }
 
-export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed, onSetUpAi, onPracticeDeck, onOpenNotebook }: StudyGuidesScreenProps) {
+export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openRequest = null, onOpenRequestConsumed, onSetUpAi, onPracticeDeck, onOpenNotebook, guideTheme = "sage", onGuideThemeChange }: StudyGuidesScreenProps) {
   const confirm = useConfirm();
   const controller = useStudyGuidesController({ subject, showToast, openRequest, onOpenRequestConsumed });
   const tutor = useOptionalTutor();
@@ -115,6 +118,8 @@ export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openReq
             documentTitle={controller.selected.title}
             source={controller.selected.source ?? null}
             showToast={showToast}
+            theme={guideTheme}
+            onThemeChange={onGuideThemeChange}
             onPracticeCards={onPracticeCards}
             onPracticeDeck={onPracticeDeck}
             onOpenNotebook={onOpenNotebook}

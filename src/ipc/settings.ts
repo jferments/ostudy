@@ -26,9 +26,9 @@ export interface AppSettings {
    * Reviews before it count toward the previous day.
    */
   newDayStartHour: number;
-  /** How an exported study guide PDF looks; Sage until the learner picks another. */
+  /** How a study guide looks, read in the app and saved as a PDF; Sage until the learner picks another. */
   guidePdfTheme?: "navy" | "sage" | "slate" | "plum";
-  /** Whether an exported study guide PDF carries the learner's notes. */
+  /** Whether a study guide saved as a PDF carries the learner's notes. */
   guidePdfIncludeNotes?: boolean;
   /**
    * Whether a new course's lessons have their narration spoken and kept as
