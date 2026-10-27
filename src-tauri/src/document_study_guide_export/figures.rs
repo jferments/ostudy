@@ -100,7 +100,7 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
                 .use_in_text
                 .as_deref()
                 .filter(|text| !about_the_document(text))
-                .map(|text| clipped(text, MAX_USE_CHARS))
+                .map(|text| clipped(&about_the_subject(text), MAX_USE_CHARS))
                 .filter(|text| !text.is_empty())
                 .unwrap_or_else(|| clipped(&reading.shows, MAX_SHOWS_CHARS)),
             unreadable: false,
@@ -431,6 +431,40 @@ fn about_the_document(text: &str) -> bool {
     ["page", "caption", "does not discuss", "the text "]
         .iter()
         .any(|phrase| lowered.contains(phrase))
+}
+
+/// A note that opens by talking about the figure or the learner ("It lets
+/// the learner see that …", "It shows how …"), from its first words about
+/// the subject itself, which readings made before the caption was asked
+/// for in the subject's terms often do.
+fn about_the_subject(text: &str) -> String {
+    const OPENINGS: [&str; 8] = [
+        "it lets the learner see ",
+        "it lets the learner ",
+        "it helps the learner see ",
+        "it helps the learner ",
+        "this figure shows ",
+        "the figure shows ",
+        "it shows ",
+        "it illustrates ",
+    ];
+    let text = text.trim();
+    let lowered = text.to_lowercase();
+    let Some(opening) = OPENINGS
+        .iter()
+        .find(|opening| lowered.starts_with(**opening))
+    else {
+        return text.to_string();
+    };
+    let mut rest = &text[opening.len()..];
+    if rest.to_lowercase().starts_with("that ") {
+        rest = &rest[5..];
+    }
+    let mut letters = rest.chars();
+    match letters.next() {
+        Some(first) => first.to_uppercase().chain(letters).collect(),
+        None => text.to_string(),
+    }
 }
 
 /// What the figure shows and why it matters, and where it is from.

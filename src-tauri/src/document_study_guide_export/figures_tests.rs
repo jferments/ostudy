@@ -232,7 +232,19 @@ fn captions_are_short_and_name_the_source_page() {
 }
 
 #[test]
-fn a_read_figures_caption_says_why_it_matters() {
+fn a_read_figures_caption_is_about_its_subject() {
+    assert_eq!(
+        about_the_subject("It lets the learner see that obesity prevalence varies by state."),
+        "Obesity prevalence varies by state."
+    );
+    assert_eq!(
+        about_the_subject("It shows where each diuretic class acts along the nephron."),
+        "Where each diuretic class acts along the nephron."
+    );
+    assert_eq!(
+        about_the_subject("Each diuretic class acts on a different segment."),
+        "Each diuretic class acts on a different segment."
+    );
     let mut read = figure("p00012-01", 12, 5, &["preload"]);
     if let Some(reading) = read.reading.as_mut() {
         reading.use_in_text = Some("It shows why preload sets stroke volume.".into());
@@ -246,6 +258,6 @@ fn a_read_figures_caption_says_why_it_matters() {
     let chosen = choose(&sections, &[read]);
     assert_eq!(
         chosen.get(&"a".repeat(32)).unwrap()[0].caption,
-        "It shows why preload sets stroke volume. Source page 12"
+        "Why preload sets stroke volume. Source page 12"
     );
 }

@@ -260,9 +260,9 @@
   if points.len() > 0 { bullets(points) }
 })
 
-// A unit that may sit in the narrow column beside a figure: tables and
-// term grids need the full width.
-#let wraps(u) = u.kind == "point" or u.block.kind in ("lead", "paragraph", "heading", "check", "callout", "spacer")
+// A unit that may sit in the narrow column beside a figure: tables need the
+// full width; a term grid drops to one column there.
+#let wraps(u) = u.kind == "point" or u.block.kind in ("lead", "paragraph", "heading", "check", "callout", "terms", "example", "spacer")
 
 // Sets the text units after a section's figures position around those
 // figures. A narrow figure sits at the right of as many of the following
@@ -308,9 +308,10 @@
         figure-body(h, number + "." + str(index + i), width: calc.min(width, h.width * 1mm))))
       let height-at(width, g) = measure(block(width: width, side(width, g))).height
       let widest(g) = calc.min(calc.max(..g.map(h => h.width)) * 1mm, size.width * 0.42)
-      // Stacked, the pair may run somewhat past the text; that leaves less
-      // empty paper than the second figure on a row of its own.
-      if group.len() == 2 and height-at(float-min-width, group) > text-at(float-min-width, side-units) * 3 + 4mm {
+      // The pair stacks only when the text beside it is about as tall: a
+      // stack that outruns the text leaves a blank block beside it, so the
+      // second figure goes with the text after it instead.
+      if group.len() == 2 and height-at(float-min-width, group) > text-at(float-min-width, side-units) * 1.15 + 6mm {
         group = (f,)
       }
       let width = widest(group)
