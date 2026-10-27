@@ -68,18 +68,20 @@ const fn speaker(voice: &'static str, number: i32) -> Speaker {
     Speaker { voice, number }
 }
 
-/// Kokoro v1.0 (Apache-2.0), 8-bit, with its American and British English
-/// voices. On a 4-core cloud CPU it spoke a 9-second sentence in about 11 s.
+/// Kokoro v1.0 (Apache-2.0) at full precision, with its American and British
+/// English voices. The 8-bit model added a steady whine near 9.6 kHz to every
+/// voice and was slower on a CPU: on 4 cores this one speaks a 5-second
+/// sentence in about 3 s, the 8-bit one took about 6 s.
 pub(crate) const KOKORO: DeviceVoiceModel = DeviceVoiceModel {
-    id: "device/kokoro-v1.0-int8",
+    id: "device/kokoro-v1.0",
     label: "Kokoro",
     summary: "Natural American and British English voices. On an older computer the first words of a part can take a few seconds.",
-    repository: "csukuangfj/kokoro-int8-multi-lang-v1_0",
-    revision: "57adb37fc0e8d4bd430cfc1b8f8c2294945b9af2",
+    repository: "csukuangfj/kokoro-multi-lang-v1_0",
+    revision: "f7b96bb6bef5c5da4d3aa4f4e0498fbbf62dc78b",
     model: ModelFile {
-        name: "model.int8.onnx",
-        sha256: "75635ea3b85a32d00094dcdd61a258aba87c160f7c264c304a7b3ae9d734195e",
-        bytes: 114_202_993,
+        name: "model.onnx",
+        sha256: "b40f62b166ac8164b0627ef48a0b358eda0985e272fb03ef5252e7206305da11",
+        bytes: 325_560_556,
     },
     voices: ModelFile {
         name: "voices.bin",

@@ -359,7 +359,7 @@ describe("LessonVoiceSettings", () => {
   });
 
   describe("voices on this device", () => {
-    const KOKORO = "device/kokoro-v1.0-int8";
+    const KOKORO = "device/kokoro-v1.0";
     const withDevice = (overrides: Partial<SpeechSettings> = {}): SpeechSettings => {
       const base = settings();
       return {
@@ -374,7 +374,7 @@ describe("LessonVoiceSettings", () => {
     const device = (installed = false) => ({
       supported: true,
       models: [
-        { modelId: KOKORO, label: "Kokoro", summary: "Natural American and British English voices.", downloadBytes: 142_404_640, sample: "/voices/device/kokoro.mp3", installed, installingBytes: null, installError: null },
+        { modelId: KOKORO, label: "Kokoro", summary: "Natural American and British English voices.", downloadBytes: 353_762_203, sample: "/voices/device/kokoro.mp3", installed, installingBytes: null, installError: null },
       ],
     });
 
@@ -395,7 +395,7 @@ describe("LessonVoiceSettings", () => {
       fireEvent.change(service, { target: { value: "device" } });
       const dialog = await screen.findByRole("dialog", { name: "Free voices on this device" });
       const list = within(dialog).getByRole("list", { name: "Voices on this device" });
-      expect(list.textContent).toContain("142 MB download");
+      expect(list.textContent).toContain("354 MB download");
 
       fireEvent.click(within(dialog).getByRole("button", { name: "Listen to Kokoro" }));
       expect(dialog.querySelector("audio")?.getAttribute("src")).toBe("/voices/device/kokoro.mp3");

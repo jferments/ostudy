@@ -43,7 +43,7 @@ fn every_voice_model_is_pinned_to_a_revision_and_hashes() {
         numbers.dedup();
         assert_eq!(numbers.len(), model.speakers.len(), "{}", model.id);
     }
-    assert_eq!(KOKORO.pinned().download_bytes(), 142_404_640);
+    assert_eq!(KOKORO.pinned().download_bytes(), 353_762_203);
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn a_voice_that_is_not_downloaded_refuses_to_speak() {
 /// Speaks study text with a real model and hears it back with the speech
 /// input model. The models are not part of the repository, so this runs only
 /// when `OSTUDY_DEVICE_VOICE_DIR` names a folder holding each voice model's
-/// files in a folder named like its id (`kokoro-v1.0-int8`) and
+/// files in a folder named like its id (`kokoro-v1.0`) and
 /// `OSTUDY_SPEECH_MODEL_DIR` names the Moonshine files.
 #[test]
 fn study_text_is_spoken_intelligibly_when_the_models_are_present() {
