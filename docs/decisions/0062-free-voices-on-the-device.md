@@ -13,7 +13,7 @@ voices that run locally, naming Kokoro and KittenTTS (2026-10-26), and for a
 short sample of two voices from each model in the repository so the learner
 can hear them and choose which one to install (2026-10-27).
 
-sherpa-onnx `2.0.0`, already linked for speech input (ADR 0061), runs both
+sherpa-onnx `2.0.0`, already linked for speech input (ADR 0061), runs these
 models, but 2.0 removed eSpeak NG. Its English Kokoro and KittenTTS configs
 then speak only words in a lexicon file and skip the rest, which loses exactly
 the technical words study material is full of ("basolateral" in a physiology
@@ -22,21 +22,21 @@ text, so the phonemes can come from elsewhere. eSpeak NG itself is GPL-3.0.
 
 ## Decision
 
-- Two voice models are offered, neither bundled: **Kokoro** v1.0, 8-bit
-  (Apache-2.0, 142 MB, 14 American and British English voices offered), and
-  **KittenTTS** nano v0.2, 16-bit (Apache-2.0, 24 MB, 8 voices). Each is
-  pinned to a Hugging Face revision of the sherpa-onnx conversions, with every
-  file's size and SHA-256.
+- One voice model is offered, not bundled: **Kokoro** v1.0, 8-bit
+  (Apache-2.0, 142 MB, 14 American and British English voices offered),
+  pinned to a Hugging Face revision of the sherpa-onnx conversion, with every
+  file's size and SHA-256. KittenTTS nano v0.2 (24 MB) was built and
+  sampled too, and the maintainer judged it to sound too poor to offer
+  (2026-10-27); its larger mini model is a 166 MB download, bigger than
+  Kokoro. The catalog and dialog still take more than one model.
 - Text becomes phonemes with loqui-g2p `0.4.0` (MIT), a Rust port of misaki,
   Kokoro's own English G2P, with misaki's lexicons and a small embedded neural
-  model for words they do not hold. KittenTTS was trained on eSpeak's
-  phonemes, so misaki's one-letter diphthongs are spelled as eSpeak writes
-  them for it. Phonemes are cut into sentences of at most 400 characters
-  before they reach the model. Both models then read a physiology sentence
+  model for words they do not hold. Phonemes are cut into sentences of at most 400 characters
+  before they reach the model. Kokoro then read a physiology sentence
   that Moonshine transcribed back with every technical word right; the
-  repository test does the same when the models are present.
+  repository test does the same when the model is present.
 - A device voice is a speech model in the same catalog as the provider ones
-  (`device/kokoro-v1.0-int8`, `device/kitten-nano-v0.2`), chosen in the Voice
+  (`device/kokoro-v1.0-int8`), chosen in the Voice
   row as **This device (free)**. It needs no connection, is not accounted as
   an AI request, and its pieces are kept like any other narration: managed
   WAV assets keyed by text, engine `device`, model, voice and format `wav`.
@@ -48,8 +48,8 @@ text, so the phonemes can come from elsewhere. eSpeak NG itself is GPL-3.0.
   model's progress, into `speech-models/<id>` under the application data
   folder, outside the library and its backups. That installer stays the one
   HTTP client outside the AI gateway.
-- On a 4-core cloud CPU, Kokoro took about 11 s to speak a 9-second sentence
-  and KittenTTS about 3 s, so device voices speak pieces of at most 600
+- On a 4-core cloud CPU, Kokoro took about 11 s to speak a 9-second sentence,
+  so device voices speak pieces of at most 600
   characters, which start playing sooner.
 - Windows has no device voices, for the reason it has no speech input.
 

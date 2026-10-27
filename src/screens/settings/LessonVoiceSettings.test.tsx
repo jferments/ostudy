@@ -356,39 +356,34 @@ describe("LessonVoiceSettings", () => {
     expect(voiceLabel("af_heart")).toBe("Heart (American female)");
     expect(voiceLabel("bm_lewis")).toBe("Lewis (British male)");
     expect(voiceLabel("narrator")).toBe("narrator");
-    expect(voiceLabel("expr-voice-3-f")).toBe("Female 3");
-    expect(voiceLabel("expr-voice-4-m")).toBe("Male 4");
   });
 
   describe("voices on this device", () => {
     const KOKORO = "device/kokoro-v1.0-int8";
-    const KITTEN = "device/kitten-nano-v0.2";
     const withDevice = (overrides: Partial<SpeechSettings> = {}): SpeechSettings => {
       const base = settings();
       return {
         ...base,
         models: [
           ...base.models,
-          { id: KOKORO, label: "Kokoro on this device", voices: ["af_heart"], defaultVoice: "af_heart", clonesVoices: false, onDevice: true },
-          { id: KITTEN, label: "KittenTTS on this device", voices: ["expr-voice-3-f", "expr-voice-4-m"], defaultVoice: "expr-voice-3-f", clonesVoices: false, onDevice: true },
+          { id: KOKORO, label: "Kokoro on this device", voices: ["af_heart", "am_michael"], defaultVoice: "af_heart", clonesVoices: false, onDevice: true },
         ],
         ...overrides,
       };
     };
-    const device = (installed: string[] = [], installingBytes: number | null = null) => ({
+    const device = (installed = false) => ({
       supported: true,
       models: [
-        { modelId: KOKORO, label: "Kokoro", summary: "The most natural voices.", downloadBytes: 142_404_640, sample: "/voices/device/kokoro.mp3", installed: installed.includes(KOKORO), installingBytes: null, installError: null },
-        { modelId: KITTEN, label: "KittenTTS", summary: "A small, quick download.", downloadBytes: 23_814_153, sample: "/voices/device/kitten.mp3", installed: installed.includes(KITTEN), installingBytes, installError: null },
+        { modelId: KOKORO, label: "Kokoro", summary: "Natural American and British English voices.", downloadBytes: 142_404_640, sample: "/voices/device/kokoro.mp3", installed, installingBytes: null, installError: null },
       ],
     });
 
-    it("offers them with no connection, plays each sample, and downloads the one chosen", async () => {
+    it("offers them with no connection, plays the sample, and downloads the voice chosen", async () => {
       vi.mocked(getSpeechSettings).mockResolvedValue(withDevice({ profileId: null, connections: [] }));
       vi.mocked(getDeviceVoices).mockResolvedValue(device());
-      vi.mocked(installDeviceVoice).mockResolvedValue(device([KITTEN]));
+      vi.mocked(installDeviceVoice).mockResolvedValue(device(true));
       vi.mocked(saveSpeechSettings).mockResolvedValue(
-        withDevice({ profileId: null, connections: [], modelId: KITTEN, voice: "expr-voice-3-f", revision: 1 }),
+        withDevice({ profileId: null, connections: [], modelId: KOKORO, voice: "af_heart", revision: 1 }),
       );
       const onAddOpenRouter = vi.fn();
       render(<LessonVoiceSettings connectionsKey={1} onAddOpenRouter={onAddOpenRouter} />);
@@ -401,43 +396,46 @@ describe("LessonVoiceSettings", () => {
       const dialog = await screen.findByRole("dialog", { name: "Free voices on this device" });
       const list = within(dialog).getByRole("list", { name: "Voices on this device" });
       expect(list.textContent).toContain("142 MB download");
-      expect(list.textContent).toContain("24 MB download");
 
-      fireEvent.click(within(dialog).getByRole("button", { name: "Listen to KittenTTS" }));
-      expect(dialog.querySelector("audio")?.getAttribute("src")).toBe("/voices/device/kitten.mp3");
-      expect(within(dialog).getByRole("button", { name: "Stop the KittenTTS sample" })).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Listen to Kokoro" }));
+      expect(dialog.querySelector("audio")?.getAttribute("src")).toBe("/voices/device/kokoro.mp3");
+      expect(within(dialog).getByRole("button", { name: "Stop the Kokoro sample" })).toBeTruthy();
 
-      const items = within(list).getAllByRole("listitem");
-      fireEvent.click(within(items[1]!).getByRole("button", { name: "Download and use" }));
-      await waitFor(() => expect(installDeviceVoice).toHaveBeenCalledWith(KITTEN));
-      await waitFor(() => expect(saveSpeechSettings).toHaveBeenCalledWith(null, KITTEN, "expr-voice-3-f", 0));
+      fireEvent.click(within(list).getByRole("button", { name: "Download and use" }));
+      await waitFor(() => expect(installDeviceVoice).toHaveBeenCalledWith(KOKORO));
+      await waitFor(() => expect(saveSpeechSettings).toHaveBeenCalledWith(null, KOKORO, "af_heart", 0));
       expect(await within(dialog).findByText("In use")).toBeTruthy();
       fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
       await waitFor(() => expect(select("Lesson voice connection").value).toBe("device"));
-      expect(select("Lesson voice").value).toBe("expr-voice-3-f");
+      expect(select("Lesson voice").value).toBe("af_heart");
     });
 
-    it("lists only the device's models, marks one not downloaded, and goes back online with Drama", async () => {
-      vi.mocked(getSpeechSettings).mockResolvedValue(withDevice({ modelId: KITTEN, voice: "expr-voice-4-m" }));
-      vi.mocked(getDeviceVoices).mockResolvedValue(device([KITTEN]));
+    it("marks a model that is not downloaded", async () => {
+      vi.mocked(getSpeechSettings).mockResolvedValue(withDevice({ modelId: KOKORO, voice: "af_heart" }));
+      vi.mocked(getDeviceVoices).mockResolvedValue(device());
+      render(<LessonVoiceSettings connectionsKey={1} />);
+      await waitFor(() =>
+        expect([...select("Lesson voice model").options].map((option) => option.text)).toEqual([
+          "Kokoro on this device (not downloaded)",
+        ]),
+      );
+    });
+
+    it("lists only the device's models and voices, and goes back online with Drama", async () => {
+      vi.mocked(getSpeechSettings).mockResolvedValue(withDevice({ modelId: KOKORO, voice: "am_michael" }));
+      vi.mocked(getDeviceVoices).mockResolvedValue(device(true));
       vi.mocked(saveSpeechSettings).mockResolvedValue(withDevice({ modelId: DRAMA, voice: "", revision: 1 }));
       render(<LessonVoiceSettings connectionsKey={1} />);
       await waitFor(() => expect(select("Lesson voice connection").value).toBe("device"));
       await waitFor(() =>
         expect([...select("Lesson voice model").options].map((option) => option.text)).toEqual([
-          "Kokoro on this device (not downloaded)",
-          "KittenTTS on this device",
+          "Kokoro on this device",
         ]),
       );
       expect([...select("Lesson voice").options].map((option) => option.text)).toEqual([
-        "Female 3",
-        "Male 4",
+        "Heart (American female)",
+        "Michael (American male)",
       ]);
-      // Choosing the one not downloaded asks to download it first.
-      fireEvent.change(select("Lesson voice model"), { target: { value: KOKORO } });
-      expect(await screen.findByRole("dialog", { name: "Free voices on this device" })).toBeTruthy();
-      expect(saveSpeechSettings).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole("button", { name: "Done" }));
 
       fireEvent.change(select("Lesson voice connection"), { target: { value: router } });
       expect(saveSpeechSettings).toHaveBeenCalledWith(router, DRAMA, "", 0);

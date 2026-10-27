@@ -301,13 +301,8 @@ export function LessonVoiceSettings({
 
 const ACCENTS: Record<string, string> = { a: "American", b: "British" };
 
-/**
- * Kokoro names voices like `af_heart`: accent, then gender, then a name.
- * KittenTTS numbers them, like `expr-voice-3-f`.
- */
+/** Kokoro names voices like `af_heart`: accent, then gender, then a name. */
 export function voiceLabel(voice: string): string {
-  const kitten = /^expr-voice-(\d+)-([fm])$/u.exec(voice);
-  if (kitten) return `${kitten[2] === "f" ? "Female" : "Male"} ${kitten[1]}`;
   const match = /^([ab])([fm])_(\w+)$/u.exec(voice);
   if (!match) return voice;
   const [, accent, gender, name] = match as unknown as [string, string, string, string];

@@ -44,7 +44,6 @@ fn every_voice_model_is_pinned_to_a_revision_and_hashes() {
         assert_eq!(numbers.len(), model.speakers.len(), "{}", model.id);
     }
     assert_eq!(KOKORO.pinned().download_bytes(), 142_404_640);
-    assert_eq!(KITTEN.pinned().download_bytes(), 23_814_153);
 }
 
 #[test]
@@ -52,20 +51,20 @@ fn a_library_without_a_voice_reports_what_each_download_takes() {
     let paths = test_paths("status");
     let status = status(&paths);
     assert_eq!(status.supported, SUPPORTED);
-    assert_eq!(status.models.len(), 2);
+    assert_eq!(status.models.len(), 1);
     assert!(status.models.iter().all(|model| !model.installed));
     assert_eq!(status.models[0].model_id, KOKORO.id);
     assert_eq!(
-        status.models[1].download_bytes,
-        KITTEN.pinned().download_bytes()
+        status.models[0].download_bytes,
+        KOKORO.pinned().download_bytes()
     );
 }
 
 #[test]
 fn a_voice_that_is_not_downloaded_refuses_to_speak() {
     let paths = test_paths("missing");
-    let error = tauri::async_runtime::block_on(speak(&paths, &KITTEN, "expr-voice-3-f", "Hello."))
-        .unwrap_err();
+    let error =
+        tauri::async_runtime::block_on(speak(&paths, &KOKORO, "af_heart", "Hello.")).unwrap_err();
     let expected = if SUPPORTED {
         "device_voice_missing"
     } else {
@@ -85,8 +84,8 @@ fn a_voice_that_is_not_downloaded_refuses_to_speak() {
 /// Speaks study text with a real model and hears it back with the speech
 /// input model. The models are not part of the repository, so this runs only
 /// when `OSTUDY_DEVICE_VOICE_DIR` names a folder holding each voice model's
-/// files in a folder named like its id (`kokoro-v1.0-int8`,
-/// `kitten-nano-v0.2`) and `OSTUDY_SPEECH_MODEL_DIR` names the Moonshine files.
+/// files in a folder named like its id (`kokoro-v1.0-int8`) and
+/// `OSTUDY_SPEECH_MODEL_DIR` names the Moonshine files.
 #[test]
 fn study_text_is_spoken_intelligibly_when_the_models_are_present() {
     let (Ok(voices), Ok(moonshine)) = (
@@ -100,11 +99,10 @@ fn study_text_is_spoken_intelligibly_when_the_models_are_present() {
     }
     let text = "Parietal cells secrete hydrochloric acid into the stomach, while bicarbonate \
                 leaves across the basolateral membrane.";
-    for (model, voice) in [(&KOKORO, "af_heart"), (&KITTEN, "expr-voice-3-f")] {
+    for (model, voice) in [(&KOKORO, "af_heart"), (&KOKORO, "bm_george")] {
         let directory = std::path::Path::new(&voices).join(model.id.trim_start_matches("device/"));
         let files = VoiceFiles {
             directory: &directory,
-            family: model.family,
             model: model.model.name,
             voices: model.voices.name,
             tokens: model.tokens.name,
@@ -114,7 +112,7 @@ fn study_text_is_spoken_intelligibly_when_the_models_are_present() {
             &Utterance {
                 text,
                 speaker: model.speaker(voice).unwrap().number,
-                british: false,
+                british: voice.starts_with('b'),
             },
         )
         .unwrap();

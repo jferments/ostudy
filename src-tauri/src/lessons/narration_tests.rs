@@ -173,10 +173,10 @@ fn the_voice_defaults_to_drama_through_the_document_writing_connection() {
     assert_eq!(unset.model_id, DRAMA);
     assert_eq!(unset.voice, "builtin:relaxed-man");
     assert_eq!(unset.revision, 0);
-    assert_eq!(unset.models.len(), 4);
+    assert_eq!(unset.models.len(), 3);
     assert_eq!(
         unset.models.iter().filter(|model| model.on_device).count(),
-        2
+        1
     );
 
     add_profile(
@@ -555,12 +555,12 @@ fn each_podcast_host_speaks_in_their_own_kept_voice() {
 fn a_voice_on_the_device_needs_no_connection_and_is_kept_as_its_own_audio() {
     let database = library();
     let paths = temporary_paths("device");
-    let kitten = crate::device_voices::KITTEN.id;
+    let kokoro = crate::device_voices::KOKORO.id;
     // No OpenRouter connection at all: the voice on the device can be chosen.
-    let saved = save(&database, None, kitten, "expr-voice-4-m", 0).unwrap();
-    assert_eq!(saved.model_id, kitten);
+    let saved = save(&database, None, kokoro, "bm_george", 0).unwrap();
+    assert_eq!(saved.model_id, kokoro);
     assert_eq!(saved.profile_id, None);
-    assert!(save(&database, None, kitten, "af_heart", saved.revision).is_err());
+    assert!(save(&database, None, kokoro, "expr-voice-4-m", saved.revision).is_err());
 
     let lesson_id = lesson(&database);
     let refused = narrate(&database, &paths, step_input(&lesson_id, "two-limbs")).unwrap_err();
@@ -570,15 +570,15 @@ fn a_voice_on_the_device_needs_no_connection_and_is_kept_as_its_own_audio() {
         "device_voice_unsupported"
     };
     assert_eq!(refused.code, expected);
-    assert!(refused.message.contains("KittenTTS"), "{}", refused.message);
+    assert!(refused.message.contains("Kokoro"), "{}", refused.message);
 
     // Kept audio from the device is WAV under its own engine, never taken for
     // a provider's.
-    let model = speech::speech_model(kitten).unwrap();
+    let model = speech::speech_model(kokoro).unwrap();
     let voice = Voice {
         engine: DEVICE_ENGINE,
         model,
-        voice: "expr-voice-4-m".to_string(),
+        voice: "bm_george".to_string(),
         reference: None,
     };
     let wav = crate::platform::speech_synthesis::wav(&[0.0; 2400], 24_000);

@@ -14,19 +14,10 @@ pub(crate) const SUPPORTED: bool = cfg!(any(
     target_os = "android"
 ));
 
-/// How a voice model was trained to read phonemes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum VoiceFamily {
-    /// Kokoro reads misaki's phonemes, as loqui-g2p writes them.
-    Kokoro,
-    /// KittenTTS was trained on eSpeak's spelling of the same sounds.
-    Kitten,
-}
-
-/// The files of an installed voice model.
+/// The files of an installed Kokoro model, which reads misaki's phonemes as
+/// loqui-g2p writes them.
 pub(crate) struct VoiceFiles<'a> {
     pub directory: &'a Path,
-    pub family: VoiceFamily,
     pub model: &'a str,
     pub voices: &'a str,
     pub tokens: &'a str,
@@ -57,28 +48,6 @@ pub(crate) fn speak(
     _utterance: &Utterance<'_>,
 ) -> Result<Vec<u8>, String> {
     Err("this build cannot speak on the device".into())
-}
-
-/// misaki's one-letter diphthongs and marks as eSpeak spells them, for a
-/// voice trained on eSpeak's phonemes.
-pub(crate) fn espeak_spelling(phonemes: &str) -> String {
-    let mut spelled = String::with_capacity(phonemes.len() + 16);
-    for character in phonemes.chars() {
-        match character {
-            'A' => spelled.push_str("eɪ"),
-            'I' => spelled.push_str("aɪ"),
-            'O' => spelled.push_str("oʊ"),
-            'Q' => spelled.push_str("əʊ"),
-            'W' => spelled.push_str("aʊ"),
-            'Y' => spelled.push_str("ɔɪ"),
-            'T' => spelled.push('ɾ'),
-            'ᵊ' => spelled.push('ə'),
-            'ʤ' => spelled.push_str("dʒ"),
-            'ʧ' => spelled.push_str("tʃ"),
-            other => spelled.push(other),
-        }
-    }
-    spelled
 }
 
 /// Phonemes cut into sentences a voice speaks in one pass: after each full
@@ -154,11 +123,10 @@ mod engine {
 
     use loqui_g2p::{Dialect, G2p, OovFallback};
     use sherpa_onnx::{
-        GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsKittenModelConfig,
-        OfflineTtsKokoroModelConfig,
+        GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsKokoroModelConfig,
     };
 
-    use super::{espeak_spelling, sentences, wav, Utterance, VoiceFamily, VoiceFiles};
+    use super::{sentences, wav, Utterance, VoiceFiles};
 
     /// More threads than this did not make a piece faster.
     const MAX_THREADS: usize = 4;
@@ -190,10 +158,6 @@ mod engine {
         utterance: &Utterance<'_>,
     ) -> Result<Vec<u8>, String> {
         let phonemes = phonemizer(utterance.british)?.phonemize(utterance.text);
-        let phonemes = match voice.family {
-            VoiceFamily::Kokoro => phonemes,
-            VoiceFamily::Kitten => espeak_spelling(&phonemes),
-        };
         // A word nothing could phonemize is left out rather than read as a mark.
         let phonemes = phonemes.replace(loqui_g2p::UNKNOWN, "");
         let sentences: Vec<Vec<i32>> = sentences(&phonemes)
@@ -241,24 +205,12 @@ mod engine {
             .unwrap_or(1);
         let mut config = OfflineTtsConfig::default();
         config.model.num_threads = threads as i32;
-        match voice.family {
-            VoiceFamily::Kokoro => {
-                config.model.kokoro = OfflineTtsKokoroModelConfig {
-                    model: path(voice.model),
-                    voices: path(voice.voices),
-                    tokens: path(voice.tokens),
-                    ..Default::default()
-                };
-            }
-            VoiceFamily::Kitten => {
-                config.model.kitten = OfflineTtsKittenModelConfig {
-                    model: path(voice.model),
-                    voices: path(voice.voices),
-                    tokens: path(voice.tokens),
-                    ..Default::default()
-                };
-            }
-        }
+        config.model.kokoro = OfflineTtsKokoroModelConfig {
+            model: path(voice.model),
+            voices: path(voice.voices),
+            tokens: path(voice.tokens),
+            ..Default::default()
+        };
         OfflineTts::create(&config).ok_or_else(|| "the voice could not be loaded".into())
     }
 }
@@ -266,12 +218,6 @@ mod engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn misaki_diphthongs_are_spelled_as_espeak_writes_them() {
-        assert_eq!(espeak_spelling("həlˈO wˈɜɹld."), "həlˈoʊ wˈɜɹld.");
-        assert_eq!(espeak_spelling("pəɹˈIəTᵊl ʤˈɔɪnt"), "pəɹˈaɪəɾəl dʒˈɔɪnt");
-    }
 
     #[test]
     fn phonemes_are_cut_after_sentences_and_long_ones_after_a_comma() {

@@ -1,10 +1,10 @@
 //! Voices that read aloud on the learner's own device, for free.
 //!
-//! Two voice models are offered: Kokoro, the more natural one, and KittenTTS,
-//! a small, quick one. Neither is bundled. The learner hears a short sample of
-//! each in Settings (`public/voices/device/`), chooses one, and it is
-//! downloaded from a pinned revision and checked file by file against SHA-256
-//! hashes, like the speech input model. Speaking runs through sherpa-onnx, so
+//! Kokoro is offered (KittenTTS was tried and sounded too poor, 2026-10-27).
+//! It is not bundled. The learner hears a short sample in Settings
+//! (`public/voices/device/`), chooses it, and it is downloaded from a pinned
+//! revision and checked file by file against SHA-256 hashes, like the speech
+//! input model. Speaking runs through sherpa-onnx, so
 //! no text goes to an AI provider and nothing is paid for.
 
 #[cfg(test)]
@@ -16,7 +16,7 @@ use tauri::State;
 use crate::{
     error::CommandError,
     paths::AppPaths,
-    platform::speech_synthesis::{self, Utterance, VoiceFamily, VoiceFiles},
+    platform::speech_synthesis::{self, Utterance, VoiceFiles},
     speech_input::{install, ModelFile, PinnedModel},
 };
 
@@ -37,7 +37,6 @@ pub(crate) struct DeviceVoiceModel {
     pub label: &'static str,
     /// One line on what it is like, for choosing between them.
     pub summary: &'static str,
-    pub family: VoiceFamily,
     /// A Hugging Face repository and the commit its files are read from.
     pub repository: &'static str,
     pub revision: &'static str,
@@ -74,8 +73,7 @@ const fn speaker(voice: &'static str, number: i32) -> Speaker {
 pub(crate) const KOKORO: DeviceVoiceModel = DeviceVoiceModel {
     id: "device/kokoro-v1.0-int8",
     label: "Kokoro",
-    summary: "The most natural voices. Speaks a little slower than real time on an older computer.",
-    family: VoiceFamily::Kokoro,
+    summary: "Natural American and British English voices. On an older computer the first words of a part can take a few seconds.",
     repository: "csukuangfj/kokoro-int8-multi-lang-v1_0",
     revision: "57adb37fc0e8d4bd430cfc1b8f8c2294945b9af2",
     model: ModelFile {
@@ -113,44 +111,7 @@ pub(crate) const KOKORO: DeviceVoiceModel = DeviceVoiceModel {
     sample: "/voices/device/kokoro.mp3",
 };
 
-/// KittenTTS nano v0.2 (Apache-2.0), 16-bit. It spoke the same sentence in
-/// about 3 s.
-pub(crate) const KITTEN: DeviceVoiceModel = DeviceVoiceModel {
-    id: "device/kitten-nano-v0.2",
-    label: "KittenTTS",
-    summary: "A small, quick download that speaks faster than real time, even on a phone.",
-    family: VoiceFamily::Kitten,
-    repository: "csukuangfj/kitten-nano-en-v0_2-fp16",
-    revision: "7d14a97d38072576ddca7a673ab5bb49c43bb169",
-    model: ModelFile {
-        name: "model.fp16.onnx",
-        sha256: "f24264d818087e643828da7a992e892e703c412bf147e152b825da567031d5ce",
-        bytes: 23_804_897,
-    },
-    voices: ModelFile {
-        name: "voices.bin",
-        sha256: "42a40a24a352a38657d6cb86ceee51bbc2b7780b29e04fb60bcdf959adccea01",
-        bytes: 8_192,
-    },
-    tokens: ModelFile {
-        name: "tokens.txt",
-        sha256: "934a4188addc7665dd3410256bb622169242357fbb99d840d9351209b486dabb",
-        bytes: 1_064,
-    },
-    speakers: &[
-        speaker("expr-voice-3-f", 3),
-        speaker("expr-voice-4-m", 4),
-        speaker("expr-voice-2-f", 1),
-        speaker("expr-voice-2-m", 0),
-        speaker("expr-voice-3-m", 2),
-        speaker("expr-voice-4-f", 5),
-        speaker("expr-voice-5-f", 7),
-        speaker("expr-voice-5-m", 6),
-    ],
-    sample: "/voices/device/kitten.mp3",
-};
-
-pub(crate) const DEVICE_VOICE_MODELS: [&DeviceVoiceModel; 2] = [&KOKORO, &KITTEN];
+pub(crate) const DEVICE_VOICE_MODELS: [&DeviceVoiceModel; 1] = [&KOKORO];
 
 pub(crate) fn device_voice_model(id: &str) -> Option<&'static DeviceVoiceModel> {
     DEVICE_VOICE_MODELS.into_iter().find(|model| model.id == id)
@@ -259,7 +220,6 @@ pub(crate) async fn speak(
     tauri::async_runtime::spawn_blocking(move || {
         let files = VoiceFiles {
             directory: &directory,
-            family: model.family,
             model: model.model.name,
             voices: model.voices.name,
             tokens: model.tokens.name,

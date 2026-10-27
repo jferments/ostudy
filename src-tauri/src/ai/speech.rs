@@ -130,25 +130,6 @@ pub(crate) const SPEECH_MODELS: &[SpeechModel] = &[
         default_hosts: ["af_heart", "am_michael"],
         device: Some(&device_voices::KOKORO),
     },
-    SpeechModel {
-        id: device_voices::KITTEN.id,
-        label: "KittenTTS on this device",
-        voices: &[
-            "expr-voice-3-f",
-            "expr-voice-4-m",
-            "expr-voice-2-f",
-            "expr-voice-2-m",
-            "expr-voice-3-m",
-            "expr-voice-4-f",
-            "expr-voice-5-f",
-            "expr-voice-5-m",
-        ],
-        default_voice: "expr-voice-3-f",
-        clones_voices: false,
-        max_characters: 600,
-        default_hosts: ["expr-voice-3-f", "expr-voice-4-m"],
-        device: Some(&device_voices::KITTEN),
-    },
 ];
 
 pub(crate) fn speech_model(id: &str) -> Option<&'static SpeechModel> {

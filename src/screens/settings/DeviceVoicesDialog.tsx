@@ -106,7 +106,7 @@ export function DeviceVoicesDialog({
   return (
     <Dialog
       title="Free voices on this device"
-      description="These voices read lessons, podcasts and Tutor replies aloud on this device. They are free, need no account, and nothing you study leaves the device. Listen to each, then choose one to download."
+      description="These voices read lessons, podcasts and Tutor replies aloud on this device. They are free, need no account, and nothing you study leaves the device. Listen to the sample first; the voices download once."
       width="small"
       onClose={onClose}
       actions={
