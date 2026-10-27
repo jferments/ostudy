@@ -211,7 +211,7 @@ fn an_unread_figure_with_a_garbled_caption_shows_on_its_own_page() {
     assert_eq!(ids(&chosen, 'a'), ["p00028-01"]);
     assert!(ids(&chosen, 'b').is_empty());
     let figure = &chosen.get(&"a".repeat(32)).unwrap()[0];
-    assert_eq!(figure.title, "Figure 22.1 in the source");
+    assert!(figure.title.is_empty());
     assert_eq!(figure.caption, "");
     // Another language's accents are words, not a broken text layer.
     assert!(!garbled(

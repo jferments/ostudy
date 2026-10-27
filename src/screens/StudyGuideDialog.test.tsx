@@ -552,7 +552,7 @@ describe("StudyGuideDialog", () => {
     await waitFor(() => expect(mockedOpenSource).toHaveBeenCalledWith(documentId));
 
     await openSection("Preload");
-    fireEvent.click(screen.getByRole("button", { name: "Open source: Physiology · pp. 2–3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open source: Physiology" }));
     const rail = screen.getByRole("complementary", { name: "About this section" });
     const source = within(rail).getByRole("region", { name: "Source" });
     expect(within(source).getByText("pp. 2–3")).toBeTruthy();

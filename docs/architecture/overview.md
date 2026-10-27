@@ -398,7 +398,7 @@ A study guide is read as laid-out pages, and its design is a contract that promp
 - Most sections hold a box beside their key points: one callout (a key idea, a warning or a study tip), the two or three terms a learner must define, an explanation in a How it works box, or a check-yourself question. Parallel items (drugs, stages, classes) are a table, not a list of key points.
 - Source figures appear in the sections they illustrate whenever the document has them, scanned book pages included ([`detect.rs`](../../src-tauri/src/document_figures/detect.rs) finds a scanned page's figures from their captions).
 - Boxes and narrow figures sit beside the text that runs past them; they are not all stacked down the page.
-- Each section ends with one Sources line, each page or page range once; key points carry no inline citation marks.
+- Each section ends with one Sources line, each page or page range once. Page references appear nowhere else in the guide: no inline citation marks, no range beside a section heading, none in figure captions.
 - The cram sheet is one full page: every section's key ideas and its most important key points, with terms and warnings, fitted by shrinking the type rather than dropping sections.
 - One study guide theme, Sage by default, is the same setting for reading and for the PDF.
 

@@ -127,7 +127,6 @@ struct EffectiveExportSection {
     /// The document guide's topic id or the collection guide's block key.
     key: String,
     title: String,
-    source_locator: Option<SourceLocator>,
     body_lines: Vec<ExportBlock>,
     notes: Vec<String>,
     figures: Vec<ExportFigure>,
@@ -598,7 +597,6 @@ fn compose_effective_export(
         sections.push(EffectiveExportSection {
             key: section.topic_id.clone(),
             title,
-            source_locator: Some(section.source_locator.clone()),
             body_lines: body_override.map_or_else(
                 || generated_section_blocks(section, figures.is_empty()),
                 |replacement| vec![ExportBlock::Paragraph(replacement)],
@@ -751,7 +749,6 @@ fn compose_effective_collection_export(
         sections.push(EffectiveExportSection {
             key: section.block_key.clone(),
             title,
-            source_locator: section.source_locator.clone(),
             body_lines: body_override.map_or_else(
                 || generated_content_blocks(&section.content, figures.is_empty()),
                 |replacement| vec![ExportBlock::Paragraph(replacement)],
@@ -933,19 +930,6 @@ fn generated_content_blocks(
     blocks
 }
 
-fn source_label(locator: &SourceLocator) -> String {
-    let label = if locator.unit_numbers.len() == 1 {
-        locator.unit_kind.singular_label()
-    } else {
-        locator.unit_kind.plural_label()
-    };
-    match (locator.unit_numbers.first(), locator.unit_numbers.last()) {
-        (Some(first), Some(last)) if first == last => format!("Source {label} {first}"),
-        (Some(first), Some(last)) => format!("Source {label} {first}–{last}"),
-        _ => format!("Source {}", locator.unit_kind.plural_label()),
-    }
-}
-
 fn portable_filename(value: &str) -> String {
     portable_filename_or(value, "study-guide")
 }
@@ -1019,9 +1003,6 @@ mod tests {
             sections: vec![EffectiveExportSection {
                 key: "topic-preload".to_string(),
                 title: "Preload".to_string(),
-                source_locator: Some(
-                    SourceLocator::new(SourceUnitKind::Page, vec![2, 3], None).unwrap(),
-                ),
                 body_lines: vec![ExportBlock::Paragraph(
                     "Preload reflects ventricular filling before systole.".to_string(),
                 )],
@@ -1051,7 +1032,6 @@ mod tests {
         EffectiveExportSection {
             key: format!("topic-{title}"),
             title: title.to_string(),
-            source_locator: Some(SourceLocator::new(SourceUnitKind::Page, vec![4], None).unwrap()),
             body_lines: vec![
                 ExportBlock::Paragraph(
                     "Afterload is the load the ventricle ejects against.".into(),
@@ -1213,14 +1193,6 @@ mod tests {
     }
 
     #[test]
-    fn source_labels_use_natural_unit_names() {
-        let page = SourceLocator::new(SourceUnitKind::Page, vec![3], None).unwrap();
-        let slides = SourceLocator::new(SourceUnitKind::Slide, vec![4, 5], None).unwrap();
-        assert_eq!(source_label(&page), "Source page 3");
-        assert_eq!(source_label(&slides), "Source slides 4–5");
-    }
-
-    #[test]
     fn rendered_pdf_opens_on_a_cover_and_omits_internal_guide_revision() {
         let (_, pages) = rendered_pages(&test_export(), StudyGuidePdfTheme::Navy);
         let all = pages.join("\n");
@@ -1330,9 +1302,6 @@ mod tests {
         export.sections.push(EffectiveExportSection {
             key: "topic-raas".to_string(),
             title: "Renin–angiotensin system".to_string(),
-            source_locator: Some(
-                SourceLocator::new(SourceUnitKind::Page, vec![18, 19], None).unwrap(),
-            ),
             body_lines: vec![ExportBlock::Paragraph(
                 "Renin–angiotensin signaling links vascular tone with sodium balance.".to_string(),
             )],
@@ -1509,7 +1478,6 @@ mod tests {
             sections.push(EffectiveExportSection {
                 key: format!("topic-{i}"),
                 title: format!("Section {} about tubular handling", i + 1),
-                source_locator: None,
                 body_lines: vec![
                     ExportBlock::Paragraph("Renal excretion is the net result of filtration, reabsorption and secretion.".to_string()),
                     ExportBlock::Heading("Key points".to_string()),

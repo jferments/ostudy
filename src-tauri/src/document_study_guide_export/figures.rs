@@ -107,7 +107,7 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
         });
     }
     // Unread: only a numbered figure with a caption says what it is.
-    let label = figure.label.as_ref()?;
+    figure.label.as_ref()?;
     let caption = strip_label(figure.caption.as_deref()?.trim());
     if caption.is_empty() {
         return None;
@@ -118,7 +118,7 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
             importance: UNREAD_IMPORTANCE,
             concepts: Vec::new(),
             explained_on: Vec::new(),
-            title: format!("{label} in the source"),
+            title: String::new(),
             shows: String::new(),
             unreadable: true,
         });

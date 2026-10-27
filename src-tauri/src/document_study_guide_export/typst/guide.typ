@@ -118,9 +118,8 @@
 
 #let section-view(s, number, name) = {
   let h = heading(level: 2, outlined: true, bookmarked: true)[#text(font: head, size: 14pt, weight: 700, fill: T.accent, number) #h(1.4mm)#text(font: head, size: 14pt, weight: 700, fill: T.primary, rt(s.title))]
-  block(above: 6mm, below: 3mm, sticky: true, grid(columns: (1fr, auto, practice-width), column-gutter: 4mm, align: (left + bottom, right + bottom, right + bottom),
+  block(above: 6mm, below: 3mm, sticky: true, grid(columns: (1fr, practice-width), column-gutter: 4mm, align: (left + bottom, right + bottom),
     [#anchor("section", s.key)#if name != none [#h #label(name)] else { h }],
-    if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) },
     box(width: practice-width, height: practice-height)[#anchor("practice", s.key)]))
   // Figures go with the key points they illustrate: the text from there on
   // flows around them.

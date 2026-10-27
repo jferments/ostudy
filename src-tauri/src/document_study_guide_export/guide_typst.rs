@@ -22,8 +22,8 @@ use typst::{
 use typst_layout::PagedDocument;
 
 use super::{
-    chemistry, key_terms, math_layout, math_source, source_label, EffectiveExportSection,
-    EffectiveGuideExport, ExportBlock,
+    chemistry, key_terms, math_layout, math_source, EffectiveExportSection, EffectiveGuideExport,
+    ExportBlock,
 };
 use crate::{
     document_domain::{SourceLocator, SourceUnitKind},
@@ -548,7 +548,6 @@ fn section_data(
     json!({
         "key": section.key,
         "title": runs(&section.title),
-        "source": section.source_locator.as_ref().map(source_label),
         "blocks": blocks,
         "figures": figures,
         "figureAfter": figure_after,
