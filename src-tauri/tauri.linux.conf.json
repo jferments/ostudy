@@ -21,7 +21,17 @@
     ]
   },
   "bundle": {
-    "targets": ["deb", "appimage"],
+    "icon": [
+      "icons/icon.png",
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png"
+    ],
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
     "resources": {
       "resources/native/pdfium/*": "native/pdfium/"
     },
@@ -29,11 +39,25 @@
       "deb": {
         "depends": [
           "libusb-1.0-0",
+          "ca-certificates",
           "gstreamer1.0-plugins-good"
         ],
         "files": {
           "/usr/lib/udev/rules.d/70-ostudy-android-usb.rules": "packaging/linux/70-ostudy-android-usb.rules"
         }
+      },
+      "rpm": {
+        "depends": [
+          "libusb-1.0.so.0()(64bit)",
+          "ca-certificates",
+          "(gstreamer1-plugins-good or gstreamer-plugins-good)"
+        ],
+        "files": {
+          "/usr/lib/udev/rules.d/70-ostudy-android-usb.rules": "packaging/linux/70-ostudy-android-usb.rules"
+        }
+      },
+      "appimage": {
+        "bundleMediaFramework": true
       }
     }
   }

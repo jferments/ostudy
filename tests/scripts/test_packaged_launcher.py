@@ -58,6 +58,12 @@ class PackagedLauncherTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bytes differ"):
             LAUNCHER.verify_launcher(self.package, self.built)
 
+    def test_rpm_marker_is_accepted_only_for_an_rpm(self) -> None:
+        self.installed.write_bytes(self.installed.read_bytes().replace(b"VAR_DEB", b"VAR_RPM"))
+        LAUNCHER.verify_launcher(self.package, self.built, "rpm")
+        with self.assertRaisesRegex(ValueError, "bytes differ"):
+            LAUNCHER.verify_launcher(self.package, self.built)
+
     def test_every_other_byte_stays_part_of_the_comparison(self) -> None:
         valid = self.installed.read_bytes()
         for offset in [0, len(valid) - 1]:
