@@ -1,0 +1,73 @@
+# ADR 0062: Free voices read aloud on the device
+
+- **Status:** Accepted
+- **Date:** 2026-10-27
+
+## Context
+
+Lessons, lectures, podcasts and Tutor replies were read aloud only through
+OpenRouter (Drama 3 or Kokoro), so listening cost money and needed an account.
+Set up AI tells learners that what they make themselves is free and that AI
+costs money only when it reads, writes or speaks. The maintainer asked for free
+voices that run locally, naming Kokoro and KittenTTS (2026-10-26), and for a
+short sample of two voices from each model in the repository so the learner
+can hear them and choose which one to install (2026-10-27).
+
+sherpa-onnx `2.0.0`, already linked for speech input (ADR 0061), runs these
+models, but 2.0 removed eSpeak NG. Its English Kokoro and KittenTTS configs
+then speak only words in a lexicon file and skip the rest, which loses exactly
+the technical words study material is full of ("basolateral" in a physiology
+test sentence). sherpa-onnx accepts phonemes as Unicode code points instead of
+text, so the phonemes can come from elsewhere. eSpeak NG itself is GPL-3.0.
+
+## Decision
+
+- One voice model is offered, not bundled: **Kokoro** v1.0 at full
+  precision (Apache-2.0, 354 MB, 14 American and British English voices
+  offered), pinned to a Hugging Face revision of the sherpa-onnx conversion, with every
+  file's size and SHA-256. KittenTTS nano v0.2 (24 MB) was built and
+  sampled too, and the maintainer judged it to sound too poor to offer
+  (2026-10-27); its larger mini model is a 166 MB download, bigger than
+  Kokoro. The catalog and dialog still take more than one model.
+- The 8-bit Kokoro conversion (142 MB) was offered first. The maintainer
+  heard a high-pitched, tinny, metallic sound behind it (2026-10-27): every
+  voice carried a steady tone near 9.6 kHz, 13 to 15 dB above the
+  neighbouring spectrum, which the full-precision model does not have. The
+  8-bit model was also about twice as slow on a CPU.
+- Text becomes phonemes with loqui-g2p `0.4.0` (MIT), a Rust port of misaki,
+  Kokoro's own English G2P, with misaki's lexicons and a small embedded neural
+  model for words they do not hold. Phonemes are cut into sentences of at most 400 characters
+  before they reach the model. Kokoro then read a physiology sentence
+  that Moonshine transcribed back with every technical word right; the
+  repository test does the same when the model is present.
+- A device voice is a speech model in the same catalog as the provider ones
+  (`device/kokoro-v1.0`), chosen in the Voice
+  row as **This device (free)**. It needs no connection, is not accounted as
+  an AI request, and its pieces are kept like any other narration: managed
+  WAV assets keyed by text, engine `device`, model, voice and format `wav`.
+  Lesson voices, podcast hosts and Tutor replies go through the same path.
+- **Free voices on this device** plays a sample of each model, about ten
+  seconds of two of its voices, from `public/voices/device/`. The samples were
+  made with these models and phonemes. **Download and use** downloads the
+  model through the speech input installer, now shared and tracking each
+  model's progress, into `speech-models/<id>` under the application data
+  folder, outside the library and its backups. That installer stays the one
+  HTTP client outside the AI gateway.
+- On a 4-core cloud CPU, Kokoro took about 3 s to speak a 5-second sentence,
+  and longer on a slower computer, so device voices speak pieces of at most 600
+  characters, which start playing sooner.
+- Windows has no device voices, for the reason it has no speech input.
+
+## Consequences
+
+- No migration and no schema change. Existing rows are read as before; a
+  saved device voice is one `speech_settings` row with no connection, which
+  an older build does not know and replaces with its default voice.
+- A lesson keeps the voice it was first read in. A lesson first read through
+  OpenRouter keeps that voice while a connection exists, so choosing a device
+  voice changes lessons not yet read; a lesson whose provider voice has no
+  connection left takes the chosen voice.
+- WAV is larger than the providers' MP3: about 2.9 MB a minute at 24 kHz.
+  Encoding to a smaller format is left for later.
+- The device voices read English only; British voices use misaki's British
+  lexicon.

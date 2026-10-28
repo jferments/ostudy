@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
-import { getSpeechSettings } from "../../ipc/speech";
+import { loadVoice } from "./voiceReady";
 
 /**
  * Whether a lesson voice is set up, so Listen can stay hidden without one.
@@ -12,9 +12,9 @@ export function useVoiceAvailable(): boolean {
   const [available, setAvailable] = useState(false);
 
   useEffect(() => {
-    void latestResult(lane, getSpeechSettings).then(
-      (settings) => {
-        if (settings !== undefined) setAvailable(settings.profileId !== null);
+    void latestResult(lane, loadVoice).then(
+      (voice) => {
+        if (voice !== undefined) setAvailable(voice.ready);
       },
       () => setAvailable(false),
     );

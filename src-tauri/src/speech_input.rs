@@ -8,7 +8,7 @@
 //! hands over 16-bit PCM; the recording is decoded here and dropped as soon as
 //! it has been transcribed.
 
-mod install;
+pub(crate) mod install;
 #[cfg(test)]
 mod tests;
 
@@ -18,9 +18,10 @@ use tauri::State;
 
 use crate::{error::CommandError, paths::AppPaths, platform::speech_recognition};
 
-pub(crate) use install::install_speech_input_model;
+pub(crate) use install::{install_speech_input_model, PinnedModel};
 
 /// One file of a model, as published at the pinned revision.
+#[derive(Debug)]
 pub(crate) struct ModelFile {
     pub name: &'static str,
     pub sha256: &'static str,
@@ -39,19 +40,13 @@ pub(crate) struct SpeechInputModel {
 }
 
 impl SpeechInputModel {
-    pub(crate) fn files(&self) -> [&ModelFile; 3] {
-        [&self.encoder, &self.decoder, &self.tokens]
-    }
-
-    pub(crate) fn download_bytes(&self) -> u64 {
-        self.files().iter().map(|file| file.bytes).sum()
-    }
-
-    pub(crate) fn url(&self, file: &ModelFile) -> String {
-        format!(
-            "https://huggingface.co/{}/resolve/{}/{}",
-            self.repository, self.revision, file.name
-        )
+    pub(crate) fn pinned(&self) -> PinnedModel<'_> {
+        PinnedModel {
+            id: self.id,
+            repository: self.repository,
+            revision: self.revision,
+            files: vec![&self.encoder, &self.decoder, &self.tokens],
+        }
     }
 }
 
@@ -129,12 +124,13 @@ pub fn get_speech_input_status(
 
 pub(crate) fn status(paths: &AppPaths) -> SpeechInputStatusDto {
     let model = &MOONSHINE_BASE_EN;
-    let progress = install::progress();
+    let pinned = model.pinned();
+    let progress = install::progress(&pinned);
     SpeechInputStatusDto {
         supported: SUPPORTED,
         model_label: model.label,
-        download_bytes: model.download_bytes(),
-        installed: SUPPORTED && install::is_installed(paths, model),
+        download_bytes: pinned.download_bytes(),
+        installed: SUPPORTED && install::is_installed(paths, &pinned),
         installing_bytes: progress.received,
         install_error: progress.error,
     }
@@ -149,14 +145,14 @@ pub(crate) async fn transcribe_speech(
     if !SUPPORTED {
         return Err(unsupported());
     }
-    let model = &MOONSHINE_BASE_EN;
-    if !install::is_installed(paths, model) {
+    let model = MOONSHINE_BASE_EN.pinned();
+    if !install::is_installed(paths, &model) {
         return Err(CommandError::new(
             "speech_model_missing",
             "The speech model has not been downloaded yet.",
         ));
     }
-    let directory = install::model_directory(paths, model);
+    let directory = install::model_directory(paths, &model);
     let started = std::time::Instant::now();
     let text = tauri::async_runtime::spawn_blocking(move || {
         recognize(&directory, input.sample_rate, &samples)

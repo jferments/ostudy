@@ -137,6 +137,7 @@ export interface NativeCommandGatewayMap {
   "get_deck": readonly [typeof GatewayModule9.getDeck];
   "get_deck_library_organization": readonly [typeof GatewayModule8.getDeckLibraryOrganization];
   "get_device_sync_state": readonly [typeof GatewayModule10.getDeviceSyncState];
+  "get_device_voices": readonly [typeof GatewayModule39.getDeviceVoices];
   "get_diagnostic_configuration": readonly [typeof GatewayModule11.getDiagnosticConfiguration];
   "get_document_annotations": readonly [typeof GatewayModule12.getDocumentAnnotations];
   "get_document_artifact_job": readonly [typeof GatewayModule42.getDocumentArtifactJob];
@@ -206,6 +207,7 @@ export interface NativeCommandGatewayMap {
   "import_image_set": readonly [typeof GatewayModule22.importImageSet];
   "import_media": readonly [typeof GatewayModule4.importMedia];
   "inspect_image_set": readonly [typeof GatewayModule22.inspectImageSet];
+  "install_device_voice": readonly [typeof GatewayModule39.installDeviceVoice];
   "install_speech_input_model": readonly [typeof GatewayModule40.installSpeechInputModel];
   "join_device_pairing": readonly [typeof GatewayModule10.joinDevicePairing, typeof GatewayModule10.joinUsbDevicePairing];
   "keep_speech_voice": readonly [typeof GatewayModule39.keepSpeechVoice];

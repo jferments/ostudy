@@ -289,10 +289,9 @@ data: [DONE]
 
 "#,
         );
-        second
-            .write_all(b"0\r\n\r\n")
-            .expect("terminal chunk should write");
-        second.flush().expect("successful stream should flush");
+        // The client may close as soon as it reads [DONE], before the
+        // terminal chunk; a broken pipe here is not a failure.
+        let _ = second.write_all(b"0\r\n\r\n").and_then(|()| second.flush());
         (first_request, second_request)
     });
 
