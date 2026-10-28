@@ -439,6 +439,8 @@ describe("LessonVoiceSettings", () => {
 
       fireEvent.change(select("Lesson voice connection"), { target: { value: router } });
       expect(saveSpeechSettings).toHaveBeenCalledWith(router, DRAMA, "", 0);
+      // Let the save settle before the file's environment is torn down.
+      await waitFor(() => expect(select("Lesson voice connection").disabled).toBe(false));
     });
   });
 });
