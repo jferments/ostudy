@@ -254,7 +254,7 @@ export function AiSetupWizard({
             <span className="tw:grid tw:gap-1">
               <strong className="tw:font-semibold">What you make yourself is always free</strong>
               <span className="tw:text-label tw:text-muted-foreground">
-                Flashcards, notes, notebooks, marking up documents, reviews and Progress never cost anything. AI costs money only when it reads your documents, writes for you or speaks.
+                Flashcards, notes, notebooks, marking up documents, reviews and Progress never cost anything. AI costs money only when it reads your documents, writes for you or speaks with an online voice.
               </span>
             </span>
           </p>
@@ -286,7 +286,7 @@ export function AiSetupWizard({
           </p>
           <p className="tw:m-0 tw:flex tw:items-start tw:gap-2 tw:text-label tw:text-muted-foreground">
             <Icon name="mic" size={16} className="tw:mt-0.5 tw:shrink-0" />
-            <span>Talking to the Tutor is turned into text on your device, so it is free and your voice never leaves it. Reading aloud uses OpenRouter's voices for now.</span>
+            <span>Talking to the Tutor is turned into text on your device, so it is free and your voice never leaves it. Reading aloud can be free too: choose <b>This device (free)</b> for Voice in Settings → AI to download the Kokoro voice once.</span>
           </p>
         </>
       );

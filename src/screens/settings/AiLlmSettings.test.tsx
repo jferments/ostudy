@@ -357,6 +357,9 @@ describe("AiLlmSettings", () => {
     expect(
       within(wizard()).getByText(/turned into text on your device, so it is free/u),
     ).toBeTruthy();
+    expect(
+      within(wizard()).getByText(/Reading aloud can be free too/u).textContent,
+    ).toContain("This device (free)");
 
     fireEvent.click(within(wizard()).getByRole("button", { name: "Next" }));
     expect(
