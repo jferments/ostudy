@@ -32,7 +32,10 @@ vi.mock("../../ipc/lessons", () => ({
 }));
 vi.mock("../../ipc/podcasts", () => ({ PODCAST_MINUTES: { default: 15 }, writePodcast: vi.fn() }));
 vi.mock("../../ipc/settings", () => ({ getSettings: vi.fn(async () => ({ lectureAudioWithNewLessons: false })) }));
-vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(async () => ({ profileId: null })) }));
+vi.mock("../../ipc/speech", () => ({
+  getSpeechSettings: vi.fn(async () => ({ profileId: null, modelId: "fish-audio/drama-3", models: [] })),
+  getDeviceVoices: vi.fn(async () => ({ supported: false, models: [] })),
+}));
 
 const EMPTY: lessonsIpc.SubjectLessons = { subjectId: "cardiac", lessons: [] };
 const WRITTEN = {
@@ -122,7 +125,7 @@ describe("useSubjectCourse", () => {
       lessons: [{ id: "a", subjectId: "cardiac", title: "a", revision: 1, written: {}, progress: null }],
     } as unknown as lessonsIpc.SubjectLessons;
     vi.mocked(lessonsIpc.writeSubjectCourse).mockResolvedValue(course);
-    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice" } as speechIpc.SpeechSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice", modelId: "fish-audio/drama-3", models: [] } as unknown as speechIpc.SpeechSettings);
     vi.mocked(lessonsIpc.getLesson).mockResolvedValue({ revisionNumber: 1, content: { steps: [] } } as unknown as lessonsIpc.Lesson);
     vi.mocked(lessonsIpc.getLessonLectureScript).mockResolvedValue(null);
     const lecture = deferred<lessonsIpc.LectureScript>();
@@ -223,7 +226,7 @@ describe("makeLectureAudio", () => {
   };
   const voiceOn = () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue({ lectureAudioWithNewLessons: true } as settingsIpc.AppSettings);
-    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice" } as speechIpc.SpeechSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice", modelId: "fish-audio/drama-3", models: [] } as unknown as speechIpc.SpeechSettings);
   };
 
   beforeEach(() => {
@@ -283,10 +286,10 @@ describe("makeLectureAudio", () => {
 
   it("makes nothing when turned off, without a voice, or stopped", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue({ lectureAudioWithNewLessons: false } as settingsIpc.AppSettings);
-    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice" } as speechIpc.SpeechSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice", modelId: "fish-audio/drama-3", models: [] } as unknown as speechIpc.SpeechSettings);
     await makeLectureAudio(course);
     vi.mocked(settingsIpc.getSettings).mockResolvedValue({} as settingsIpc.AppSettings);
-    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: null } as speechIpc.SpeechSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: null, modelId: "fish-audio/drama-3", models: [] } as unknown as speechIpc.SpeechSettings);
     await makeLectureAudio(course);
     voiceOn();
     expect(await makeLectureAudio(course, true, undefined, () => true)).toBeUndefined();
@@ -296,7 +299,7 @@ describe("makeLectureAudio", () => {
 
   it("follows a study set's own choice over the setting", async () => {
     vi.mocked(settingsIpc.getSettings).mockResolvedValue({ lectureAudioWithNewLessons: false } as settingsIpc.AppSettings);
-    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice" } as speechIpc.SpeechSettings);
+    vi.mocked(speechIpc.getSpeechSettings).mockResolvedValue({ profileId: "voice", modelId: "fish-audio/drama-3", models: [] } as unknown as speechIpc.SpeechSettings);
     await makeLectureAudio(course, false);
     expect(lessonsIpc.writeLessonLectureScript).not.toHaveBeenCalled();
     await makeLectureAudio(course, true);

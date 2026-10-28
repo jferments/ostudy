@@ -173,7 +173,11 @@ fn the_voice_defaults_to_drama_through_the_document_writing_connection() {
     assert_eq!(unset.model_id, DRAMA);
     assert_eq!(unset.voice, "builtin:relaxed-man");
     assert_eq!(unset.revision, 0);
-    assert_eq!(unset.models.len(), 2);
+    assert_eq!(unset.models.len(), 3);
+    assert_eq!(
+        unset.models.iter().filter(|model| model.on_device).count(),
+        1
+    );
 
     add_profile(
         &database,
@@ -545,4 +549,56 @@ fn each_podcast_host_speaks_in_their_own_kept_voice() {
         narrate_turn("0.2").unwrap_err().code,
         "podcast_turn_missing"
     );
+}
+
+#[test]
+fn a_voice_on_the_device_needs_no_connection_and_is_kept_as_its_own_audio() {
+    let database = library();
+    let paths = temporary_paths("device");
+    let kokoro = crate::device_voices::KOKORO.id;
+    // No OpenRouter connection at all: the voice on the device can be chosen.
+    let saved = save(&database, None, kokoro, "bm_george", 0).unwrap();
+    assert_eq!(saved.model_id, kokoro);
+    assert_eq!(saved.profile_id, None);
+    assert!(save(&database, None, kokoro, "expr-voice-4-m", saved.revision).is_err());
+
+    let lesson_id = lesson(&database);
+    let refused = narrate(&database, &paths, step_input(&lesson_id, "two-limbs")).unwrap_err();
+    let expected = if crate::device_voices::SUPPORTED {
+        "device_voice_missing"
+    } else {
+        "device_voice_unsupported"
+    };
+    assert_eq!(refused.code, expected);
+    assert!(refused.message.contains("Kokoro"), "{}", refused.message);
+
+    // Kept audio from the device is WAV under its own engine, never taken for
+    // a provider's.
+    let model = speech::speech_model(kokoro).unwrap();
+    let voice = Voice {
+        engine: DEVICE_ENGINE,
+        model,
+        voice: "bm_george".to_string(),
+        reference: None,
+    };
+    let wav = crate::platform::speech_synthesis::wav(&[0.0; 2400], 24_000);
+    let segment = keep_segment(&database, &paths, &voice, "Hello.", &wav).unwrap();
+    database
+        .with_connection(|connection| {
+            let (engine, format): (String, String) = connection
+                .query_row(
+                    "SELECT engine, format FROM speech_segments WHERE asset_id = ?1",
+                    params![segment.asset_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(CommandError::database)?;
+            assert_eq!((engine.as_str(), format.as_str()), ("device", "wav"));
+            let openrouter = Voice {
+                engine: "openrouter",
+                ..voice
+            };
+            assert!(kept_segment(connection, &openrouter, "Hello.")?.is_none());
+            Ok(())
+        })
+        .unwrap();
 }

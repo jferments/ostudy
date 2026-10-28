@@ -127,7 +127,6 @@ struct EffectiveExportSection {
     /// The document guide's topic id or the collection guide's block key.
     key: String,
     title: String,
-    source_locator: Option<SourceLocator>,
     body_lines: Vec<ExportBlock>,
     notes: Vec<String>,
     figures: Vec<ExportFigure>,
@@ -256,6 +255,20 @@ pub(crate) fn prepare_document_study_guide_pdf(
         annotation_count: summary.annotation_count,
         math_source_fallback: summary.math_source_fallback,
     })
+}
+
+/// Lays out a document's guide as the reader and export do, with its figures
+/// and notes, for the headless guide evaluation.
+#[cfg(feature = "guide-eval")]
+pub(crate) fn render_document_guide_pdf(
+    database: &Database,
+    paths: &AppPaths,
+    runtime: &PdfRenderRuntime,
+    document_id: &str,
+    destination: &std::path::Path,
+) -> Result<(), CommandError> {
+    let effective = load_effective_export(database, paths, Some(runtime), document_id, true)?;
+    guide_typst::render(&effective, StudyGuidePdfTheme::Sage, destination)
 }
 
 #[tauri::command]
@@ -584,7 +597,6 @@ fn compose_effective_export(
         sections.push(EffectiveExportSection {
             key: section.topic_id.clone(),
             title,
-            source_locator: Some(section.source_locator.clone()),
             body_lines: body_override.map_or_else(
                 || generated_section_blocks(section, figures.is_empty()),
                 |replacement| vec![ExportBlock::Paragraph(replacement)],
@@ -737,7 +749,6 @@ fn compose_effective_collection_export(
         sections.push(EffectiveExportSection {
             key: section.block_key.clone(),
             title,
-            source_locator: section.source_locator.clone(),
             body_lines: body_override.map_or_else(
                 || generated_content_blocks(&section.content, figures.is_empty()),
                 |replacement| vec![ExportBlock::Paragraph(replacement)],
@@ -830,9 +841,14 @@ fn generated_content_blocks(
         blocks.push(ExportBlock::Heading("Key points".to_string()));
         blocks.push(ExportBlock::Bullets(content.key_points.clone()));
     }
+    // An explanation of how or why stands apart from the key points in a box
+    // of its own, so a section does not read as one run of text.
     for explanation in &content.explanations {
-        blocks.push(ExportBlock::Heading(explanation.heading.clone()));
-        blocks.push(ExportBlock::Paragraph(explanation.body.clone()));
+        blocks.push(ExportBlock::Callout {
+            label: "How it works".to_string(),
+            title: explanation.heading.clone(),
+            body: explanation.body.clone(),
+        });
     }
     if !content.important_terms.is_empty() {
         blocks.push(ExportBlock::Heading("Important terms".to_string()));
@@ -914,19 +930,6 @@ fn generated_content_blocks(
     blocks
 }
 
-fn source_label(locator: &SourceLocator) -> String {
-    let label = if locator.unit_numbers.len() == 1 {
-        locator.unit_kind.singular_label()
-    } else {
-        locator.unit_kind.plural_label()
-    };
-    match (locator.unit_numbers.first(), locator.unit_numbers.last()) {
-        (Some(first), Some(last)) if first == last => format!("Source {label} {first}"),
-        (Some(first), Some(last)) => format!("Source {label} {first}–{last}"),
-        _ => format!("Source {}", locator.unit_kind.plural_label()),
-    }
-}
-
 fn portable_filename(value: &str) -> String {
     portable_filename_or(value, "study-guide")
 }
@@ -1000,9 +1003,6 @@ mod tests {
             sections: vec![EffectiveExportSection {
                 key: "topic-preload".to_string(),
                 title: "Preload".to_string(),
-                source_locator: Some(
-                    SourceLocator::new(SourceUnitKind::Page, vec![2, 3], None).unwrap(),
-                ),
                 body_lines: vec![ExportBlock::Paragraph(
                     "Preload reflects ventricular filling before systole.".to_string(),
                 )],
@@ -1032,7 +1032,6 @@ mod tests {
         EffectiveExportSection {
             key: format!("topic-{title}"),
             title: title.to_string(),
-            source_locator: Some(SourceLocator::new(SourceUnitKind::Page, vec![4], None).unwrap()),
             body_lines: vec![
                 ExportBlock::Paragraph(
                     "Afterload is the load the ventricle ejects against.".into(),
@@ -1194,14 +1193,6 @@ mod tests {
     }
 
     #[test]
-    fn source_labels_use_natural_unit_names() {
-        let page = SourceLocator::new(SourceUnitKind::Page, vec![3], None).unwrap();
-        let slides = SourceLocator::new(SourceUnitKind::Slide, vec![4, 5], None).unwrap();
-        assert_eq!(source_label(&page), "Source page 3");
-        assert_eq!(source_label(&slides), "Source slides 4–5");
-    }
-
-    #[test]
     fn rendered_pdf_opens_on_a_cover_and_omits_internal_guide_revision() {
         let (_, pages) = rendered_pages(&test_export(), StudyGuidePdfTheme::Navy);
         let all = pages.join("\n");
@@ -1244,17 +1235,47 @@ mod tests {
     }
 
     #[test]
+    fn a_long_guide_keeps_its_cram_sheet_to_one_page() {
+        let mut export = test_export();
+        for index in 0..30 {
+            let mut section = rich_section(&format!("Section {index}"));
+            section.body_lines[2] = ExportBlock::Bullets(
+                (0..8)
+                    .map(|point| {
+                        format!(
+                            "Key point {point} of section {index} states one idea in about twenty words, as a guide's key points do."
+                        )
+                    })
+                    .collect(),
+            );
+            export.sections.push(section);
+        }
+        let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Sage);
+        let cram = pages
+            .iter()
+            .position(|page| page.contains("The key ideas of the whole guide on one page."))
+            .expect("cram sheet page");
+        // The next page is the self-test, and every section is on the sheet.
+        assert!(pages[cram + 1].contains("answers follow the questions"));
+        assert!(pages[cram].contains("Section 0") && pages[cram].contains("Section 29"));
+        assert!(pages[cram].contains("Key point 0 of section 29"));
+    }
+
+    #[test]
     fn cram_sheet_and_self_test_come_from_the_guide_content() {
         let mut export = test_export();
         export.sections.push(rich_section("Afterload"));
         let (_, pages) = rendered_pages(&export, StudyGuidePdfTheme::Navy);
         let cram = pages
             .iter()
-            .find(|page| page.contains("The whole guide on one page."))
+            .find(|page| page.contains("The key ideas of the whole guide on one page."))
             .expect("cram sheet page");
         assert!(cram.contains("Frank-Starling mechanism"));
         assert!(cram.contains("Higher afterload lowers stroke volume."));
         assert!(cram.contains("Afterload is not filling."));
+        // Each section's key points, under its title.
+        assert!(cram.contains("Raised by hypertension."));
+        assert!(cram.contains("Afterload"));
         let test_page = pages
             .iter()
             .find(|page| page.contains("answers follow the questions"))
@@ -1281,9 +1302,6 @@ mod tests {
         export.sections.push(EffectiveExportSection {
             key: "topic-raas".to_string(),
             title: "Renin–angiotensin system".to_string(),
-            source_locator: Some(
-                SourceLocator::new(SourceUnitKind::Page, vec![18, 19], None).unwrap(),
-            ),
             body_lines: vec![ExportBlock::Paragraph(
                 "Renin–angiotensin signaling links vascular tone with sodium balance.".to_string(),
             )],
@@ -1460,7 +1478,6 @@ mod tests {
             sections.push(EffectiveExportSection {
                 key: format!("topic-{i}"),
                 title: format!("Section {} about tubular handling", i + 1),
-                source_locator: None,
                 body_lines: vec![
                     ExportBlock::Paragraph("Renal excretion is the net result of filtration, reabsorption and secretion.".to_string()),
                     ExportBlock::Heading("Key points".to_string()),

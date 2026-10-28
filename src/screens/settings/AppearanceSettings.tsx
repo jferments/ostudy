@@ -53,8 +53,8 @@ export function AppearanceSettings({ draft, update }: AppearanceSettingsProps) {
         </div>
       </Panel>
 
-      <Panel className="tw:col-span-full" title="Study guide PDF"
-        description="How a study guide looks when you export it as a PDF.">
+      <Panel className="tw:col-span-full" title="Study guides"
+        description="The study guide theme is how a guide looks both when you read it and when you save it as a PDF.">
         <GuidePdfThemePicker value={draft.guidePdfTheme ?? "sage"} onChange={(guidePdfTheme) => update({ guidePdfTheme })} />
         <SwitchRow label="Include my guide and section notes"
           checked={draft.guidePdfIncludeNotes ?? true} onChange={(guidePdfIncludeNotes) => update({ guidePdfIncludeNotes })} />

@@ -6,7 +6,7 @@ import {
   cancelDocumentStudyGuideGeneration, discardDocumentStudyGuideOverlay,
   generateDocumentStudyGuide, getDocumentStudyGuide, getDocumentTopicCardIds,
   getDocumentTopicCardProjection, openDocumentStudyGuidePdf, saveDocumentStudyGuideOverlay,
-  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type TopicCardProjection,
+  type DocumentStudyGuide, type DocumentStudyGuideSection, type StudyGuideOverlay, type StudyGuidePdfTheme, type TopicCardProjection,
 } from "../ipc/studyGuides";
 import { getStudyGuideReading, openStudyGuideSection, setStudyGuideSectionRead, type StudyGuideReading } from "../ipc/studyGuideReading";
 import { TutorEntryButton } from "./tutor/TutorEntryButton";
@@ -32,7 +32,7 @@ import {
 import type { CheckProgressMap } from "./study-guides/StudyGuideContent";
 import { GuideCanvas, type GuideCanvasLeave, type GuideCanvasLinkActions } from "./study-guides/GuideCanvas";
 import {
-  GUIDE_PAGE_STYLES, type GuidePageStyle, readGuidePageStyle, saveGuidePageStyle,
+  GUIDE_PAGE_STYLES, type GuidePageStyle, readsGuidesAsPlainText, saveReadsGuidesAsPlainText,
 } from "./study-guides/guidePageStyle";
 
 interface StudyGuideDialogProps extends GuideCanvasLinkActions {
@@ -40,6 +40,9 @@ interface StudyGuideDialogProps extends GuideCanvasLinkActions {
   /** What the library knows about the source file, for its kind badge and length. */
   source?: GuideSourceSummary | null;
   showToast: ShowToast;
+  /** The study guide theme from Settings; choosing another here changes that setting. */
+  theme?: StudyGuidePdfTheme;
+  onThemeChange?: (theme: StudyGuidePdfTheme) => void;
   onPracticeCards: (cardIds: string[]) => Promise<void>; onClose: () => void;
 }
 interface EditingState { topicId: string | null; mode: EditingMode; initialValue: string; }
@@ -50,7 +53,9 @@ interface EditingState { topicId: string | null; mode: EditingMode; initialValue
  * Chapter reader, an overview page and one page per section, with the outline beside them on wide
  * screens and in a Contents sheet on narrower ones.
  */
-export function StudyGuideDialog({ documentId, documentTitle, source = null, showToast, onPracticeCards, onClose, ...links }: StudyGuideDialogProps) {
+export function StudyGuideDialog({
+  documentId, documentTitle, source = null, showToast, theme = "sage", onThemeChange, onPracticeCards, onClose, ...links
+}: StudyGuideDialogProps) {
   const confirm = useConfirm();
   const tutor = useOptionalTutor();
   const { layoutMode } = useLayoutMode();
@@ -65,7 +70,8 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   const [isRemaking, setIsRemaking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditingState | null>(null);
-  const [pageStyle, setPageStyle] = useState<GuidePageStyle>(readGuidePageStyle);
+  const [plainText, setPlainText] = useState(readsGuidesAsPlainText);
+  const pageStyle: GuidePageStyle = plainText ? "plain" : theme;
   /** While the canvas is open: saves its pending marks, then does what is asked. */
   const canvasLeave = useRef<GuideCanvasLeave | null>(null);
   const [contentsOpen, setContentsOpen] = useState(false);
@@ -201,7 +207,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
   async function openInPdfReader(): Promise<void> {
     if (!guide || isOpeningPdf) return;
     setIsOpeningPdf(true);
-    try { await openDocumentStudyGuidePdf(documentId, pageStyle === "plain" ? "navy" : pageStyle); }
+    try { await openDocumentStudyGuidePdf(documentId, theme); }
     catch (error: unknown) { showToast("error", getErrorMessage(error)); }
     finally { setIsOpeningPdf(false); }
   }
@@ -286,8 +292,9 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
 
   function choosePageStyle(style: GuidePageStyle): void {
     const choose = () => {
-      setPageStyle(style);
-      saveGuidePageStyle(style);
+      setPlainText(style === "plain");
+      saveReadsGuidesAsPlainText(style === "plain");
+      if (style !== "plain" && style !== theme) onThemeChange?.(style);
     };
     // A new theme lays the pages out again, so the marks are saved first.
     const leave = canvasLeave.current;
@@ -298,7 +305,7 @@ export function StudyGuideDialog({ documentId, documentTitle, source = null, sho
     id: `style-${style.value}`, label: style.value === "plain" ? "Plain text" : style.name, checked: style.value === pageStyle,
     onSelect: () => choosePageStyle(style.value),
   }));
-  const pageStyleName = pageStyle === "plain" ? "Plain text" : GUIDE_PAGE_STYLES.find((style) => style.value === pageStyle)?.name ?? "Navy";
+  const pageStyleName = pageStyle === "plain" ? "Plain text" : GUIDE_PAGE_STYLES.find((style) => style.value === pageStyle)?.name ?? "Sage";
   const guideMenuItems: OverflowMenuItem[] = guide ? [
     // A phone's bar has no room for the page menu, so its styles join this one.
     ...(layoutMode === "compact" ? pageStyleItems.map((item) => ({ ...item, label: item.id === "style-plain" ? "Read as plain text" : `${item.label} pages` })) : []),

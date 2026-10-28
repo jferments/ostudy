@@ -771,6 +771,17 @@ pub(crate) async fn leased_install_speech_input_model(
     crate::speech_input::install_speech_input_model(&app.state::<crate::paths::AppPaths>()).await
 }
 
+#[tauri::command(rename = "install_device_voice")]
+pub(crate) async fn leased_install_device_voice(
+    app: AppHandle,
+    input: serde_json::Value,
+    library_generation: Option<u64>,
+) -> Result<impl tauri::ipc::IpcResponse, CommandError> {
+    let _lease = super::enter(library_generation)?;
+    let input = serde_json::from_value(input).map_err(CommandError::serialization)?;
+    crate::device_voices::install_device_voice(&app.state::<crate::paths::AppPaths>(), input).await
+}
+
 #[tauri::command(rename = "transcribe_speech")]
 pub(crate) async fn leased_transcribe_speech(
     app: AppHandle,

@@ -15,7 +15,7 @@ import { openExternalUrl } from "../../platform/externalLinks";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { AiLlmSettings } from "./AiLlmSettings";
 
-vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn() }));
+vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(), getDeviceVoices: vi.fn(async () => ({ supported: false, models: [] })) }));
 let browserSignIn: "available" | "unavailable" = "unavailable";
 vi.mock("../../platform/PlatformProvider", () => ({
   usePlatformCapabilities: () => ({
@@ -40,7 +40,7 @@ function speech(overrides: Partial<SpeechSettings> = {}): SpeechSettings {
         label: "Drama 3",
         voices: [],
         defaultVoice: "",
-        clonesVoices: true,
+        clonesVoices: true, onDevice: false,
       },
     ],
     connections: [{ id: profileId, name: "OpenRouter" }],

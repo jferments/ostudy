@@ -22,8 +22,8 @@ use typst::{
 use typst_layout::PagedDocument;
 
 use super::{
-    chemistry, citations, key_terms, math_layout, math_source, source_label,
-    EffectiveExportSection, EffectiveGuideExport, ExportBlock,
+    chemistry, key_terms, math_layout, math_source, EffectiveExportSection, EffectiveGuideExport,
+    ExportBlock,
 };
 use crate::{
     document_domain::{SourceLocator, SourceUnitKind},
@@ -41,7 +41,7 @@ pub(crate) fn plain_sans_font() -> &'static [u8] {
     BUNDLED_FONTS[0]
 }
 const MAX_CRAM_TERMS: usize = 40;
-const MAX_CRAM_WARNINGS: usize = 8;
+const MAX_CRAM_WARNINGS: usize = 5;
 // Kept LaTeX has no natural break points, so long source gets zero-width break
 // opportunities at this interval.
 const SOURCE_BREAK_CHARS: usize = 48;
@@ -140,6 +140,11 @@ pub(super) struct CanvasAnchor {
     pub(super) page: usize,
     pub(super) x: f64,
     pub(super) y: f64,
+    /// A source's size on the page, for the button over it.
+    #[serde(default)]
+    pub(super) w: Option<f64>,
+    #[serde(default)]
+    pub(super) h: Option<f64>,
 }
 
 /// The whole guide laid out exactly as the PDF export lays it out, as one SVG
@@ -471,7 +476,7 @@ fn guide_data(
         "mathNoticeText": math_source::NOTICE,
         "chapters": chapters,
         "sections": sections,
-        "keyIdeas": cram.key_ideas,
+        "cram": cram.groups,
         "terms": cram.terms,
         "warnings": cram.warnings,
         "checks": cram.checks,
@@ -493,32 +498,28 @@ fn section_data(
         .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
         .map_or(0, |heading| heading + 1)
         .min(section.body_lines.len().saturating_sub(1));
-    let key_points = section
-        .body_lines
-        .iter()
-        .position(|block| matches!(block, ExportBlock::Heading(heading) if heading == "Key points"))
-        .map(|heading| heading + 1);
     let citations = section.citations.as_ref().filter(|cited| !cited.is_empty());
     let blocks = section
         .body_lines
         .iter()
-        .enumerate()
-        .map(|(index, block)| {
+        .map(|block| {
             let lead = !lead_used && matches!(block, ExportBlock::Paragraph(_));
             lead_used = true;
-            let data = match (block, citations) {
-                (ExportBlock::Bullets(items), Some(cited)) if Some(index) == key_points => {
-                    json!({ "kind": "bullets", "items": cited_items(&section.key, items, cited) })
-                }
-                _ => block_data(block, lead),
-            };
-            emphasise(data, &mut section_terms)
+            emphasise(block_data(block, lead), &mut section_terms)
         })
         .collect::<Vec<_>>();
+    // In page order: with no numbers in the text, the line reads as a list.
     let sources = citations.map_or_else(Vec::new, |cited| {
-        cited
-            .sources
-            .iter()
+        let mut sources = cited.sources.iter().collect::<Vec<_>>();
+        sources.sort_by_key(|source| {
+            source
+                .locator
+                .as_ref()
+                .and_then(|locator| locator.unit_numbers.iter().min().copied())
+                .unwrap_or(i64::MAX)
+        });
+        sources
+            .into_iter()
             .map(|source| {
                 json!({
                     "number": source.number,
@@ -547,34 +548,12 @@ fn section_data(
     json!({
         "key": section.key,
         "title": runs(&section.title),
-        "source": section.source_locator.as_ref().map(source_label),
         "blocks": blocks,
         "figures": figures,
         "figureAfter": figure_after,
         "sources": sources,
         "notes": run_list(&section.notes),
     })
-}
-
-/// Key points with their source numbers after them, as footnote marks are.
-fn cited_items(key: &str, items: &[String], cited: &citations::SectionCitations) -> Value {
-    Value::Array(
-        items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let mut item_runs = runs(item);
-                if let (Value::Array(list), Some(numbers)) =
-                    (&mut item_runs, cited.key_points.get(index))
-                {
-                    if !numbers.is_empty() {
-                        list.push(json!({ "cite": numbers, "key": key }));
-                    }
-                }
-                item_runs
-            })
-            .collect(),
-    )
 }
 
 /// "p. 12", "pp. 12–14" or "slide 3": what a source number points at, short
@@ -700,11 +679,13 @@ fn term_list(terms: &[(String, String)]) -> Value {
     )
 }
 
-/// End-of-guide review pages, gathered from the guide's own content: key-idea
-/// callouts, terms, warnings and misconceptions, and every retrieval check.
+/// End-of-guide review pages, gathered from the guide's own content. The cram
+/// sheet holds each section's key idea and key points under its number, then
+/// the guide's terms and warnings; the template sets it as small as one page
+/// needs. The self-test holds every retrieval check.
 #[derive(Default)]
 struct CramSheet {
-    key_ideas: Vec<Value>,
+    groups: Vec<Value>,
     terms: Vec<Value>,
     warnings: Vec<Value>,
     checks: Vec<Value>,
@@ -714,17 +695,21 @@ impl CramSheet {
     fn collect(export: &EffectiveGuideExport) -> Self {
         let mut sheet = Self::default();
         let mut seen_terms = std::collections::HashSet::new();
-        for section in &export.sections {
+        let numbers = section_numbers(export);
+        for (index, section) in export.sections.iter().enumerate() {
+            let mut ideas = Vec::new();
+            let mut points = Vec::new();
             let mut previous_heading = None::<&str>;
             for block in &section.body_lines {
                 match block {
-                    ExportBlock::Callout { label, title, body } if label == "Key idea" => {
-                        sheet
-                            .key_ideas
-                            .push(json!({ "title": runs(title), "body": runs(body) }));
+                    ExportBlock::Callout { label, body, .. } if label == "Key idea" => {
+                        ideas.push(runs(body));
                     }
                     ExportBlock::Callout { label, body, .. } if label == "Watch out" => {
                         sheet.warnings.push(runs(body));
+                    }
+                    ExportBlock::Bullets(items) if previous_heading == Some("Key points") => {
+                        points.extend(items.iter().map(|item| runs(item)));
                     }
                     ExportBlock::Bullets(items)
                         if previous_heading == Some("Common misconceptions") =>
@@ -752,11 +737,36 @@ impl CramSheet {
                     _ => None,
                 };
             }
+            if ideas.is_empty() && points.is_empty() {
+                continue;
+            }
+            sheet.groups.push(json!({
+                "number": numbers[index],
+                "title": runs(&section.title),
+                "ideas": ideas,
+                "points": points,
+            }));
         }
         sheet.terms.truncate(MAX_CRAM_TERMS);
         sheet.warnings.truncate(MAX_CRAM_WARNINGS);
         sheet
     }
+}
+
+/// Each section's number as its heading prints it: "2.3" in a guide with
+/// chapters, "4" in one without.
+fn section_numbers(export: &EffectiveGuideExport) -> Vec<String> {
+    let mut numbers = (1..=export.sections.len())
+        .map(|number| number.to_string())
+        .collect::<Vec<_>>();
+    for (chapter, entry) in export.chapters.iter().enumerate() {
+        for (position, &section) in entry.section_indices.iter().enumerate() {
+            if let Some(number) = numbers.get_mut(section) {
+                *number = format!("{}.{}", chapter + 1, position + 1);
+            }
+        }
+    }
+    numbers
 }
 
 #[cfg(test)]

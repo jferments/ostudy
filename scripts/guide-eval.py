@@ -152,6 +152,9 @@ def command_generate(args: argparse.Namespace) -> int:
                    "--model", args.model, "--reasoning", args.reasoning]
         if args.allow_insecure_http:
             command.append("--allow-insecure-http")
+        # The guide as a learner sees it: its boxes, tables, figures and cram
+        # sheet are judged by looking at these pages, not from the text alone.
+        command.append("--pdf")
         print(f"generate {entry['id']} ...", flush=True)
         env = dict(os.environ)
         env.setdefault("OSTUDY_ROOT_DIR", str(ROOT))
@@ -275,6 +278,36 @@ def key_idea_score(verdict: dict[str, Any] | None) -> float | None:
     return 100.0 * sum(credit.get(i["status"], 0.0) for i in ideas) / len(ideas)
 
 
+# What a section shows besides its key points. A guide that drops these reads
+# as a wall of text even when its words score well, so `compare` flags a fall.
+BOX_CATEGORIES = ("callouts", "importantTerms", "explanations", "workedExamples")
+STRUCTURE_DROP = 0.2
+
+
+def structure_metrics(sections: list[dict[str, Any]]) -> dict[str, Any]:
+    contents = [section.get("content") or {} for section in sections]
+    count = len(contents) or 1
+    boxed = sum(any(content.get(key) for key in BOX_CATEGORIES) for content in contents)
+    tables = sum(bool(content.get("tables")) for content in contents)
+    plain = sum(not any(content.get(key) for key in BOX_CATEGORIES + ("tables",)) for content in contents)
+    return {
+        "boxedSectionShare": round(boxed / count, 2),
+        "tableSectionShare": round(tables / count, 2),
+        "plainSections": plain,
+    }
+
+
+def structure_regressions(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """Falls in structure from one run to the next, as readable lines."""
+    regressions = []
+    b = (before.get("metrics") or {}).get("structure") or {}
+    a = (after.get("metrics") or {}).get("structure") or {}
+    for key, name in (("boxedSectionShare", "sections with a box"), ("tableSectionShare", "sections with a table")):
+        if key in b and key in a and b[key] - a[key] >= STRUCTURE_DROP:
+            regressions.append(f"{name} fell from {b[key]:.0%} to {a[key]:.0%}")
+    return regressions
+
+
 def deterministic_metrics(outcome: dict[str, Any]) -> dict[str, Any]:
     guide = outcome.get("guide") or {}
     chunks = (outcome.get("source") or {}).get("chunks", [])
@@ -307,6 +340,7 @@ def deterministic_metrics(outcome: dict[str, Any]) -> dict[str, Any]:
         if source_units else None,
         "repeatedSentences": repeated,
         "sectionsUsingCategory": categories,
+        "structure": structure_metrics(sections),
     }
 
 
@@ -533,10 +567,10 @@ def render_summary(summary: dict[str, Any]) -> str:
              f"rubric v{summary['rubricVersion']}.", "",
              f"**Mean score: {fmt(summary['meanScore'])} / 100**", "",
              "| Document | Score | Accuracy | Key ideas | Distillation | Concision | Support "
-             "| Readability | Organization | Pointers | Major errors | Sections | Words | Length ratio "
-             "| Tokens | Cost |",
+             "| Readability | Organization | Pointers | Major errors | Sections | Boxed | Tables "
+             "| Words | Length ratio | Tokens | Cost |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- "
-             "| --- | --- |"]
+             "| --- | --- | --- | --- |"]
     for d in summary["documents"]:
         c = d.get("criteria", {})
         m = d.get("metrics", {})
@@ -545,7 +579,9 @@ def render_summary(summary: dict[str, Any]) -> str:
             f"| {d['document']}", fmt(d.get("score")), fmt(c.get("accuracy")), fmt(c.get("keyIdeas")),
             fmt(c.get("distillation")), fmt(c.get("concision")), fmt(c.get("sourceSupport")),
             fmt(c.get("readability")), fmt(c.get("organization")), fmt(c.get("pointers")),
-            fmt(d.get("majorUnsupportedClaims")), fmt(m.get("sectionCount")), fmt(m.get("guideWords")),
+            fmt(d.get("majorUnsupportedClaims")), fmt(m.get("sectionCount")),
+            fmt((m.get("structure") or {}).get("boxedSectionShare")),
+            fmt((m.get("structure") or {}).get("tableSectionShare")), fmt(m.get("guideWords")),
             fmt(m.get("lengthRatio")),
             fmt(u.get("totalTokens")), fmt(u.get("cost")) + " |"]))
     for d in summary["documents"]:
@@ -575,7 +611,10 @@ def command_compare(args: argparse.Namespace) -> int:
         rows.setdefault(d["document"], [None, None])[1] = d
     lines = [f"| Document | {before['run']['label']} | {after['run']['label']} | Change "
              "| Major errors | Length ratio | Tokens |", "| --- | --- | --- | --- | --- | --- | --- |"]
+    regressions = []
     for doc_id, (b, a) in rows.items():
+        if b and a:
+            regressions += [f"{doc_id}: {line}" for line in structure_regressions(b, a)]
         bs, as_ = (b or {}).get("score"), (a or {}).get("score")
         change = f"{as_ - bs:+.1f}" if bs is not None and as_ is not None else "-"
         tokens = [((x or {}).get("usage") or {}).get("totalTokens") for x in (b, a)]
@@ -586,6 +625,10 @@ def command_compare(args: argparse.Namespace) -> int:
                      f"{fmt(tokens[0])} → {fmt(tokens[1])} |")
     lines.append(f"| **Mean** | {fmt(before['meanScore'])} | {fmt(after['meanScore'])} | | | | |")
     print("\n".join(lines))
+    if regressions:
+        print("\nStructure regressions (look at the rendered guide.pdf pages before merging):")
+        print("\n".join(f"- {line}" for line in regressions))
+        return 4
     return 0
 
 

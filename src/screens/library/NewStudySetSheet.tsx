@@ -8,7 +8,7 @@ import type { StagedExternalFile } from "../../ipc/externalFiles";
 import { generationInstructionsError } from "../../ipc/generationInstructions";
 import { getSettings } from "../../ipc/settings";
 import { SOURCE_NOTES_PROMPT_MAX_CHARS, writeSourceNotes } from "../../ipc/sourceNotes";
-import { getSpeechSettings } from "../../ipc/speech";
+import { loadVoice } from "../lessons/voiceReady";
 import {
   createSubject,
   getSubjectLibrary,
@@ -81,10 +81,10 @@ export function NewStudySetSheet({ subjects, subjectId: initialSubject, onClose,
   // Lecture audio starts as the setting says, when a voice is set up.
   useEffect(() => {
     let live = true;
-    void Promise.all([getSettings(), getSpeechSettings()]).then(
-      ([settings, speech]) => {
+    void Promise.all([getSettings(), loadVoice()]).then(
+      ([settings, voice]) => {
         if (!live) return;
-        const available = speech.profileId !== null;
+        const available = voice.ready;
         setAudio({ available, on: available && settings.lectureAudioWithNewLessons !== false });
       },
       () => undefined,

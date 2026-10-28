@@ -70,9 +70,9 @@
         #for entry in contents-entries.slice(0, calc.min(cover-limit, contents-entries.len())) [#contents-line(entry) #v(0.6mm)]
         #if contents-entries.len() > cover-limit [
           #text(font: ui, size: 8pt, fill: T.muted)[and #(contents-entries.len() - cover-limit) more on the next page]]
-        #if data.keyIdeas.len() + data.checks.len() > 0 [
+        #if data.cram.len() + data.checks.len() > 0 [
           #v(2mm)
-          #if data.keyIdeas.len() > 0 [#contents-line((label: "cram", number: "", title: ((t: "Cram sheet"),))) #v(0.6mm)]
+          #if data.cram.len() > 0 [#contents-line((label: "cram", number: "", title: ((t: "Cram sheet"),))) #v(0.6mm)]
           #if data.checks.len() > 0 [#contents-line((label: "self-test", number: "", title: ((t: "Self-test"),)))]
         ]
       ])
@@ -96,8 +96,8 @@
 #set page(paper: "a4", fill: paper, margin: (top: 18mm, bottom: 15mm, x: 16mm),
   header: context [
     #set text(font: ui, size: 7pt, fill: T.muted)
-    #text(weight: 600, fill: T.primary, data.title) #h(1fr) #data.source
-    #v(-2mm) #hairline
+    #block(below: 1.6mm, [#text(weight: 600, fill: T.primary, data.title) #h(1fr) #data.source])
+    #hairline
   ],
   footer: context [#set text(font: ui, size: 7.5pt, fill: T.muted)
     #h(1fr) #counter(page).display() #h(1fr)])
@@ -118,17 +118,19 @@
 
 #let section-view(s, number, name) = {
   let h = heading(level: 2, outlined: true, bookmarked: true)[#text(font: head, size: 14pt, weight: 700, fill: T.accent, number) #h(1.4mm)#text(font: head, size: 14pt, weight: 700, fill: T.primary, rt(s.title))]
-  block(above: 6mm, below: 3mm, sticky: true, grid(columns: (1fr, auto, practice-width), column-gutter: 4mm, align: (left + bottom, right + bottom, right + bottom),
+  block(above: 6mm, below: 3mm, sticky: true, grid(columns: (1fr, practice-width), column-gutter: 4mm, align: (left + bottom, right + bottom),
     [#anchor("section", s.key)#if name != none [#h #label(name)] else { h }],
-    if s.source != none { text(font: ui, size: 7.5pt, fill: T.muted, s.source) },
     box(width: practice-width, height: practice-height)[#anchor("practice", s.key)]))
   // Figures go with the key points they illustrate: the text from there on
   // flows around them.
   let at = s.figureAfter
   let start = if s.blocks.len() == 0 { 0 } else if s.blocks.at(at).kind == "bullets" { at } else { at + 1 }
+  // The heading over those key points goes with them into the flow, so it
+  // sits beside the figure at the top of their block.
+  if start > 0 and start < s.blocks.len() and s.blocks.at(start - 1).kind == "heading" { start -= 1 }
   for b in s.blocks.slice(0, start) { block-view(b) }
   flow(units-of(s.blocks.slice(start)), s.figures, number)
-  if s.sources.len() > 0 { sources-view(s.sources) }
+  if s.sources.len() > 0 { sources-view(s.key, s.sources) }
   if s.notes.len() > 0 {
     tile(fill: T.highlight-soft)[#eyebrow("My notes", color: T.highlight-ink) #v(1mm) #bullets(s.notes)]
   }
@@ -160,40 +162,99 @@
 }
 
 // ---------- Cram sheet ----------
-#if data.keyIdeas.len() + data.terms.len() + data.keyConcepts.len() > 0 [
+// The whole guide on one page: each section's key idea and key points under
+// its number, then the terms and warnings, in three columns set as large as
+// still fits the page. Key points come before terms: a long guide keeps fewer
+// terms first, then is set smaller, and only then keeps fewer key points of
+// each section (the first ones, which the writer puts first because they
+// matter most).
+#let cram-group(g, cap) = {
+  block(above: 0pt, below: 1.6mm, sticky: true, {
+    set par(justify: false, leading: 0.45em)
+    text(font: ui, weight: 700, fill: T.accent, g.number)
+    h(1.2mm)
+    text(font: ui, weight: 700, fill: T.primary, rt(g.title))
+  })
+  for idea in g.ideas {
+    block(width: 100%, fill: T.highlight-soft, radius: 1mm, inset: (x: 1.6mm, y: 1.1mm), above: 0pt, below: 1.2mm, {
+      set par(justify: false, leading: 0.45em)
+      text(weight: 600, rt(idea))
+    })
+  }
+  let points = g.points.slice(0, calc.min(cap, g.points.len()))
+  if points.len() > 0 {
+    block(above: 0pt, below: 3mm, grid(columns: (2.6mm, 1fr), row-gutter: 0.9mm,
+      ..points.map(p => (text(font: ui, weight: 700, fill: T.accent, "›"), {
+        set par(justify: false, leading: 0.45em)
+        rt(p)
+      })).flatten()))
+  }
+}
+
+#let cram-extras(term-cap) = {
+  let terms = data.terms.slice(0, calc.min(term-cap, data.terms.len()))
+  if terms.len() > 0 {
+    block(above: 1mm, below: 1.6mm, sticky: true, eyebrow("Terms"))
+    for (term, meaning) in terms {
+      block(above: 0pt, below: 1mm, {
+        set par(justify: false, leading: 0.45em)
+        text(font: ui, weight: 700, fill: T.primary, rt(term))
+        [ — ]
+        rt(meaning)
+      })
+    }
+    v(2mm)
+  }
+  if data.warnings.len() > 0 {
+    block(width: 100%, fill: T.warn-soft, radius: 1mm, inset: (x: 1.8mm, y: 1.6mm), above: 1mm, below: 2mm, breakable: true, {
+      set par(justify: false, leading: 0.45em)
+      eyebrow("Watch out", color: T.warn)
+      for w in data.warnings {
+        block(above: 1.2mm, below: 0pt, grid(columns: (2.8mm, 1fr), text(font: ui, weight: 700, fill: T.warn, "✕"), rt(w)))
+      }
+    })
+  }
+}
+
+#let cram-body(size, cap, term-cap) = {
+  set text(size: size)
+  if data.keyConcepts.len() > 0 {
+    block(width: 100%, fill: T.primary, radius: 1.5mm, inset: (x: 2mm, y: 1.6mm), above: 0pt, below: 2.4mm, {
+      set par(justify: false, leading: 0.45em)
+      eyebrow("Key concepts", color: T.band-light)
+      linebreak()
+      text(fill: white, data.keyConcepts.map(c => rt(c)).join(text(fill: T.highlight, " ■ ")))
+    })
+  }
+  for g in data.cram { cram-group(g, cap) }
+  cram-extras(term-cap)
+}
+
+#if data.cram.len() + data.terms.len() + data.keyConcepts.len() > 0 [
   #pagebreak()
   #heading(level: 1, outlined: true, bookmarked: true)[Cram sheet] #label("cram") #anchor("cram", "cram")
-  #text(font: head, size: 22pt, weight: 700, fill: T.primary, "Cram sheet") #h(3mm) #text(font: ui, size: 9pt, fill: T.muted, "The whole guide on one page.")
-  #v(1mm) #line(length: 100%, stroke: 1.2pt + T.primary)
-  #v(3mm)
-  #if data.keyConcepts.len() > 0 [
-    #block(width: 100%, fill: T.primary, radius: 2mm, inset: (x: 5mm, y: 4mm))[
-      #eyebrow("Key concepts", color: T.band-light) #v(1.5mm)
-      #set par(justify: false)
-      #grid(columns: (1fr, 1fr), column-gutter: 6mm, row-gutter: 1.6mm,
-        ..data.keyConcepts.map(c => text(fill: white, [#text(fill: T.highlight, weight: 700, "■ ") #rt(c)])))]
-    #v(3mm)
-  ]
-  #if data.keyIdeas.len() > 0 [
-    #eyebrow("Key ideas") #v(1mm)
-    #grid(columns: (1fr, 1fr), column-gutter: 3mm, row-gutter: 3mm,
-      ..data.keyIdeas.map(k => block(width: 100%, fill: T.accent-soft, radius: 2mm, inset: 3.5mm, breakable: false)[
-        #set par(justify: false)
-        #text(font: ui, size: 9pt, weight: 700, fill: T.primary, rt(k.title)) \ #text(size: 0.94em, rt(k.body))]))
-    #v(3mm)
-  ]
-  #if data.terms.len() > 0 [
-    #eyebrow("Terms") #v(1mm)
-    #set par(justify: false)
-    #columns(2, gutter: 6mm)[
-      #for (term, meaning) in data.terms [#text(font: ui, size: 8.6pt, weight: 700, fill: T.primary, rt(term)) — #text(size: 0.92em, rt(meaning)) \ #v(0.8mm)]]
-  ]
-  #if data.warnings.len() > 0 [
-    #block(width: 100%, fill: T.warn-soft, radius: 2mm, inset: (x: 5mm, y: 3.5mm), above: 4mm)[
-      #eyebrow("Watch out", color: T.warn) \
-      #set par(justify: false)
-      #for w in data.warnings [#text(font: ui, weight: 700, fill: T.warn, "✕ ") #rt(w) \ ]]
-  ]
+  #text(font: head, size: 18pt, weight: 700, fill: T.primary, "Cram sheet") #h(3mm) #text(font: ui, size: 8.5pt, fill: T.muted, "The key ideas of the whole guide on one page.")
+  #v(0.5mm) #line(length: 100%, stroke: 1.2pt + T.primary)
+  #v(2mm)
+  #layout(size => {
+    // The page below the title; columns fill one after another, and a little
+    // is kept back for the space a column loses where it breaks.
+    let room = size.height - 16mm
+    let gutter = 4mm
+    let column = (size.width - 2 * gutter) / 3
+    let fits(option) = measure(block(width: column, cram-body(..option))).height <= 3 * room - 12mm
+    let options = ()
+    for cap in (99, 4, 3, 2, 1) {
+      for (size, term-cap) in ((8.6pt, 40), (8.6pt, 24), (7.8pt, 24), (7.8pt, 14), (7.1pt, 14), (7.1pt, 8), (6.6pt, 8), (6.6pt, 0), (6.2pt, 0)) {
+        options.push((size, cap, term-cap))
+      }
+    }
+    let choice = options.find(fits)
+    if choice == none { choice = options.last() }
+    // Laid out unbounded, in case the estimate is short: a full sheet then
+    // runs on rather than printing over itself.
+    columns(3, gutter: gutter, cram-body(..choice))
+  })
 ]
 
 // ---------- Self-test ----------

@@ -82,14 +82,6 @@ fn document_pdf_math_notice_scans_effective_content_not_debug_or_source_filename
     export.sections.push(EffectiveExportSection {
         key: "topic-math".into(),
         title: "Topic".into(),
-        source_locator: Some(
-            SourceLocator::new(
-                crate::document_domain::SourceUnitKind::Section,
-                vec![1],
-                None,
-            )
-            .unwrap(),
-        ),
         body_lines: vec![ExportBlock::Terms(vec![("Term".into(), "$$x$$".into())])],
         notes: vec![],
         figures: vec![],

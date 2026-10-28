@@ -26,7 +26,7 @@ pub(crate) mod editorial;
 use editorial::StudyGuideEditorial;
 
 pub(crate) const STUDY_GUIDE_SCHEMA_VERSION: i64 = 2;
-pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 15;
+pub(crate) const STUDY_GUIDE_PROMPT_VERSION: i64 = 16;
 pub(crate) const STUDY_GUIDE_ASSEMBLY_VERSION: i64 = 4;
 
 const MAX_GUIDE_SECTIONS: usize = 512;

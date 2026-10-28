@@ -284,9 +284,9 @@ describe("SettingsScreen", () => {
     expect(screen.queryByRole("switch", { name: /shuffle/iu })).toBeNull();
   });
 
-  it("keeps the study guide PDF look in Appearance, Sage until another is chosen", async () => {
+  it("keeps the study guide theme for reading and PDFs in Appearance, Sage until another is chosen", async () => {
     renderSettings();
-    const themes = screen.getByRole("radiogroup", { name: "Study guide PDF theme" });
+    const themes = screen.getByRole("radiogroup", { name: "Study guide theme" });
     expect(within(themes).getByRole("radio", { name: /^Sage/u }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(within(themes).getByRole("radio", { name: /^Plum/u }));
     fireEvent.click(screen.getByRole("switch", { name: "Include my guide and section notes" }));

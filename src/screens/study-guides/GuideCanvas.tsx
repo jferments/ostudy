@@ -290,6 +290,8 @@ function ReadyGuide({
   const titles = useMemo(() => new Map(canvas.contents
     .filter((entry) => entry.kind === "section")
     .map((entry) => [entry.key, `${entry.number} ${entry.title}`.trim()])), [canvas.contents]);
+  const sourceLabels = useMemo(() => new Map(canvas.sources
+    .map((source) => [`${source.topicId}:${source.number}`, source.label])), [canvas.sources]);
   const paperPages = useMemo<PaperPages>(() => ({
     background: (page) => {
       const image = inkPages[page.pageNumber - 1]?.image;
@@ -323,7 +325,7 @@ function ReadyGuide({
         // Lies over the printed number; on a touch screen it reaches well past it.
         <ItemTrigger key={`cite:${mark.topicId}:${mark.number}:${mark.x}:${mark.y}`}
           data-guide-citation={`${mark.topicId}:${mark.number}`}
-          aria-label={`Source ${mark.number} for ${titles.get(mark.topicId) ?? "this section"}`}
+          aria-label={`Source ${sourceLabels.get(`${mark.topicId}:${mark.number}`) || mark.number} for ${titles.get(mark.topicId) ?? "this section"}`}
           className="tw:absolute tw:rounded-sm tw:border-0 tw:bg-transparent tw:p-0 tw:outline-none tw:hover:bg-primary/15 tw:focus-visible:ring-2 tw:focus-visible:ring-ring/60 tw:coarse:min-h-0 tw:coarse:after:absolute tw:coarse:after:-inset-2.5 tw:coarse:after:content-['']"
           style={{
             left: (mark.x - 1) * scale,
@@ -335,7 +337,7 @@ function ReadyGuide({
           onClick={() => onCite(mark.topicId, mark.number)} />
       ))],
     unavailableLinks: unavailable,
-  }), [canvas.citations, canvas.practice, inkPages, onCite, onPractice, titles, unavailable]);
+  }), [canvas.citations, canvas.practice, inkPages, onCite, onPractice, sourceLabels, titles, unavailable]);
 
   const { measured, showPage } = viewport;
   useEffect(() => { onShowPage(() => showPage); }, [onShowPage, showPage]);

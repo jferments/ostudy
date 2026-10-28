@@ -71,13 +71,13 @@ function PdfThemeSwatch({ name, type, colors }: { name: string; type: string; co
   </span>;
 }
 
-/** The study guide PDF themes as cards, each a miniature of its cover beside its typefaces. */
+/** The study guide themes as cards, each a miniature of its cover beside its typefaces. */
 export function GuidePdfThemePicker({ value, onChange }: {
   value: StudyGuidePdfTheme;
   onChange: (theme: StudyGuidePdfTheme) => void;
 }) {
   return (
-    <RadioGroup label="Study guide PDF theme" value={value} presentation="cards"
+    <RadioGroup label="Study guide theme" value={value} presentation="cards"
       className="tw:md:grid-cols-2 tw:xl:grid-cols-4 tw:gap-3" onValueChange={onChange}
       options={PDF_THEMES.map((option) => ({
         value: option.value,

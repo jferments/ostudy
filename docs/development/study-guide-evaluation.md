@@ -55,9 +55,13 @@ The guide score is the weighted mean. A run that publishes no guide scores 0 for
 - **Major unsupported claims**, the count a student would be misled by. A change that raises the score but adds major errors is a regression.
 - **Cost**: provider requests, tokens and reported cost from `scripts/generation-usage.py`, plus wall time.
 - **Deterministic metrics**: sections, guide and source words and their ratio, the share of source units some section covers, repeated sentences, and which content categories sections use.
+- **Structure**: the share of sections with a box (a callout, terms, an explanation or a worked example) and with a table. The judge reads text, so it cannot see a guide turn into a wall of text; `compare` lists a fall of 20 points or more in either share as a structure regression and exits with status 4.
+
+`generate` also writes each guide as `guide.pdf`, laid out in the Sage theme as the reader shows it. Look at its pages, including the cram sheet and figures, beside the scores.
 
 ## Using scores
 
 - Keep the provider, model, reasoning effort and judge model fixed between the two runs being compared. Use a judge from a different model family than the generator, so it does not grade its own style.
 - Model judges vary. Treat a mean change under about 3 points, or one document moving alone, as noise until a repeat run agrees.
+- A change to the guide prompt, its length targets or its layout must keep the [study guide design](../architecture/overview.md#study-guide-design): a better score bought with fewer boxes, tables or figures is a regression. Put rendered before and after pages in the pull request.
 - The maintainer's spot checks of `guide.md` against the source are the ground truth the judge is checked against. Where they disagree, fix the rubric and bump `RUBRIC_VERSION` rather than tuning prompts to the judge.

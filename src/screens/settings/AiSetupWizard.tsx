@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import type { AiProfilesController } from "../../controllers/aiProfilesController";
 import { getErrorMessage } from "../../ipc/common";
-import { getSpeechSettings, type SpeechSettings } from "../../ipc/speech";
+import { loadVoice } from "../lessons/voiceReady";
 import { openExternalUrl } from "../../platform/externalLinks";
 import { usePlatformCapabilities } from "../../platform/PlatformProvider";
 import { Icon, type IconName } from "../../ui/icons/Icon";
@@ -140,14 +140,14 @@ export function AiSetupWizard({
   const [pasting, setPasting] = useState(false);
   // One-click sign-in needs the browser to return to oStudy; elsewhere the key is pasted.
   const browserSignIn = usePlatformCapabilities().native?.services.browserSignIn?.state === "available";
-  const [voice, setVoice] = useState<SpeechSettings | null>(null);
+  const [voice, setVoice] = useState<Awaited<ReturnType<typeof loadVoice>> | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const hosted = service === "llama_cpp" ? null : GUIDES[service];
 
   useEffect(() => {
     if (step !== "ready") return;
     let current = true;
-    getSpeechSettings().then(
+    loadVoice().then(
       (value) => {
         if (current) setVoice(value);
       },
@@ -390,7 +390,7 @@ export function AiSetupWizard({
       const defaults = controller.defaults;
       const modelName = (id: string | null | undefined) =>
         id ? (controller.models.find((model) => model.id === id)?.displayName || id) : null;
-      const voiceModel = voice?.profileId ? voice.models.find((model) => model.id === voice.modelId) : null;
+      const voiceModel = voice?.ready ? voice.speech.models.find((model) => model.id === voice.speech.modelId) : null;
       const rows: ReadonlyArray<{ icon: IconName; task: string; model: string | null; id?: string | null }> = [
         { icon: "study-guide", task: "Cards and guides", model: modelName(defaults.flashcardGenerationModelId), id: defaults.flashcardGenerationModelId },
         { icon: "chat", task: "Tutor", model: modelName(defaults.tutorModelId), id: defaults.tutorModelId },

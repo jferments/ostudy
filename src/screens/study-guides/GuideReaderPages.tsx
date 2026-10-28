@@ -245,7 +245,7 @@ export function GuideSectionPage({
           <h1 id={headingId} tabIndex={-1} className={cn(pageHeading, "tw:flex-1")}><StudyMarkdown text={title} inline /></h1>
           <OverflowMenu label={`Section actions for ${title}`} items={menuItems} className="tw:mt-1 tw:shrink-0" />
         </div>
-        <SourceChip {...sourceProps} detail={range} />
+        <SourceChip {...sourceProps} detail={null} />
       </header>
       {conflict ? (
         <InlineNotice kind="warning" title="Older section edit needs review.">
@@ -398,7 +398,7 @@ function GuideSourceBlock({ documentTitle, source, detail, onOpenSource }: Guide
   );
 }
 
-/** "From [PDF] Lecture 4 · pp. 6–8": names the source and opens it. */
+/** "From [PDF] Lecture 4 · 12 pages": names the source and opens it. */
 function SourceChip({ documentTitle, source, detail, onOpenSource }: GuideSourceProps & { detail: string | null }) {
   const kind = fileKindLabel(source);
   const text = detail ? `${documentTitle} · ${detail}` : documentTitle;
