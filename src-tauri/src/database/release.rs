@@ -41,6 +41,12 @@ mod document_study_exclusions;
 #[path = "release/note_folders.rs"]
 mod note_folders;
 
+#[path = "release/tutor_turn_versions.rs"]
+mod tutor_turn_versions;
+
+#[path = "release/tutor_attachments.rs"]
+mod tutor_attachments;
+
 #[path = "release/note_annotation_sources.rs"]
 mod note_annotation_sources;
 
@@ -84,7 +90,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 23;
+pub(crate) const SCHEMA_VERSION: i64 = 25;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -230,6 +236,18 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "note_folders",
         checksum: "838c81189b2782597bb1220783fcd72145e810bbd307e48c123a591c841f2333",
         sql: include_str!("../../schema/0023_note_folders.sql"),
+    },
+    ReleaseMigration {
+        version: 24,
+        name: "tutor_turn_versions",
+        checksum: "6878229f81f274587f78ebef159e3496237e70ee7b32606c65dacd77b321781d",
+        sql: include_str!("../../schema/0024_tutor_turn_versions.sql"),
+    },
+    ReleaseMigration {
+        version: 25,
+        name: "tutor_attachments",
+        checksum: "4fd1bc0171cb23d4199cd253848848c599f902d57a2f7596e75a9924c832defd",
+        sql: include_str!("../../schema/0025_tutor_attachments.sql"),
     },
 ];
 
@@ -455,6 +473,8 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     material_ink::validate_schema(connection, user_version)?;
     document_study_exclusions::validate_schema(connection, user_version)?;
     note_folders::validate_schema(connection, user_version)?;
+    tutor_turn_versions::validate_schema(connection, user_version)?;
+    tutor_attachments::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }

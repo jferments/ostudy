@@ -33,6 +33,18 @@ fn fixture() -> Database {
              VALUES (?1,?2,?1,1,?3,'{}','explain',?4,?4,'complete',1,'llama_cpp','fixture',1,1)",
             params!["b".repeat(32),"a".repeat(32),"c".repeat(64),PRIVATE_TEXT],
         ).map_err(CommandError::database)?;
+        // A picture and a file attached to the question stay with the chat.
+        connection.execute(
+            "INSERT INTO assets(id, original_filename, mime_type, byte_size, relative_path, created_at)
+             VALUES (?1, 'private.png', 'image/png', 10, ?2, 1)",
+            params!["9".repeat(32), format!("assets/images/{}.png", "9".repeat(32))],
+        ).map_err(CommandError::database)?;
+        connection.execute(
+            "INSERT INTO tutor_turn_attachments(turn_id, position, kind, name, asset_id, text)
+             VALUES (?1, 0, 'image', 'private.png', ?2, NULL),
+                    (?1, 1, 'text', 'private.md', NULL, ?3)",
+            params!["b".repeat(32), "9".repeat(32), PRIVATE_TEXT],
+        ).map_err(CommandError::database)?;
         // Real source projections also contain copies of chat text.
         connection.execute(
             "INSERT INTO knowledge_sources (id,kind,owner_id,segment_key,parent_key,owner_revision,
@@ -69,6 +81,8 @@ fn every_valid_sync_selection_excludes_chat_and_semantic_projection_rows() {
                     "tutor_organization_operations",
                     "tutor_projects",
                     "tutor_turn_sources",
+                    "tutor_turn_replacements",
+                    "tutor_turn_attachments",
                     "tutor_turns",
                     "tutor_conversations",
                     "knowledge_sources",
@@ -85,6 +99,14 @@ fn every_valid_sync_selection_excludes_chat_and_semantic_projection_rows() {
                     );
                     assert!(!selection.includes_table(table));
                 }
+                let pictures: i64 = connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM assets WHERE id = ?1",
+                        ["9".repeat(32)],
+                        |r| r.get(0),
+                    )
+                    .map_err(CommandError::database)?;
+                assert_eq!(pictures, 0, "a chat picture survived, selection {bits}");
                 Ok(())
             })
             .unwrap();

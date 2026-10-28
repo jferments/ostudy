@@ -116,6 +116,7 @@ export interface NativeCommandGatewayMap {
   "dismiss_incoming_share": readonly [typeof GatewayModule18.dismissIncomingShare];
   "dismiss_subject_filing_review": readonly [typeof GatewayModule44.dismissSubjectFilingReview];
   "draft_mark_question": readonly [typeof GatewayModule3.draftMarkQuestion];
+  "draft_tutor_answer_cards": readonly [typeof GatewayModule46.draftTutorAnswerCards];
   "find_document_figures": readonly [typeof GatewayModule14.findDocumentFigures];
   "find_duplicate_cards": readonly [typeof GatewayModule6.findDuplicateCards];
   "flush_diagnostics": readonly [typeof GatewayModule11.flushNativeDiagnostics];
@@ -136,6 +137,7 @@ export interface NativeCommandGatewayMap {
   "get_deck": readonly [typeof GatewayModule9.getDeck];
   "get_deck_library_organization": readonly [typeof GatewayModule8.getDeckLibraryOrganization];
   "get_device_sync_state": readonly [typeof GatewayModule10.getDeviceSyncState];
+  "get_device_voices": readonly [typeof GatewayModule39.getDeviceVoices];
   "get_diagnostic_configuration": readonly [typeof GatewayModule11.getDiagnosticConfiguration];
   "get_document_annotations": readonly [typeof GatewayModule12.getDocumentAnnotations];
   "get_document_artifact_job": readonly [typeof GatewayModule42.getDocumentArtifactJob];
@@ -195,6 +197,7 @@ export interface NativeCommandGatewayMap {
   "get_subject_library": readonly [typeof GatewayModule44.getSubjectLibrary];
   "get_tutor_conversation": readonly [typeof GatewayModule46.getTutorConversation];
   "get_tutor_figure": readonly [typeof GatewayModule46.getTutorFigure];
+  "get_tutor_image_input": readonly [typeof GatewayModule46.getTutorImageInput];
   "get_tutor_memory": readonly [typeof GatewayModule47.getTutorMemory];
   "get_ui_checkpoint": readonly [typeof GatewayModule48.getUiCheckpoint];
   "import_deck": readonly [typeof GatewayModule9.importDeck];
@@ -204,6 +207,7 @@ export interface NativeCommandGatewayMap {
   "import_image_set": readonly [typeof GatewayModule22.importImageSet];
   "import_media": readonly [typeof GatewayModule4.importMedia];
   "inspect_image_set": readonly [typeof GatewayModule22.inspectImageSet];
+  "install_device_voice": readonly [typeof GatewayModule39.installDeviceVoice];
   "install_speech_input_model": readonly [typeof GatewayModule40.installSpeechInputModel];
   "join_device_pairing": readonly [typeof GatewayModule10.joinDevicePairing, typeof GatewayModule10.joinUsbDevicePairing];
   "keep_speech_voice": readonly [typeof GatewayModule39.keepSpeechVoice];
@@ -335,6 +339,7 @@ export interface NativeCommandGatewayMap {
   "start_card_practice": readonly [typeof GatewayModule31.startCardPractice];
   "start_device_pairing": readonly [typeof GatewayModule10.startDevicePairing];
   "start_document_flashcard_generation": readonly [typeof GatewayModule15.startDocumentFlashcardGeneration];
+  "start_document_preparation": readonly [typeof GatewayModule15.startDocumentPreparation];
   "start_openrouter_sign_in": readonly [typeof GatewayModule0.startOpenRouterSignIn];
   "start_selected_practice": readonly [typeof GatewayModule31.startSelectedPractice];
   "stream_publish_prepared_export": readonly [typeof GatewayModule18.publishPreparedExport];

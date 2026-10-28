@@ -14,7 +14,8 @@ After:
 What ran locally and on which commit, for example ./scripts/check-static.sh,
 ./scripts/check-fast.sh, ./scripts/check.sh or focused tests, plus the CI gate
 that passed. Name anything not tested: Android device, live AI provider,
-manual UI pass.
+manual UI pass. A change to the study guide prompt or layout attaches rendered
+before and after pages and the guide-eval compare result.
 -->
 
 ## Data and compatibility

@@ -18,7 +18,7 @@ import {
   type AppSection,
   type AppWorkflow,
 } from "./controllers/useAppController";
-import { ALL_SUBJECTS, isLibrarySection, type AppDestination, type SubjectSection } from "./navigation/appDestinations";
+import { ALL_SUBJECTS, isLibrarySection, sectionWithoutAi, type AppDestination, type SubjectSection } from "./navigation/appDestinations";
 import { shouldResetStudyGuidesRoute } from "./navigation/studyGuidesNavigation";
 import type { StudyGuideOpenRequest } from "./controllers/useStudyGuidesController";
 import type { NotebookOpenRequest } from "./screens/notes/LibraryNotes";
@@ -26,6 +26,8 @@ import { HomeScreen } from "./screens/home/HomeScreen";
 import { LibraryLessons } from "./screens/library/LibraryLessons";
 import { LibraryHome } from "./screens/library/LibraryHome";
 import { LibraryFrame } from "./screens/library/LibraryFrame";
+import { AiIntroduction } from "./screens/settings/AiIntroduction";
+import { AiFeaturesProvider, useAiFeaturesSource } from "./controllers/AiFeaturesProvider";
 import { workbenchLaunchFor } from "./screens/library/workbench/workbenchLaunch";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
 import { AppearanceProvider } from "./ui/appearance/AppearanceProvider";
@@ -145,6 +147,11 @@ function App() {
     navigate("lessons");
   }
 
+  const aiFeatures = useAiFeaturesSource(controller.section);
+  // Without AI its pages are not offered; one opened anyway shows its nearest
+  // AI-free page: Home for the Tutor, Flashcards for a subject's AI pages.
+  const section = aiFeatures.known && !aiFeatures.enabled ? sectionWithoutAi(controller.section) : controller.section;
+
   const librarySubject = controller.librarySubject;
   const libraryFrame = {
     subject: librarySubject,
@@ -173,10 +180,12 @@ function App() {
       onOpenDeck={(deckId) => void controller.openLibrary({ deckId })}
       refreshDecks={controller.refreshDecks}
       showToast={controller.showToast}
+      onOpenAiSetup={() => void controller.openAiSetup()}
     />
   );
 
   return (
+    <AiFeaturesProvider value={aiFeatures}>
     <LayoutModeProvider>
       <AppearanceProvider settings={controller.activeSettings}>
         <TourProvider enabled={!controller.isLoading && !controller.fatalError && tutorialsEnabled}>
@@ -215,7 +224,7 @@ function App() {
                     />
                     <PerformanceProfiler id="navigation">
                       <ShellHeader
-                        section={controller.section}
+                        section={section}
                         activeWorkflow={controller.activeWorkflow}
                         onSelectDestination={selectDestination}
                         onSearch={() => void controller.openSearch()}
@@ -251,9 +260,9 @@ function App() {
                                 onChooseDecks={controller.choosePracticeDecks}
                                 showToast={controller.showToast}
                               />
-                            ) : controller.section === "home" ? (
+                            ) : section === "home" ? (
                               homeScreen
-                            ) : controller.section === "overview" ? (
+                            ) : section === "overview" ? (
                               <LibraryHome
                                 onOpenSubject={(subjectId, page) => void controller.openSubject(subjectId, page)}
                                 onChooseSubject={controller.chooseLibrarySubject}
@@ -261,7 +270,7 @@ function App() {
                                 onStartReview={startReview}
                                 showToast={controller.showToast}
                               />
-                            ) : controller.section === "lessons" ? (
+                            ) : section === "lessons" ? (
                               <LibraryFrame view="lessons" {...libraryFrame}>
                                 <h1 className="tw:sr-only">Lessons</h1>
                                 <LibraryLessons
@@ -279,7 +288,7 @@ function App() {
                                   showToast={controller.showToast}
                                 />
                               </LibraryFrame>
-                            ) : controller.section === "podcasts" ? (
+                            ) : section === "podcasts" ? (
                               <LibraryFrame view="podcasts" {...libraryFrame}>
                                 <h1 className="tw:sr-only">Podcasts</h1>
                                 <LibraryLessons
@@ -291,7 +300,7 @@ function App() {
                                   showToast={controller.showToast}
                                 />
                               </LibraryFrame>
-                            ) : controller.section === "decks" ? (
+                            ) : section === "decks" ? (
                               <LibraryFrame view="decks" fill {...libraryFrame}>
                                 <LibraryWorkbench
                                   decks={controller.decks}
@@ -308,7 +317,7 @@ function App() {
                                   showToast={controller.showToast}
                                 />
                               </LibraryFrame>
-                            ) : controller.section === "study-guides" ? (
+                            ) : section === "study-guides" ? (
                               <LibraryFrame view="study-guides" {...libraryFrame}>
                                 <StudyGuidesRoute
                                   key={studyGuidesNavigationKey}
@@ -318,6 +327,8 @@ function App() {
                                   }
                                   subject={librarySubject}
                                   showToast={controller.showToast}
+                                  guideTheme={controller.savedSettings.guidePdfTheme ?? "sage"}
+                                  onGuideThemeChange={(theme) => void controller.saveGuideTheme(theme)}
                                   onPracticeCards={controller.practiceCards}
                                   onSetUpAi={() => void controller.openAiSetup()}
                                   onPracticeDeck={(deckId) => controller.practiceDeck(deckId)}
@@ -327,7 +338,7 @@ function App() {
                                   }}
                                 />
                               </LibraryFrame>
-                            ) : controller.section === "documents" ? (
+                            ) : section === "documents" ? (
                               <LibraryFrame view="documents" {...libraryFrame}>
                                 <PerformanceProfiler id="documents">
                                   <DocumentsSection
@@ -347,7 +358,7 @@ function App() {
                                   />
                                 </PerformanceProfiler>
                               </LibraryFrame>
-                            ) : controller.section === "notes" ? (
+                            ) : section === "notes" ? (
                               <PageScaffold width="full" data-testid="notes">
                                 <LibraryNotes
                                   subject={ALL_SUBJECTS}
@@ -363,11 +374,11 @@ function App() {
                                   }}
                                 />
                               </PageScaffold>
-                            ) : controller.section === "review" ? (
+                            ) : section === "review" ? (
                               homeScreen
-                            ) : controller.section === "tutor" ? (
+                            ) : section === "tutor" ? (
                               <TutorScreen />
-                            ) : controller.section === "analytics" ? (
+                            ) : section === "analytics" ? (
                               <ProgressScreen
                                 decks={controller.decks}
                                 launchRequest={controller.analyticsLaunch}
@@ -375,7 +386,7 @@ function App() {
                                 onPracticeScope={controller.practiceScope}
                                 onSearchTag={controller.openAnalyticsTagSearch}
                               />
-                            ) : controller.section === "settings" ? (
+                            ) : section === "settings" ? (
                               <SettingsScreen
                                 settings={controller.savedSettings}
                                 aiSetupRequest={controller.aiSetupRequest}
@@ -391,6 +402,10 @@ function App() {
                       </RouteTransition>
                     </AppContent>
 
+                    <AiIntroduction
+                      ready={controller.practiceWorkflow === null}
+                      onSetUpAi={() => void controller.openAiSetup()}
+                    />
                     <Toast toast={controller.toast} onDismiss={() => controller.setToast(null)} />
                   </AppFrame>
                 </TutorProvider>
@@ -400,6 +415,7 @@ function App() {
         </TourProvider>
       </AppearanceProvider>
     </LayoutModeProvider>
+    </AiFeaturesProvider>
   );
 }
 

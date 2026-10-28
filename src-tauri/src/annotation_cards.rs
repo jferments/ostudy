@@ -128,7 +128,8 @@ pub async fn draft_mark_question(
     )?;
     // The flashcard model writes it without reasoning, like the cards made
     // from a whole document.
-    let mut task = document_intelligence::load_document_task_context(database)?;
+    let mut task =
+        document_intelligence::load_verified_document_task_context(database, runtime).await?;
     let capabilities = load_document_provider_capabilities(
         database,
         &task.profile_id,

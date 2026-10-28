@@ -250,7 +250,8 @@ fn missing() -> CommandError {
 
 /// The model and voice a lesson is spoken in. The first time any part of the
 /// lesson is spoken, that is the voice chosen now, and it is recorded for the
-/// lesson; a lesson whose recorded voice can no longer speak takes the voice
+/// lesson; a lesson whose recorded voice can no longer speak (its recording
+/// is gone, or it is a provider's and no connection is left) takes the voice
 /// chosen now instead, or the default voice when that cannot speak either.
 pub(super) fn lesson_voice(
     database: &Database,
@@ -268,7 +269,9 @@ pub(super) fn lesson_voice(
             .map_err(CommandError::database)?;
         if let Some((model_id, voice)) = recorded {
             if let Some(model) = speech::speech_model(&model_id) {
-                if speaks(connection, &voice)? {
+                // A provider's voice needs a connection to speak through.
+                let reachable = model.device.is_some() || settings.profile_id.is_some();
+                if reachable && speaks(connection, &voice)? {
                     return Ok((model, voice));
                 }
             }

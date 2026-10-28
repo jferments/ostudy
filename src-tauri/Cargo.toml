@@ -57,11 +57,13 @@ keyring = "=4.1.6"
 sysinfo = { version = "=0.39.6", default-features = false, features = ["system"] }
 pdfium-render = { version = "=0.9.3", default-features = false, features = ["pdfium_7881", "image_025", "thread_safe"] }
 
-# Local speech recognition. Its prebuilt libraries are pinned and verified in
-# scripts/native-deps-manifest.json. Windows is left out until its static
-# libraries (built for the static C runtime) are qualified there.
+# Local speech recognition and speech. Its prebuilt libraries are pinned and
+# verified in scripts/native-deps-manifest.json. Windows is left out until its
+# static libraries (built for the static C runtime) are qualified there.
+# loqui-g2p turns English text into the phonemes the device voices read.
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))'.dependencies]
 sherpa-onnx = { version = "=2.0.0", default-features = false, features = ["static"] }
+loqui-g2p = "=0.4.0"
 
 # Lets the Linux webview record from the microphone (WebKitGTK denies media
 # capture unless the application enables it).

@@ -11,13 +11,16 @@ use std::{
 use oxidize_pdf::{
     parser::PdfDocument,
     pipeline::{Element, ExtractionProfile, HybridChunker, RagChunk},
+    text::ExtractionOptions,
 };
 
 use super::contracts::{
     ExtractedDocument, ExtractedSemanticChunk, ExtractedSemanticElement, ExtractedTextPage,
     PdfBackendError, PdfBackendErrorKind, SemanticBBox,
 };
-use super::quality::is_undecodable_noise;
+use super::layout::{page_structure, rebuild_page, TextRun};
+use super::quality::{assess_text_quality, is_undecodable_noise};
+use super::recovery::{fragmented_pages, is_sentence_piece};
 use super::ruled_tables::rebuild_ruled_tables;
 
 const MAX_PARENT_HEADING_CHARS: usize = 1_000;
@@ -122,6 +125,9 @@ pub(crate) fn extract_document(source_path: &Path) -> Result<ExtractedDocument, 
             .map(convert_chunk)
             .collect::<Vec<_>>()
     };
+    let mut pages = pages;
+    let mut semantic_elements = semantic_elements;
+    let chunks = rebuild_fragmented_pages(&document, &mut pages, &mut semantic_elements, chunks);
     let chunks = cover_unstructured_pages(chunks, &pages);
 
     Ok(ExtractedDocument {
@@ -257,6 +263,126 @@ fn extract_page_texts<R: Read + Seek>(
         ),
     );
     Ok((pages, failed_pages))
+}
+
+/// Replaces the structure of each page the structure reader broke into
+/// scraps with sections rebuilt from the page's text runs, and the page's text
+/// with the same lines in reading order. A page whose runs cannot be read keeps
+/// its structure, and text recovery then falls back to its page text.
+fn rebuild_fragmented_pages<R: Read + Seek>(
+    document: &PdfDocument<R>,
+    pages: &mut [ExtractedTextPage],
+    elements: &mut Vec<ExtractedSemanticElement>,
+    chunks: Vec<ExtractedSemanticChunk>,
+) -> Vec<ExtractedSemanticChunk> {
+    let fragmented = fragmented_pages(&chunks);
+    if fragmented.is_empty() {
+        return chunks;
+    }
+    let mut chunks = chunks;
+    for page_number in fragmented {
+        let Some(page) = pages
+            .iter_mut()
+            .find(|page| page.page_number == page_number)
+        else {
+            continue;
+        };
+        let Some(rebuilt) = page_runs(document, page_number).and_then(|runs| rebuild_page(&runs))
+        else {
+            continue;
+        };
+        if assess_text_quality(&rebuilt.text).suspicious {
+            continue;
+        }
+        // The heading the text before this page was under, when it is one.
+        let carried = chunks
+            .iter()
+            .filter(|chunk| {
+                chunk
+                    .page_numbers
+                    .first()
+                    .is_some_and(|first| *first < page_number)
+            })
+            .filter_map(|chunk| chunk.heading_context.as_deref())
+            .rfind(|heading| {
+                !is_sentence_piece(heading)
+                    && heading
+                        .chars()
+                        .filter(|character| character.is_alphabetic())
+                        .count()
+                        >= 3
+            })
+            .map(str::to_string);
+        let (page_elements, page_chunks) =
+            page_structure(page_number, &rebuilt, carried.as_deref());
+        let element_at = elements
+            .iter()
+            .position(|element| element.page_number >= page_number)
+            .unwrap_or(elements.len());
+        elements.retain(|element| element.page_number != page_number);
+        let element_at = element_at.min(elements.len());
+        elements.splice(element_at..element_at, page_elements);
+        let only_here = |chunk: &ExtractedSemanticChunk| chunk.page_numbers == [page_number];
+        let chunk_at = chunks
+            .iter()
+            .position(|chunk| {
+                only_here(chunk)
+                    || chunk
+                        .page_numbers
+                        .first()
+                        .is_some_and(|first| *first > page_number)
+            })
+            .unwrap_or(chunks.len());
+        let removed = chunks
+            .iter()
+            .take(chunk_at)
+            .filter(|chunk| only_here(chunk))
+            .count();
+        chunks.retain(|chunk| !only_here(chunk));
+        let chunk_at = chunk_at - removed;
+        chunks.splice(chunk_at..chunk_at, page_chunks);
+        page.text = rebuilt.text;
+        crate::logging::info(
+            "pdf_fragmented_page_rebuilt",
+            format!("page={page_number} sections={}", rebuilt.sections.len()),
+        );
+    }
+    for (index, element) in elements.iter_mut().enumerate() {
+        element.element_index = index;
+    }
+    for (index, chunk) in chunks.iter_mut().enumerate() {
+        chunk.chunk_index = index;
+    }
+    chunks
+}
+
+fn page_runs<R: Read + Seek>(
+    document: &PdfDocument<R>,
+    page_number: usize,
+) -> Option<Vec<TextRun>> {
+    let index = u32::try_from(page_number.checked_sub(1)?).ok()?;
+    let options = ExtractionOptions {
+        preserve_layout: true,
+        ..ExtractionOptions::default()
+    };
+    let extracted = document
+        .extract_text_from_page_with_options(index, options)
+        .ok()?;
+    Some(
+        extracted
+            .fragments
+            .into_iter()
+            .map(|fragment| TextRun {
+                text: fragment.text,
+                x: fragment.x,
+                y: fragment.y,
+                width: fragment.width,
+                height: fragment.height,
+                font_size: fragment.font_size,
+                font: fragment.font_name,
+            })
+            .collect(),
+    )
 }
 
 fn convert_chunk(chunk: RagChunk) -> ExtractedSemanticChunk {

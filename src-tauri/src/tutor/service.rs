@@ -6,7 +6,8 @@ use std::sync::Arc;
 use crate::{
     ai::{
         document_intelligence::{
-            load_tutor_task_context, request_json_cancellable, DocumentTaskContext, JsonTaskRequest,
+            load_tutor_task_context, load_verified_tutor_task_context, request_json_cancellable,
+            DocumentTaskContext, JsonTaskRequest,
         },
         observe_output, AiRuntimeState, OutputObserver,
     },
@@ -18,7 +19,7 @@ use crate::{
 
 use super::{
     context,
-    contracts::{TutorMode, TutorTurn, TutorTurnInput},
+    contracts::{QuizSeries, TutorAttachmentInput, TutorMode, TutorTurn, TutorTurnInput},
     focus, history, output, turns,
 };
 
@@ -38,8 +39,8 @@ pub(crate) async fn send(
         false,
     )?;
     let task = match &input.profile_id {
-        Some(id) => DocumentTaskContext::for_tutor_profile(database, id)?,
-        None => load_tutor_task_context(database)?,
+        Some(id) => DocumentTaskContext::for_verified_tutor_profile(database, runtime, id).await?,
+        None => load_verified_tutor_task_context(database, runtime).await?,
     };
     // Read the private rubric before admission marks an answer as running.
     // Admission independently verifies that the same question is pending.
@@ -52,7 +53,70 @@ pub(crate) async fn send(
             })
         })
         .transpose()?;
-    let identity = turns::begin(database, &input, &task)?;
+    // A choose-one answer must be one of its question's options, word for word.
+    let picked = match (&quiz, input.choice) {
+        (Some(fixed), Some(chosen)) if !fixed.choices.is_empty() => {
+            if fixed.choices.get(chosen).map(|choice| choice.trim()) != Some(input.text.trim()) {
+                return Err(crate::knowledge::contracts::invalid(
+                    "Pick one of the question's options.",
+                ));
+            }
+            Some((fixed, chosen))
+        }
+        (Some(fixed), None) if !fixed.choices.is_empty() => {
+            return Err(crate::knowledge::contracts::invalid(
+                "Pick one of the question's options.",
+            ))
+        }
+        (_, Some(_)) => {
+            return Err(crate::knowledge::contracts::invalid(
+                "This question has no options to pick from.",
+            ))
+        }
+        _ => None,
+    };
+    // Next question takes the place after the one it follows; a quiz of a
+    // set length ends with its last question.
+    let previous = input
+        .after_question_id
+        .as_ref()
+        .map(|id| {
+            database.with_connection(|connection| {
+                turns::load_asked(connection, &input.conversation_id, id)
+            })
+        })
+        .transpose()?;
+    let series = previous
+        .as_ref()
+        .map(|previous| QuizSeries::next(Some(previous), None))
+        .transpose()?;
+    // A picture goes to the model only if it can see it; say so before sending.
+    if !task.include_page_images
+        && input
+            .attachments
+            .iter()
+            .any(|attachment| matches!(attachment, TutorAttachmentInput::Image { .. }))
+    {
+        return Err(images_unsupported());
+    }
+    let identity = turns::begin(database, Some(paths), &input, &task)?;
+    let attachments =
+        database.with_connection(|connection| turns::load_attachments(connection, &identity.id))?;
+    if let Some((fixed, chosen)) = picked {
+        guard.progress("checking answer", 3, 4);
+        let graded = output::grade_choice(fixed, chosen);
+        let question_id = input.question_id.as_deref().unwrap_or_default();
+        return match turns::complete(
+            database,
+            &identity,
+            &graded,
+            &context::StudyContext::graded(question_id),
+            None,
+        ) {
+            Ok(turn) => Ok(turn),
+            Err(error) => turns::fail(database, &identity, &error, None),
+        };
+    }
     let outcome = async {
         let focused = focus::resolve(
             database,
@@ -97,8 +161,10 @@ pub(crate) async fn send(
                 input: &input,
                 focus: &focused,
                 quiz: quiz.as_ref(),
+                series,
                 history: remembered,
                 project_instructions: identity.project_instructions.as_deref(),
+                attachments: &attachments,
             },
             &guard.signal,
         )
@@ -141,6 +207,12 @@ pub(crate) async fn send(
             &context,
             quiz.as_ref(),
         )?;
+        if let Some(asked) = answer.quiz.as_mut() {
+            asked.series = Some(match &previous {
+                Some(previous) => QuizSeries::next(Some(previous), None)?,
+                None => QuizSeries::next(None, asked.question_count)?,
+            });
+        }
         if input.mode == TutorMode::Hint {
             guard.progress("checking hint for spoilers", 3, 4);
             answer.text = if focused.question_hint.is_some() {
@@ -177,4 +249,21 @@ pub(crate) async fn send(
         Ok(turn) => Ok(turn),
         Err(error) => turns::fail(database, &identity, &error, task.usage_summary().0),
     }
+}
+
+pub(crate) fn images_unsupported() -> CommandError {
+    CommandError::new(
+        "tutor_images_unsupported",
+        "This chat's model can't see pictures, or hasn't been tested with them. Remove them, or choose and test a model that can under Settings, AI, Interactive tutor.",
+    )
+}
+
+/// Whether the Tutor's model (or `profile_id`, the chat's own choice) sees
+/// the pictures a learner attaches. False when no model is ready to answer.
+pub(crate) fn accepts_images(database: &Database, profile_id: Option<&str>) -> bool {
+    let task = match profile_id {
+        Some(id) => DocumentTaskContext::for_tutor_profile(database, id),
+        None => load_tutor_task_context(database),
+    };
+    task.is_ok_and(|task| task.include_page_images)
 }

@@ -136,7 +136,8 @@ fn reference_count(connection: &Connection, asset_id: &str) -> Result<i64, Comma
                  (SELECT COUNT(*) FROM question_attempt_assets WHERE asset_id = ?1) +
                  (SELECT COUNT(*) FROM speech_segments WHERE asset_id = ?1) +
                  (SELECT COUNT(*) FROM speech_voices WHERE asset_id = ?1) +
-                 (SELECT COUNT(*) FROM notebook_item_assets WHERE asset_id = ?1)",
+                 (SELECT COUNT(*) FROM notebook_item_assets WHERE asset_id = ?1) +
+                 (SELECT COUNT(*) FROM tutor_turn_attachments WHERE asset_id = ?1)",
             [asset_id],
             |row| row.get(0),
         )
@@ -156,7 +157,8 @@ fn question_attempt_assets_keep_images_referenced() {
              CREATE TABLE question_attempt_assets (asset_id TEXT);
              CREATE TABLE speech_segments (asset_id TEXT);
              CREATE TABLE speech_voices (asset_id TEXT);
-             CREATE TABLE notebook_item_assets (asset_id TEXT);",
+             CREATE TABLE notebook_item_assets (asset_id TEXT);
+             CREATE TABLE tutor_turn_attachments (asset_id TEXT);",
         )
         .unwrap();
     let asset_id = "a".repeat(32);
@@ -177,6 +179,10 @@ fn question_attempt_assets_keep_images_referenced() {
         .execute("INSERT INTO notebook_item_assets VALUES (?1)", [&asset_id])
         .unwrap();
     assert_eq!(reference_count(&connection, &asset_id).unwrap(), 1);
+    connection
+        .execute("INSERT INTO tutor_turn_attachments VALUES (?1)", [&asset_id])
+        .unwrap();
+    assert_eq!(reference_count(&connection, &asset_id).unwrap(), 2);
 }
 
 fn normalize_asset_ids(values: Vec<String>) -> Result<Vec<String>, CommandError> {

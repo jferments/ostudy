@@ -451,12 +451,12 @@ export interface StudyGuideCanvasSource {
   topicId: string;
   number: number;
   documentId: string;
-  /** "p. 12", as the section's Sources line prints it. */
+  /** "p. 12" or "pp. 12–14", as the section's Sources line prints it. */
   label: string;
   /** The first cited page, when it can be opened: a page of a PDF. */
   pageNumber: number | null;
-  /** The passage as the document says it. */
-  excerpt: string;
+  /** The cited passages on these pages, as the document says them. */
+  excerpts: string[];
 }
 
 /** A document's whole study guide laid out as the PDF export sets it. */

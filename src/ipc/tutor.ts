@@ -51,6 +51,22 @@ export interface QuizFeedback {
   outcome: "correct" | "partial" | "incorrect" | "unclear";
   explanation: string;
   criteriaFeedback: string[];
+  /** Whether the answer met each criterion, in order; empty for older feedback and choose-one answers. */
+  criteriaMet: boolean[];
+  /** The option a choose-one answer picked. */
+  chosen: number | null;
+}
+
+/** A quiz question's public part. What it expected arrives once it is answered. */
+export interface TutorQuestion {
+  number: number;
+  total: number | null;
+  /** A choose-one question's options; empty for a short answer. */
+  choices: string[];
+  answered: boolean;
+  expectedAnswer?: string;
+  explanation?: string;
+  correctChoice?: number;
 }
 
 export interface TutorTurn {
@@ -65,13 +81,34 @@ export interface TutorTurn {
   evidenceCurrent: boolean;
   pendingQuestion: boolean;
   feedback: QuizFeedback | null;
+  question: TutorQuestion | null;
+  /** The question an answer answers. */
+  questionId: string | null;
   provider: string;
   model: string;
   errorCode: string;
   errorMessage: string;
   totalTokens: number | null;
   createdAt: number;
+  /** The newer version that replaced this turn; the chat carries on from it. */
+  replacedByTurnId: string | null;
+  /** What the learner attached to this message, in order. */
+  attachments: TutorAttachment[];
 }
+
+/** A picture or text file attached to a message, as the chat shows it. */
+export type TutorAttachment =
+  | { kind: "image"; assetId: string; name: string }
+  | { kind: "text"; name: string; text: string };
+
+/**
+ * One attachment to send. A picture added for this message is still staged in
+ * its own import draft; one sent before (when a question is asked again) is
+ * already kept and names no draft.
+ */
+export type TutorAttachmentInput =
+  | { kind: "image"; assetId: string; draftId?: string }
+  | { kind: "text"; name: string; text: string };
 
 export interface ConversationDetail {
   conversation: ConversationSummary;
@@ -89,6 +126,14 @@ export interface TutorTurnInput {
   profileId: string | null;
   includeConversations: boolean;
   questionId: string | null;
+  /** The conversation's last answer this one replaces: Regenerate, or the question edited and sent again. */
+  replacesTurnId?: string;
+  /** The question a quiz's Next question follows. */
+  afterQuestionId?: string;
+  /** The option picked for a choose-one question. */
+  choice?: number;
+  /** Pictures and text files sent with a question. */
+  attachments?: TutorAttachmentInput[];
 }
 
 export async function listTutorProjects(): Promise<TutorProject[]> {
@@ -199,6 +244,11 @@ export async function getTutorFigure(turnId: string, documentId: string, figureI
   return invoke<TutorFigure>("get_tutor_figure", { input: { turnId, documentId, figureId } });
 }
 
+/** Whether the chat's model sees attached pictures; `profileId` null is the Tutor's assigned model. */
+export async function getTutorImageInput(profileId: string | null): Promise<boolean> {
+  return invoke<boolean>("get_tutor_image_input", { input: { profileId } });
+}
+
 export async function getTutorConversation(input: {
   conversationId: string;
   beforeSequence: number | null;
@@ -240,4 +290,19 @@ export interface SpokenPiece {
  */
 export async function speakTutorReply(turnId: string, piece: number): Promise<SpokenPiece> {
   return invoke<SpokenPiece>("speak_tutor_reply", { input: { turnId, piece } });
+}
+
+/** A flashcard the flashcard model drafted from a Tutor answer. */
+export interface AnswerCardDraft {
+  question: string;
+  answer: string;
+}
+
+/**
+ * Asks the flashcard model for a few cards from a finished answer. Nothing is
+ * saved; cancel it with `cancelLearningTask(operationId)`.
+ */
+export async function draftTutorAnswerCards(operationId: string, turnId: string): Promise<AnswerCardDraft[]> {
+  const drafted = await invoke<{ cards: AnswerCardDraft[] }>("draft_tutor_answer_cards", { input: { operationId, turnId } });
+  return drafted.cards;
 }

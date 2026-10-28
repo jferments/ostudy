@@ -59,7 +59,7 @@ function names(buttons: HTMLElement[]) {
 describe("LibraryFrame", () => {
   it.each([390, 1000, 1440])("names the subject's five pages in order at %s px", (width) => {
     renderLibrary("decks", width);
-    expect(names(views())).toEqual(["Lessons", "Study guides", "Flashcards", "Podcasts", "Documents"]);
+    expect(names(views())).toEqual(["Lessons", "Flashcards", "Study guides", "Podcasts", "Documents"]);
   });
 
   it("leads back to Library and has no list of subjects beside the page", () => {

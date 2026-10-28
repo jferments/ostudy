@@ -34,6 +34,7 @@ mod deletion_purge;
 #[rustfmt::skip]
 mod device_sync;
 mod device_sync_qr_commands;
+mod device_voices;
 mod diagnostics;
 mod document_annotations;
 mod document_artifacts;
@@ -389,6 +390,7 @@ pub fn run() {
             tutor::commands::set_tutor_conversation_archived,
             tutor::commands::get_tutor_conversation,
             tutor::commands::get_tutor_figure,
+            tutor::commands::get_tutor_image_input,
             tutor::commands::delete_tutor_conversation,
             library_session::commands::leased_send_tutor_turn,
             tutor::commands::get_tutor_memory,
@@ -403,6 +405,7 @@ pub fn run() {
             library_session::commands::leased_amend_image_set,
             document_import::import_document,
             document_operations::start_document_flashcard_generation,
+            document_operations::start_document_preparation,
             library_session::commands::leased_run_document_flashcard_generation,
             library_session::commands::leased_generate_more_pdf_flashcards,
             document_operations::cancel_document_flashcard_generation,
@@ -416,6 +419,7 @@ pub fn run() {
             annotation_cards::get_document_marked_cards,
             annotation_cards::get_card_mark_source,
             library_session::commands::leased_draft_mark_question,
+            library_session::commands::leased_draft_tutor_answer_cards,
             library_session::commands::leased_render_document_page_tile,
             library_session::commands::leased_get_document_page_text,
             document_figures::get_document_figures,
@@ -502,6 +506,8 @@ pub fn run() {
             question_of_the_day::get_question_of_the_day,
             speech_input::get_speech_input_status,
             library_session::commands::leased_install_speech_input_model,
+            device_voices::get_device_voices,
+            library_session::commands::leased_install_device_voice,
             library_session::commands::leased_transcribe_speech,
             practice_selection::get_practice_workload,
             practice_selection::start_selected_practice,

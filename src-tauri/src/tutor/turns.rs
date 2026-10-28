@@ -6,18 +6,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ai::document_intelligence::DocumentTaskContext,
+    asset_lifecycle::{finalize_assets_for_owner, DraftFinalization},
     database::Database,
     error::CommandError,
     knowledge::{
         contracts::{hash, invalid, SourceCitation},
         repository,
     },
+    paths::AppPaths,
     util::{generate_id, unix_time_millis},
 };
 
 use super::{
     context::StudyContext,
-    contracts::{PrivateQuiz, ProviderAnswer, QuizFeedback, TutorMode, TutorTurn, TutorTurnInput},
+    contracts::{
+        PrivateQuiz, ProviderAnswer, QuizFeedback, TutorAttachment, TutorAttachmentInput,
+        TutorMode, TutorQuestion, TutorTurn, TutorTurnInput,
+    },
     conversations, history, projects,
 };
 
@@ -64,8 +69,11 @@ pub(crate) fn replay(
     })
 }
 
+/// Admits a turn. `paths` keeps the pictures attached to it; a turn with
+/// none needs no managed files.
 pub(crate) fn begin(
     database: &Database,
+    paths: Option<&AppPaths>,
     input: &TutorTurnInput,
     task: &DocumentTaskContext,
 ) -> Result<TurnIdentity, CommandError> {
@@ -111,6 +119,12 @@ pub(crate) fn begin(
         if let Some(question_id) = &input.question_id {
             load_question(&transaction, &input.conversation_id, question_id)?;
         }
+        if let Some(replaced) = &input.replaces_turn_id {
+            ensure_replaceable(&transaction, &input.conversation_id, replaced)?;
+        }
+        if let Some(previous) = &input.after_question_id {
+            load_asked(&transaction, &input.conversation_id, previous)?;
+        }
         let sequence: i64 = transaction.query_row(
             "SELECT COALESCE(MAX(sequence), 0) + 1 FROM tutor_turns WHERE conversation_id = ?1",
             [&input.conversation_id], |row| row.get(0),
@@ -127,6 +141,41 @@ pub(crate) fn begin(
                 request_json, captured_scope_json, input.mode.as_str(), input.text, input.question_id,
                 task.profile_id, task.profile_revision, task.provider_kind, task.model_id, now],
         ).map_err(CommandError::database)?;
+        if let Some(replaced) = &input.replaces_turn_id {
+            // The chat carries on from the new version at once: the replaced
+            // answer leaves the history this turn is written from, and is no
+            // longer offered as an earlier conversation to search.
+            transaction.execute(
+                "INSERT INTO tutor_turn_replacements (turn_id, replaced_by_turn_id, created_at)
+                 VALUES (?1, ?2, ?3)",
+                params![replaced, id, now],
+            ).map_err(CommandError::database)?;
+            transaction.execute(
+                "DELETE FROM knowledge_sources WHERE kind = 'conversation' AND turn_id = ?1",
+                [replaced],
+            ).map_err(CommandError::database)?;
+        }
+        let mut kept = Vec::new();
+        for (position, attachment) in input.attachments.iter().enumerate() {
+            match attachment {
+                TutorAttachmentInput::Image { asset_id, draft_id } => {
+                    let paths = paths.ok_or_else(|| invalid("Attached pictures could not be kept."))?;
+                    let name = keep_image(&transaction, paths, &id, asset_id, draft_id.as_deref(), &mut kept)?;
+                    transaction.execute(
+                        "INSERT INTO tutor_turn_attachments (turn_id, position, kind, name, asset_id)
+                         VALUES (?1, ?2, 'image', ?3, ?4)",
+                        params![id, position as i64, name, asset_id],
+                    ).map_err(CommandError::database)?;
+                }
+                TutorAttachmentInput::Text { name, text } => {
+                    transaction.execute(
+                        "INSERT INTO tutor_turn_attachments (turn_id, position, kind, name, text)
+                         VALUES (?1, ?2, 'text', ?3, ?4)",
+                        params![id, position as i64, name, text],
+                    ).map_err(CommandError::database)?;
+                }
+            }
+        }
         transaction.execute(
             "UPDATE tutor_conversations SET revision = revision + 1, updated_at = ?1 WHERE id = ?2",
             params![now, input.conversation_id],
@@ -134,6 +183,9 @@ pub(crate) fn begin(
         let accepted_revision = conversation.revision.checked_add(1)
             .ok_or_else(|| invalid("The conversation revision exceeded its supported range."))?;
         transaction.commit().map_err(CommandError::database)?;
+        for finalization in kept {
+            finalization.cleanup();
+        }
         Ok(TurnIdentity {
             id,
             conversation_id: input.conversation_id.clone(),
@@ -262,7 +314,11 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         .query_row(
             "SELECT id, operation_id, sequence, mode, user_text, assistant_text, state,
                 citations_json, evidence_current, quiz_json, provider_kind, model_id,
-                safe_error_code, safe_error_message, total_tokens, created_at, conversation_id
+                safe_error_code, safe_error_message, total_tokens, created_at, conversation_id,
+                (SELECT replaced_by_turn_id FROM tutor_turn_replacements WHERE turn_id = tutor_turns.id),
+                answered_question_id,
+                EXISTS(SELECT 1 FROM tutor_turns a WHERE a.answered_question_id = tutor_turns.id
+                       AND a.state = 'complete')
          FROM tutor_turns WHERE id = ?1",
             [id],
             |row| {
@@ -284,6 +340,9 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
                     row.get::<_, Option<i64>>(14)?,
                     row.get::<_, i64>(15)?,
                     row.get::<_, String>(16)?,
+                    row.get::<_, Option<String>>(17)?,
+                    row.get::<_, Option<String>>(18)?,
+                    row.get::<_, bool>(19)?,
                 ))
             },
         )
@@ -307,6 +366,8 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         && row.6 == "complete"
         && row.8
         && question_is_pending(connection, &row.16, &row.0)?;
+    let question = assessment.quiz.map(|quiz| public_question(quiz, row.19));
+    let attachments = load_attachments(connection, &row.0)?;
     Ok(TutorTurn {
         id: row.0,
         operation_id: row.1,
@@ -319,13 +380,172 @@ pub(crate) fn load_public(connection: &Connection, id: &str) -> Result<TutorTurn
         evidence_current: row.8,
         pending_question,
         feedback: assessment.feedback,
+        question,
+        question_id: row.18,
         provider: row.10,
         model: row.11,
         error_code: row.12,
         error_message: row.13,
         total_tokens: row.14,
         created_at: row.15,
+        replaced_by_turn_id: row.17,
+        attachments,
     })
+}
+
+/// Keeps an attached picture's asset for the turn and names it as the
+/// learner's file was named. A newly added picture is promoted from the
+/// import draft it was staged in; one sent before is already kept.
+fn keep_image(
+    transaction: &rusqlite::Transaction<'_>,
+    paths: &AppPaths,
+    turn_id: &str,
+    asset_id: &str,
+    draft_id: Option<&str>,
+    kept: &mut Vec<DraftFinalization>,
+) -> Result<String, CommandError> {
+    let asset: Option<(String, String, String)> = transaction
+        .query_row(
+            "SELECT lifecycle_state, mime_type, original_filename FROM assets
+             WHERE id = ?1 AND deleted_at IS NULL",
+            [asset_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    let (state, mime_type, name) = asset
+        .ok_or_else(|| invalid("An attached picture is no longer available. Attach it again."))?;
+    if !mime_type.starts_with("image/") {
+        return Err(invalid("Only pictures can be attached as images."));
+    }
+    let draft_id = match state.as_str() {
+        "staged" => Some(draft_id.ok_or_else(|| {
+            CommandError::new(
+                "asset_draft_mismatch",
+                "A new picture names the image draft it was added to.",
+            )
+        })?),
+        "ready" => None,
+        _ => {
+            return Err(invalid(
+                "An attached picture is no longer available. Attach it again.",
+            ))
+        }
+    };
+    kept.push(finalize_assets_for_owner(
+        transaction,
+        paths,
+        &[asset_id.to_string()],
+        draft_id,
+        Some(turn_id),
+    )?);
+    let name = name.trim();
+    Ok(if name.is_empty() {
+        "Picture".to_string()
+    } else {
+        name.chars().take(255).collect()
+    })
+}
+
+/// What was attached to a turn, in order.
+pub(crate) fn load_attachments(
+    connection: &Connection,
+    turn_id: &str,
+) -> Result<Vec<TutorAttachment>, CommandError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT kind, name, asset_id, text FROM tutor_turn_attachments
+             WHERE turn_id = ?1 ORDER BY position",
+        )
+        .map_err(CommandError::database)?;
+    let rows = statement
+        .query_map([turn_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .map_err(CommandError::database)?;
+    rows.map(|row| {
+        let (kind, name, asset_id, text) = row.map_err(CommandError::database)?;
+        match (kind.as_str(), asset_id, text) {
+            ("image", Some(asset_id), None) => Ok(TutorAttachment::Image { asset_id, name }),
+            ("text", None, Some(text)) => Ok(TutorAttachment::Text { name, text }),
+            _ => Err(invalid("A stored Tutor attachment is invalid.")),
+        }
+    })
+    .collect()
+}
+
+/// A question's public part. Its expected answer and explanation show once it
+/// has been answered, as the graded answer already showed them.
+fn public_question(quiz: PrivateQuiz, answered: bool) -> TutorQuestion {
+    let series = quiz.series.unwrap_or(super::contracts::QuizSeries {
+        number: 1,
+        total: quiz.question_count,
+    });
+    TutorQuestion {
+        number: series.number,
+        total: series.total,
+        choices: quiz.choices,
+        answered,
+        expected_answer: answered.then_some(quiz.expected_answer),
+        explanation: answered.then_some(quiz.explanation),
+        correct_choice: if answered { quiz.correct_choice } else { None },
+    }
+}
+
+/// An earlier question of this conversation, answered or not, for the place
+/// of the question asked after it.
+pub(crate) fn load_asked(
+    connection: &Connection,
+    conversation_id: &str,
+    question_id: &str,
+) -> Result<PrivateQuiz, CommandError> {
+    let json: Option<String> = connection
+        .query_row(
+            "SELECT quiz_json FROM tutor_turns WHERE id = ?1 AND conversation_id = ?2
+             AND state = 'complete' AND mode = 'quiz'",
+            params![question_id, conversation_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(CommandError::database)?
+        .flatten();
+    let assessment: StoredAssessment = serde_json::from_str(
+        &json.ok_or_else(|| invalid("The earlier quiz question is unavailable."))?,
+    )
+    .map_err(CommandError::serialization)?;
+    assessment
+        .quiz
+        .ok_or_else(|| invalid("The earlier message is not a quiz question."))
+}
+
+/// Only the conversation's last turn can be replaced, once, and only an
+/// explanation: a quiz question or a graded answer keeps its place.
+fn ensure_replaceable(
+    connection: &Connection,
+    conversation_id: &str,
+    turn_id: &str,
+) -> Result<(), CommandError> {
+    let last: Option<(String, String, bool)> = connection
+        .query_row(
+            "SELECT id, mode, EXISTS(SELECT 1 FROM tutor_turn_replacements r WHERE r.turn_id = t.id)
+             FROM tutor_turns t WHERE conversation_id = ?1 ORDER BY sequence DESC LIMIT 1",
+            [conversation_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(CommandError::database)?;
+    match last {
+        Some((id, mode, replaced)) if id == turn_id && mode == "explain" && !replaced => Ok(()),
+        _ => Err(CommandError::new(
+            "tutor_turn_not_replaceable",
+            "Only the latest answer can be asked again. Send a new message instead.",
+        )),
+    }
 }
 
 pub(crate) fn load_question(

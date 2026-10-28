@@ -22,9 +22,8 @@ const PRACTICE_WIDTH: f64 = 24.0 * 72.0 / 25.4;
 const PRACTICE_HEIGHT: f64 = 6.5 * 72.0 / 25.4;
 /// A citation number's box, in points. Its mark sits on the baseline and the
 /// template raises the number above it, about 4 points a digit.
-const CITE_DIGIT_WIDTH: f64 = 4.4;
+const CITE_WIDTH: f64 = 24.0;
 const CITE_HEIGHT: f64 = 8.0;
-const CITE_RISE: f64 = 3.5;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,12 +60,12 @@ pub(crate) struct StudyGuideCanvasSourceDto {
     pub topic_id: String,
     pub number: usize,
     pub document_id: String,
-    /// "p. 12", as the section's Sources line prints it.
+    /// "p. 12" or "pp. 12–14", as the section's Sources line prints it.
     pub label: String,
     /// The first cited page, when the reader can open it: a page of a PDF.
     pub page_number: Option<i64>,
-    /// The passage as the document says it.
-    pub excerpt: String,
+    /// The cited passages on these pages, as the document says them.
+    pub excerpts: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -215,9 +214,9 @@ fn assemble(
                 number,
                 page_index: anchor.page - 1,
                 x: anchor.x,
-                y: anchor.y - CITE_RISE,
-                width: CITE_DIGIT_WIDTH * number.to_string().len() as f64,
-                height: CITE_HEIGHT,
+                y: anchor.y,
+                width: anchor.w.unwrap_or(CITE_WIDTH),
+                height: anchor.h.unwrap_or(CITE_HEIGHT),
             })
         })
         .collect();
@@ -243,7 +242,7 @@ fn assemble(
                         .as_ref()
                         .filter(|locator| source.pdf && locator.unit_kind == SourceUnitKind::Page)
                         .and_then(|locator| locator.unit_numbers.iter().min().copied()),
-                    excerpt: source.excerpt.clone(),
+                    excerpts: source.excerpts.clone(),
                 })
         })
         .collect();
@@ -348,6 +347,8 @@ mod tests {
             page,
             x: 0.0,
             y,
+            w: None,
+            h: None,
         }
     }
 
@@ -428,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn key_points_carry_their_source_numbers_onto_the_canvas() {
+    fn a_sections_sources_line_carries_its_sources_onto_the_canvas() {
         use super::super::{
             citations::{CitedSource, SectionCitations},
             ExportBlock,
@@ -453,14 +454,14 @@ mod tests {
                     document_id: "document-1".into(),
                     pdf: true,
                     locator: Some(page(2)),
-                    excerpt: "Preload is the stretch of the ventricle.".into(),
+                    excerpts: vec!["Preload is the stretch of the ventricle.".into()],
                 },
                 CitedSource {
                     number: 2,
                     document_id: "document-1".into(),
                     pdf: false,
                     locator: Some(page(3)),
-                    excerpt: "End-diastolic volume sets preload.".into(),
+                    excerpts: vec!["End-diastolic volume sets preload.".into()],
                 },
             ],
         });
@@ -470,22 +471,17 @@ mod tests {
             .iter()
             .map(|mark| (mark.topic_id.as_str(), mark.number))
             .collect::<Vec<_>>();
-        assert_eq!(
-            marks,
-            [
-                ("topic-preload", 1),
-                ("topic-preload", 1),
-                ("topic-preload", 2)
-            ]
-        );
+        // One mark per source, on the section's Sources line.
+        assert_eq!(marks, [("topic-preload", 1), ("topic-preload", 2)]);
         for mark in &canvas.citations {
             let page = &canvas.pages[mark.page_index];
             assert!(mark.x > 0.0 && mark.x + mark.width < page.width);
             assert!(mark.y > 0.0 && mark.y + mark.height < page.height);
         }
-        // The second point's two numbers sit side by side on one line.
-        assert!((canvas.citations[1].y - canvas.citations[2].y).abs() < 0.5);
-        assert!(canvas.citations[2].x > canvas.citations[1].x);
+        // The sources sit side by side on one line, each as wide as its label.
+        assert!((canvas.citations[0].y - canvas.citations[1].y).abs() < 0.5);
+        assert!(canvas.citations[1].x > canvas.citations[0].x + canvas.citations[0].width);
+        assert!(canvas.citations[0].width > 8.0 && canvas.citations[0].height > 4.0);
         let sources = canvas
             .sources
             .iter()

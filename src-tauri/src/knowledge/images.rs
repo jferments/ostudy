@@ -14,7 +14,9 @@ use rusqlite::{params, OptionalExtension};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ai::document_intelligence::SourcePageImage, database::Database, error::CommandError,
+    ai::document_intelligence::{ImageShows, SourcePageImage},
+    database::Database,
+    error::CommandError,
     paths::AppPaths,
 };
 
@@ -169,7 +171,7 @@ pub(crate) fn load_image_references(
         images.push(SourcePageImage {
             page_number: record.source_unit,
             bytes,
-            crop_of: None,
+            shows: ImageShows::Unit,
         });
     }
     Ok(images)

@@ -1,6 +1,6 @@
 import type { StudyGuidePdfTheme } from "../../ipc/studyGuides";
 
-/** How a guide reads: as its PDF pages in a theme, on the canvas, or as plain text. */
+/** How a guide reads: as its pages in the study guide theme, on the canvas, or as plain text. */
 export type GuidePageStyle = "plain" | StudyGuidePdfTheme;
 
 const STYLE_STORAGE_KEY = "ostudy.guidePageStyle";
@@ -12,20 +12,22 @@ export const GUIDE_PAGE_STYLES: ReadonlyArray<{ value: GuidePageStyle; name: str
   { value: "plum", name: "Plum" },
 ];
 
-/** The page style guides were last read in on this device; Navy until one is chosen. */
-export function readGuidePageStyle(): GuidePageStyle {
+/**
+ * Whether guides are read as plain text on this device. The theme of their pages is the study
+ * guide theme in Settings; a theme stored here by an older build only means pages.
+ */
+export function readsGuidesAsPlainText(): boolean {
   try {
-    const stored = window.localStorage.getItem(STYLE_STORAGE_KEY);
-    return GUIDE_PAGE_STYLES.find((style) => style.value === stored)?.value ?? "navy";
+    return window.localStorage.getItem(STYLE_STORAGE_KEY) === "plain";
   } catch {
-    return "navy";
+    return false;
   }
 }
 
-export function saveGuidePageStyle(style: GuidePageStyle): void {
+export function saveReadsGuidesAsPlainText(plain: boolean): void {
   try {
-    window.localStorage.setItem(STYLE_STORAGE_KEY, style);
+    window.localStorage.setItem(STYLE_STORAGE_KEY, plain ? "plain" : "pages");
   } catch {
-    // The style is a convenience; Navy works without storage.
+    // The choice is a convenience; pages work without storage.
   }
 }

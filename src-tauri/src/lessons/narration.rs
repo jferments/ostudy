@@ -6,7 +6,9 @@
 //! narration is cut into sentence groups. A group's audio is keyed by its
 //! exact text, engine, model, voice and format, so listening again costs
 //! nothing and a rewritten step re-voices only the sentences that changed.
-//! A lesson keeps the voice it was first spoken in (see `voices`).
+//! A lesson keeps the voice it was first spoken in (see `voices`). A voice on
+//! the learner's device (`device_voices`) speaks without a connection and is
+//! not accounted as an AI request.
 
 use std::{
     collections::HashSet,
@@ -29,10 +31,11 @@ use crate::{
     ai::{
         generation,
         profiles::{load_profile_request, ProfileRequestSnapshot},
-        speech::{self, SpeechModel, VoiceReference, SPEECH_FORMAT, SPEECH_MODELS},
+        speech::{self, SpeechModel, VoiceReference, DEVICE_ENGINE, SPEECH_MODELS},
         AiRuntimeState,
     },
     database::Database,
+    device_voices,
     error::CommandError,
     media::{inspect_media_bytes, MediaInspection, MediaKind},
     paths::AppPaths,
@@ -67,6 +70,9 @@ pub struct SpeechModelDto {
     pub default_voice: String,
     /// Whether the learner's own saved voices can speak with this model.
     pub clones_voices: bool,
+    /// Whether it speaks on this device, for free and with no connection,
+    /// once it is downloaded.
+    pub on_device: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -141,6 +147,7 @@ pub(crate) fn speech_settings(connection: &Connection) -> Result<SpeechSettingsD
                 voices: model.voices.iter().map(|voice| voice.to_string()).collect(),
                 default_voice: model.default_voice.to_string(),
                 clones_voices: model.clones_voices,
+                on_device: model.device.is_some(),
             })
             .collect(),
         connections: connections(connection)?,
@@ -261,11 +268,23 @@ pub(super) fn resolved(connection: &Connection) -> Result<Resolved, CommandError
         .optional()
         .map_err(CommandError::database)?;
     let usable = connections(connection)?;
+    let default_profile = || -> Result<Option<String>, CommandError> {
+        Ok(speech::document_connection(connection)?
+            .filter(|id| usable.iter().any(|item| item.id == *id))
+            .or_else(|| usable.first().map(|item| item.id.clone())))
+    };
     let mut stored_revision = 0;
     if let Some((profile_id, model_id, voice, revision)) = saved {
         stored_revision = revision;
         if let Some(model) = speech::speech_model(&model_id) {
-            let profile_id = profile_id.filter(|id| usable.iter().any(|item| item.id == *id));
+            // Removing a service clears the saved voice's connection (ON
+            // DELETE SET NULL), and Settings has no way to choose none, so a
+            // voice without a usable connection speaks through the default
+            // one rather than silently turning lesson audio off.
+            let profile_id = match profile_id {
+                Some(id) if usable.iter().any(|item| item.id == id) => Some(id),
+                _ => default_profile()?,
+            };
             return Ok(Resolved {
                 profile_id,
                 model,
@@ -274,10 +293,7 @@ pub(super) fn resolved(connection: &Connection) -> Result<Resolved, CommandError
             });
         }
     }
-    let document_default = speech::document_connection(connection)?;
-    let profile_id = document_default
-        .filter(|id| usable.iter().any(|item| item.id == *id))
-        .or_else(|| usable.first().map(|item| item.id.clone()));
+    let profile_id = default_profile()?;
     let model = speech::speech_model(speech::DRAMA).expect("Drama 3 is in the speech catalog");
     Ok(Resolved {
         profile_id,
@@ -430,12 +446,7 @@ pub(super) async fn speak_text(
     })?;
     let missing = found.iter().filter(|segment| segment.is_none()).count();
     if missing > 0 {
-        let mut accounting = generation::Operation::begin(database, None, None, None, PURPOSE)?;
-        let result = narrator
-            .make_missing(&pieces, &mut found, accounting.context())
-            .await;
-        accounting.finish_result(&result);
-        result?;
+        narrator.make_missing(&pieces, &mut found, PURPOSE).await?;
     }
     Ok(LessonStepNarrationDto {
         segments: found.into_iter().flatten().collect(),
@@ -491,17 +502,10 @@ pub(crate) async fn speak_piece(
             made: false,
         });
     }
-    let mut accounting = generation::Operation::begin(database, None, None, None, purpose)?;
     let mut found = [None];
-    let result = narrator
-        .make_missing(
-            std::slice::from_ref(piece),
-            &mut found,
-            accounting.context(),
-        )
-        .await;
-    accounting.finish_result(&result);
-    result?;
+    narrator
+        .make_missing(std::slice::from_ref(piece), &mut found, purpose)
+        .await?;
     let [Some(segment)] = found else {
         return Err(CommandError::new(
             "speech_audio_invalid",
@@ -538,10 +542,21 @@ fn prepare<'a>(
             "There is nothing here to listen to.",
         ));
     }
-    let request = speaking_request(database, &settings)?;
-    let engine = speech::engine(request.profile.provider_kind)?;
     let narrating = Narrating::begin(key)?;
     let (model, voice) = choose(&settings)?;
+    let (request, engine) = match model.device {
+        Some(device) => {
+            if !device_voices::is_installed(paths, device) {
+                return Err(device_voices::not_installed(device));
+            }
+            (None, DEVICE_ENGINE)
+        }
+        None => {
+            let request = speaking_request(database, &settings)?;
+            let engine = speech::engine(request.profile.provider_kind)?;
+            (Some(request), engine)
+        }
+    };
     let pieces = segments(text, longest.min(model.max_characters));
     let narrator = Narrator {
         database,
@@ -572,17 +587,39 @@ struct Narrator<'a> {
     database: &'a Database,
     paths: &'a AppPaths,
     runtime: &'a AiRuntimeState,
-    request: ProfileRequestSnapshot,
+    /// The connection that pays; none for a voice on the device.
+    request: Option<ProfileRequestSnapshot>,
     stage: &'static str,
     voice: Voice,
 }
 
 impl Narrator<'_> {
+    /// Makes the pieces not kept yet. A provider's requests are accounted
+    /// under one operation of `purpose`; a voice on the device costs nothing
+    /// and is not.
     async fn make_missing(
         &self,
         pieces: &[String],
         found: &mut [Option<NarrationSegmentDto>],
-        accounting: generation::Context,
+        purpose: &'static str,
+    ) -> Result<(), CommandError> {
+        let Some(request) = &self.request else {
+            return self.make_missing_with(pieces, found, None).await;
+        };
+        let mut accounting =
+            generation::Operation::begin(self.database, None, None, None, purpose)?;
+        let result = self
+            .make_missing_with(pieces, found, Some((request, accounting.context())))
+            .await;
+        accounting.finish_result(&result);
+        result
+    }
+
+    async fn make_missing_with(
+        &self,
+        pieces: &[String],
+        found: &mut [Option<NarrationSegmentDto>],
+        provider: Option<(&ProfileRequestSnapshot, generation::Context)>,
     ) -> Result<(), CommandError> {
         let cancellation = CancellationSignal::new();
         // One piece at a time, in speaking order: the first piece is ready to
@@ -591,26 +628,40 @@ impl Narrator<'_> {
             if slot.is_some() {
                 continue;
             }
-            let audio = speech::speak(
-                self.runtime,
-                &self.request,
-                &speech::Speaker {
-                    model: self.voice.model,
-                    voice: &self.voice.voice,
-                    reference: self.voice.reference.as_ref(),
-                },
-                self.stage,
-                piece,
-                &accounting,
-                &cancellation,
-            )
-            .await?;
+            let bytes = match (&provider, self.voice.model.device) {
+                (_, Some(device)) => {
+                    device_voices::speak(self.paths, device, &self.voice.voice, piece).await?
+                }
+                (Some((request, accounting)), None) => {
+                    speech::speak(
+                        self.runtime,
+                        request,
+                        &speech::Speaker {
+                            model: self.voice.model,
+                            voice: &self.voice.voice,
+                            reference: self.voice.reference.as_ref(),
+                        },
+                        self.stage,
+                        piece,
+                        accounting,
+                        &cancellation,
+                    )
+                    .await?
+                    .bytes
+                }
+                (None, None) => {
+                    return Err(CommandError::new(
+                        "speech_not_configured",
+                        "Spoken narration needs an OpenRouter connection.",
+                    ))
+                }
+            };
             *slot = Some(keep_segment(
                 self.database,
                 self.paths,
                 &self.voice,
                 piece,
-                &audio.bytes,
+                &bytes,
             )?);
         }
         Ok(())
@@ -639,7 +690,7 @@ fn kept_segment(
                 voice.engine,
                 voice.model.id,
                 voice.voice,
-                SPEECH_FORMAT
+                voice.model.format()
             ],
             |row| {
                 Ok(NarrationSegmentDto {
@@ -692,7 +743,7 @@ fn keep_segment(
                         voice.engine,
                         voice.model.id,
                         voice.voice,
-                        SPEECH_FORMAT
+                        voice.model.format()
                     ],
                 )
                 .map_err(CommandError::database)?;
@@ -708,7 +759,7 @@ fn keep_segment(
                         voice.engine,
                         voice.model.id,
                         voice.voice,
-                        SPEECH_FORMAT,
+                        voice.model.format(),
                         asset_id,
                         characters,
                         now

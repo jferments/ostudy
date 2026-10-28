@@ -7,6 +7,7 @@ import { getLearningTaskProgress, getSemanticPreparation, listSemanticScopeChoic
 import {
   createTutorConversation,
   getTutorConversation,
+  getTutorImageInput,
   listTutorConversations,
   listTutorProjects,
   sendTutorTurn,
@@ -40,6 +41,7 @@ vi.mock("../../ipc/knowledge", async (importOriginal) => {
   };
 });
 vi.mock("../../ipc/tutor", () => ({
+  getTutorImageInput: vi.fn(),
   createTutorConversation: vi.fn(),
   createTutorProject: vi.fn(),
   createTutorProjectConversation: vi.fn(),
@@ -105,7 +107,8 @@ const quizTurn: TutorTurn = {
   id: "q".repeat(32), operationId: "o".repeat(32), sequence: 1, mode: "quiz", userText: "",
   assistantText: "Where is renin made?", state: "complete", citations: [], evidenceCurrent: true,
   pendingQuestion: true, feedback: null, provider: "fixture", model: "fixture", errorCode: "", errorMessage: "",
-  totalTokens: null, createdAt: 1,
+  totalTokens: null, createdAt: 1, replacedByTurnId: null, attachments: [],
+  question: { number: 1, total: null, choices: [], answered: false }, questionId: null,
 };
 
 const speechStatus: SpeechInputStatus = {
@@ -126,6 +129,7 @@ function Harness() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getTutorImageInput).mockResolvedValue(true);
   vi.mocked(getAiTaskDefaults).mockResolvedValue({ flashcardGenerationProfileId: null, tutorProfileId: null, embeddingsProfileId: null });
   vi.mocked(listAiProviderProfiles).mockResolvedValue([]);
   vi.mocked(listSemanticScopeChoices).mockResolvedValue([{ scope: renal, title: "Renal" }, { scope: other, title: "Cardiac" }]);

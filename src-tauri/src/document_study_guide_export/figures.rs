@@ -12,7 +12,9 @@
 //!   itself uses; one read as incidental or not worth studying never shows;
 //! - a figure not read (no model that sees images, or reading has not run)
 //!   qualifies only when it is a numbered figure whose caption shares at
-//!   least two words with the section, and then one per section at most.
+//!   least two words with the section, and then one per section at most;
+//!   when its caption cannot be read (a scanned book whose text layer prints
+//!   other letters), it qualifies on the section's own pages by its number.
 //!
 //! Hidden figures never show. The figure is drawn from the PDF when the guide
 //! is laid out, as a sharp crop of its page, so nothing new is stored.
@@ -25,10 +27,10 @@ use std::{
 use crate::{
     database::Database,
     document_annotations::page_tiles::pdf_source_path,
-    document_figures::{self, reading::crop_tile, DocumentFigureDto},
+    document_figures::{self, DocumentFigureDto},
     document_study_guides::{DocumentStudyGuideSection, StudyGuideSectionContent},
     paths::AppPaths,
-    pdf_render_backend::{self, PdfRenderRuntime},
+    pdf_render_backend::PdfRenderRuntime,
 };
 
 use super::{guide_typst, ExportFigure};
@@ -43,7 +45,12 @@ const NEEDED_IMPORTANCE: i64 = 4;
 /// in common with the section.
 const UNREAD_IMPORTANCE: i64 = 3;
 const UNREAD_MIN_SHARED_WORDS: usize = 2;
-const MAX_CAPTION_CHARS: usize = 220;
+/// A read figure's caption says why it matters, or else what it shows.
+const MAX_SHOWS_CHARS: usize = 220;
+const MAX_USE_CHARS: usize = 320;
+/// A caption with at least this share of its words mixing other letters into
+/// plain ones ("Sites îf acêiîñ") is a broken text layer, not words to match.
+const GARBLED_WORD_SHARE: f64 = 0.5;
 
 /// A figure chosen for one section, ready to draw.
 #[derive(Clone, Debug, PartialEq)]
@@ -64,6 +71,8 @@ struct Candidate {
     explained_on: Vec<i64>,
     title: String,
     shows: String,
+    /// An unread figure whose caption is not readable text.
+    unreadable: bool,
 }
 
 fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
@@ -85,7 +94,16 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
                 .collect(),
             explained_on: reading.explained_on.clone(),
             title: reading.title.trim().to_string(),
-            shows: reading.shows.clone(),
+            // Why it matters says what a learner needs; a plain description
+            // of what it shows stands in when the reading has no such note.
+            shows: reading
+                .use_in_text
+                .as_deref()
+                .filter(|text| !about_the_document(text))
+                .map(|text| clipped(&about_the_subject(text), MAX_USE_CHARS))
+                .filter(|text| !text.is_empty())
+                .unwrap_or_else(|| clipped(&reading.shows, MAX_SHOWS_CHARS)),
+            unreadable: false,
         });
     }
     // Unread: only a numbered figure with a caption says what it is.
@@ -93,6 +111,17 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
     let caption = strip_label(figure.caption.as_deref()?.trim());
     if caption.is_empty() {
         return None;
+    }
+    if garbled(caption) {
+        return Some(Candidate {
+            read: false,
+            importance: UNREAD_IMPORTANCE,
+            concepts: Vec::new(),
+            explained_on: Vec::new(),
+            title: String::new(),
+            shows: String::new(),
+            unreadable: true,
+        });
     }
     let (title, rest) = match caption.find(". ") {
         Some(end) => (&caption[..end], caption[end + 2..].trim()),
@@ -108,8 +137,26 @@ fn candidate(figure: &DocumentFigureDto) -> Option<Candidate> {
             .map(|passage| passage.page_number)
             .collect(),
         title: title.trim().to_string(),
-        shows: caption_detail(rest),
+        shows: clipped(&caption_detail(rest), MAX_SHOWS_CHARS),
+        unreadable: false,
     })
+}
+
+/// Whether many of `text`'s words mix letters outside ASCII into ASCII ones,
+/// as a broken font map prints them.
+fn garbled(text: &str) -> bool {
+    let words = text
+        .split_whitespace()
+        .filter(|word| word.chars().any(char::is_alphabetic))
+        .collect::<Vec<_>>();
+    let mixed = words
+        .iter()
+        .filter(|word| {
+            word.chars().any(|c| c.is_ascii_alphabetic())
+                && word.chars().any(|c| c.is_alphabetic() && !c.is_ascii())
+        })
+        .count();
+    !words.is_empty() && mixed as f64 >= words.len() as f64 * GARBLED_WORD_SHARE
 }
 
 /// The caption's sentences after its title, up to the abbreviation key
@@ -202,7 +249,13 @@ pub(crate) fn choose_for(
             {
                 continue;
             }
-            let shared = if candidate.read {
+            let shared = if candidate.unreadable {
+                // Its number is all there is to go on: it shows on its own page.
+                if !on_page {
+                    continue;
+                }
+                0
+            } else if candidate.read {
                 candidate
                     .concepts
                     .iter()
@@ -225,7 +278,7 @@ pub(crate) fn choose_for(
                 }
                 shared
             };
-            if candidate.importance < NEEDED_IMPORTANCE && shared == 0 {
+            if candidate.importance < NEEDED_IMPORTANCE && shared == 0 && !candidate.unreadable {
                 continue;
             }
             let score = candidate.importance * 10
@@ -274,7 +327,7 @@ pub(crate) fn choose_for(
                         figure_id: figure.figure_id.clone(),
                         page_number: figure.page_number,
                         title: candidate.title.clone(),
-                        caption: caption(&candidate.shows, figure.page_number),
+                        caption: caption(&candidate.shows),
                     })
                 })
                 .collect()
@@ -342,10 +395,8 @@ fn draw(
             let figure = figures
                 .iter()
                 .find(|figure| figure.figure_id == choice.figure_id)?;
-            let page = usize::try_from(figure.page_number).ok()?;
-            let tile = crop_tile(figure.page_width, figure.page_height, figure.bounds);
-            let png = pdf_render_backend::render_page_tile(runtime, source, page, tile).ok()?;
-            let pixels = image::load_from_memory(&png).ok()?.to_rgba8();
+            // The guide writes its own caption under the figure.
+            let pixels = document_figures::segment::figure_image(runtime, source, figure, false)?;
             Some(ExportFigure {
                 image: guide_typst::FigureImage::from_rgba(pixels)?,
                 title: choice.title.clone(),
@@ -362,32 +413,90 @@ pub(crate) fn draw_png(
     source: &Path,
     figure: &DocumentFigureDto,
 ) -> Option<(Vec<u8>, u32, u32)> {
-    let page = usize::try_from(figure.page_number).ok()?;
-    let tile = crop_tile(figure.page_width, figure.page_height, figure.bounds);
-    let png = pdf_render_backend::render_page_tile(runtime, source, page, tile).ok()?;
-    let (width, height) = image::load_from_memory(&png).ok()?.to_rgba8().dimensions();
-    Some((png, width, height))
+    let pixels = document_figures::segment::figure_image(runtime, source, figure, false)?;
+    let (width, height) = pixels.dimensions();
+    let mut encoded = std::io::Cursor::new(Vec::new());
+    pixels
+        .write_to(&mut encoded, image::ImageFormat::Png)
+        .ok()?;
+    Some((encoded.into_inner(), width, height))
 }
 
-/// What the figure shows, cut at a sentence when long, and where it is from.
-fn caption(shows: &str, page_number: i64) -> String {
-    let shows = shows.trim();
-    let mut text = if shows.chars().count() <= MAX_CAPTION_CHARS {
-        shows.to_string()
+/// Whether a reading's note on the figure talks about the document ("the
+/// page text cites it…") rather than the subject; readings made before the
+/// note was asked for in the learner's terms often do, and say nothing a
+/// caption needs.
+fn about_the_document(text: &str) -> bool {
+    let lowered = text.to_lowercase();
+    ["page", "caption", "does not discuss", "the text "]
+        .iter()
+        .any(|phrase| lowered.contains(phrase))
+}
+
+/// A note that opens by talking about the figure or the learner ("It lets
+/// the learner see that …", "It shows how …"), from its first words about
+/// the subject itself, which readings made before the caption was asked
+/// for in the subject's terms often do.
+fn about_the_subject(text: &str) -> String {
+    const OPENINGS: [&str; 8] = [
+        "it lets the learner see ",
+        "it lets the learner ",
+        "it helps the learner see ",
+        "it helps the learner ",
+        "this figure shows ",
+        "the figure shows ",
+        "it shows ",
+        "it illustrates ",
+    ];
+    let text = text.trim();
+    let lowered = text.to_lowercase();
+    let Some(opening) = OPENINGS
+        .iter()
+        .find(|opening| lowered.starts_with(**opening))
+    else {
+        return text.to_string();
+    };
+    let mut rest = &text[opening.len()..];
+    if rest.to_lowercase().starts_with("that ") {
+        rest = &rest[5..];
+    }
+    let mut letters = rest.chars();
+    match letters.next() {
+        Some(first) => first.to_uppercase().chain(letters).collect(),
+        None => text.to_string(),
+    }
+}
+
+/// What the figure shows or why it matters, as a sentence.
+fn caption(shows: &str) -> String {
+    let text = shows.trim().trim_end_matches(['.', ' ']);
+    if text.is_empty() || text.ends_with('…') {
+        text.to_string()
     } else {
-        let cut = shows.chars().take(MAX_CAPTION_CHARS).collect::<String>();
+        format!("{text}.")
+    }
+}
+
+/// `text` cut at a sentence when it is longer than `limit` characters,
+/// without its final stop.
+fn clipped(text: &str, limit: usize) -> String {
+    let text = text.trim();
+    let mut kept = if text.chars().count() <= limit {
+        text.to_string()
+    } else {
+        let cut = text.chars().take(limit).collect::<String>();
         match cut.rfind(". ") {
-            Some(end) if end > MAX_CAPTION_CHARS / 3 => cut[..=end].to_string(),
-            _ => format!("{}…", cut.trim_end()),
+            Some(end) if end > limit / 3 => cut[..=end].to_string(),
+            // No sentence ends early enough: stop at a word.
+            _ => match cut.rfind(' ') {
+                Some(space) => format!("{}…", cut[..space].trim_end_matches([',', ';', ':'])),
+                None => format!("{}…", cut.trim_end()),
+            },
         }
     };
-    let text_end = text.trim_end_matches(['.', ' ']).len();
-    text.truncate(text_end);
-    if text.is_empty() {
-        format!("Source page {page_number}")
-    } else {
-        format!("{text}. Source page {page_number}")
-    }
+    let end = kept.trim_end_matches(['.', ' ']).len();
+    kept.truncate(end);
+    kept
 }
 
 fn section_text(content: &StudyGuideSectionContent) -> String {

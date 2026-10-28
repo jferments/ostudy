@@ -50,8 +50,10 @@ async fn excluded_focused_image_is_never_loaded_or_sent() {
             input: &request,
             focus: &focus,
             quiz: None,
+            series: None,
             history: history::HistorySnapshot::default(),
             project_instructions: None,
+            attachments: &[],
         },
         &CancellationSignal::new(),
     )
@@ -119,15 +121,17 @@ async fn late_reinterpretation_cannot_publish_a_tutor_turn_over_unchanged_source
             input: &request,
             focus: &focus,
             quiz: None,
+            series: None,
             history: history::HistorySnapshot::default(),
             project_instructions: None,
+            attachments: &[],
         },
         &CancellationSignal::new(),
     )
     .await
     .unwrap();
     assert!(!ctx.sources.is_empty());
-    let identity = turns::begin(&f.database, &request, &f.task).unwrap();
+    let identity = turns::begin(&f.database, None, &request, &f.task).unwrap();
     repository::publish_units(
         &f.database,
         &sources[0],

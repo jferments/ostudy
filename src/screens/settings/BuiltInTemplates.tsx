@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { useAiFeatures } from "../../controllers/AiFeaturesProvider";
 import { getErrorMessage } from "../../ipc/common";
 import {
   getQuestionGenerationPolicy,
@@ -34,10 +35,12 @@ const FAMILY_MARKS: Record<QuestionFamily, string> = {
 };
 
 /**
- * The card formats ostudy ships with. A switch says whether AI may write that
- * format from documents; it saves at once. The weights live in the Question mix sheet.
+ * The card formats ostudy ships with. While AI is on, a switch says whether
+ * AI may write that format from documents; it saves at once. The weights live
+ * in the Question mix sheet.
  */
 export function BuiltInTemplates() {
+  const ai = useAiFeatures().enabled;
   const [saved, setSaved] = useState<QuestionGenerationSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -101,7 +104,7 @@ export function BuiltInTemplates() {
     <Panel title="Built-in templates" aria-busy={loading || saving}
       actions={<>
         <HelpTrigger topicId="templates.builtIn" label="Help with built-in templates" />
-        <Button variant="secondary" disabled={!saved || saving} onClick={() => setMixOpen(true)}>Question mix</Button>
+        {ai ? <Button variant="secondary" disabled={!saved || saving} onClick={() => setMixOpen(true)}>Question mix</Button> : null}
       </>}>
       {loading ? <InlineProgress>Loading built-in templates…</InlineProgress> : null}
       {error ? <InlineNotice kind="error">{error}</InlineNotice> : null}
@@ -109,16 +112,16 @@ export function BuiltInTemplates() {
         {saved ? "Reload" : "Try again"}
       </Button> : null}
       {saved ? <>
-        <span aria-hidden="true" className="tw:-mb-3 tw:justify-self-end tw:text-caption tw:text-muted-foreground">AI writes</span>
+        {ai ? <span aria-hidden="true" className="tw:-mb-3 tw:justify-self-end tw:text-caption tw:text-muted-foreground">AI writes</span> : null}
         <ListRows>
           {GENERATION_FAMILIES.map(({ value, label }) => {
             const on = allowed.includes(value);
             return <ListRow key={value}
               leading={<ListRowMedia label={FAMILY_MARKS[value]} className="tw:normal-case" />}
               title={label}
-              trailing={<Switch aria-label={`AI writes ${label}`} checked={on}
+              trailing={ai ? <Switch aria-label={`AI writes ${label}`} checked={on}
                 disabled={saving || (on && allowed.length === 1)}
-                onCheckedChange={(checked) => toggle(value, checked)} />} />;
+                onCheckedChange={(checked) => toggle(value, checked)} /> : undefined} />;
           })}
           <ListRow
             leading={<ListRowMedia icon="image" />} title="Image occlusion" />

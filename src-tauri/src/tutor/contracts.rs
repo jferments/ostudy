@@ -9,7 +9,8 @@ use crate::{
     util::validate_entity_id,
 };
 
-pub(crate) const TUTOR_PROMPT_VERSION: i64 = 2;
+pub(crate) const TUTOR_PROMPT_VERSION: i64 = 3;
+pub(crate) const MAX_QUIZ_QUESTIONS: i64 = 20;
 pub(crate) const MAX_HISTORY_TURNS: usize = 50;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -127,6 +128,111 @@ pub struct TutorTurnInput {
     #[serde(default)]
     pub include_conversations: bool,
     pub question_id: Option<String>,
+    /// The conversation's last turn this one replaces (Regenerate, or the
+    /// question edited and sent again). Left out of the stored request when
+    /// absent, so earlier operations keep their identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaces_turn_id: Option<String>,
+    /// The question a quiz's Next question follows, so the new one takes the
+    /// next place in its run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_question_id: Option<String>,
+    /// The option picked for a choose-one question, which is graded natively.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choice: Option<usize>,
+    /// Pictures and text files sent with a question, in the order attached.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<TutorAttachmentInput>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TutorImageInputQuery {
+    /// The chat's own model; `None` for the Tutor's assigned one.
+    pub profile_id: Option<String>,
+}
+
+/// Most pictures one message carries; a provider request takes six images,
+/// which leaves room for a page of the focused material.
+pub(crate) const MAX_ATTACHED_IMAGES: usize = 4;
+pub(crate) const MAX_ATTACHMENTS: usize = 8;
+pub(crate) const MAX_ATTACHED_TEXT_CHARS: usize = 30_000;
+pub(crate) const MAX_ATTACHED_TEXT_TOTAL: usize = 60_000;
+
+/// One thing attached to a question. A picture is a managed image: a new one
+/// is still staged in its own import draft, and one sent before (when the
+/// question is asked again) is already kept. A text file is sent as its text.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum TutorAttachmentInput {
+    Image {
+        asset_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        draft_id: Option<String>,
+    },
+    Text {
+        name: String,
+        text: String,
+    },
+}
+
+/// An attachment as the chat shows it, and as Regenerate sends it again.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum TutorAttachment {
+    Image { asset_id: String, name: String },
+    Text { name: String, text: String },
+}
+
+fn validate_attachments(attachments: &[TutorAttachmentInput]) -> Result<(), CommandError> {
+    if attachments.len() > MAX_ATTACHMENTS {
+        return Err(invalid(format!(
+            "A message can carry at most {MAX_ATTACHMENTS} attachments."
+        )));
+    }
+    let mut images = std::collections::BTreeSet::new();
+    let mut characters = 0_usize;
+    for attachment in attachments {
+        match attachment {
+            TutorAttachmentInput::Image { asset_id, draft_id } => {
+                validate_entity_id(asset_id, "attached picture")?;
+                if let Some(id) = draft_id {
+                    validate_entity_id(id, "attached picture draft")?;
+                }
+                if !images.insert(asset_id.as_str()) {
+                    return Err(invalid("The same picture is attached twice."));
+                }
+            }
+            TutorAttachmentInput::Text { name, text } => {
+                bounded(name, 255, "attached file name", false)?;
+                if name.chars().any(char::is_control) {
+                    return Err(invalid("An attached file name is invalid."));
+                }
+                bounded(text, MAX_ATTACHED_TEXT_CHARS, "attached file", false)?;
+                characters = characters.saturating_add(text.chars().count());
+            }
+        }
+    }
+    if images.len() > MAX_ATTACHED_IMAGES {
+        return Err(invalid(format!(
+            "A message can carry at most {MAX_ATTACHED_IMAGES} pictures."
+        )));
+    }
+    if characters > MAX_ATTACHED_TEXT_TOTAL {
+        return Err(invalid(
+            "The attached files are too long to send together. Attach fewer or shorter files.",
+        ));
+    }
+    Ok(())
 }
 
 impl TutorTurnInput {
@@ -136,11 +242,12 @@ impl TutorTurnInput {
         if self.expected_revision < 1 {
             return Err(invalid("The conversation revision is invalid."));
         }
+        // A picture or file can be the whole question.
         bounded(
             &self.text,
             8_000,
             "tutor message",
-            self.mode == TutorMode::Quiz,
+            self.mode == TutorMode::Quiz || !self.attachments.is_empty(),
         )?;
         if let Some(id) = &self.profile_id {
             validate_entity_id(id, "tutor profile")?;
@@ -156,6 +263,27 @@ impl TutorTurnInput {
             (Some(_), _) => return Err(invalid("Only a quiz answer may reference a question.")),
             (None, _) => {}
         }
+        if let Some(id) = &self.replaces_turn_id {
+            validate_entity_id(id, "replaced tutor message")?;
+            if self.mode != TutorMode::Explain {
+                return Err(invalid(
+                    "Only an explanation can replace an earlier answer.",
+                ));
+            }
+        }
+        if let Some(id) = &self.after_question_id {
+            validate_entity_id(id, "earlier quiz question")?;
+            if self.mode != TutorMode::Quiz {
+                return Err(invalid("Only a quiz question can follow an earlier one."));
+            }
+        }
+        if self.choice.is_some() && self.mode != TutorMode::Answer {
+            return Err(invalid("Only a quiz answer may pick an option."));
+        }
+        if !self.attachments.is_empty() && self.mode != TutorMode::Explain {
+            return Err(invalid("Only a question can carry attachments."));
+        }
+        validate_attachments(&self.attachments)?;
         if self.mode == TutorMode::Hint
             && !matches!(
                 self.focus,
@@ -182,6 +310,52 @@ pub(crate) struct PrivateQuiz {
     pub explanation: String,
     pub source_ids: Vec<String>,
     pub knowledge_unit_ids: Vec<String>,
+    /// A choose-one question's options; empty for a short answer.
+    #[serde(default)]
+    pub choices: Vec<String>,
+    /// The right option's index, for a choose-one question only.
+    #[serde(default)]
+    pub correct_choice: Option<usize>,
+    /// How many questions the learner asked for, as the model read it.
+    #[serde(default)]
+    pub question_count: Option<i64>,
+    /// Where the question stands in its run. Set natively, never by the model.
+    #[serde(default)]
+    pub series: Option<QuizSeries>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct QuizSeries {
+    pub number: i64,
+    pub total: Option<i64>,
+}
+
+impl QuizSeries {
+    /// The first question of a run, or the one after `previous`. A run that
+    /// asked for a number of questions ends there.
+    pub(crate) fn next(
+        previous: Option<&PrivateQuiz>,
+        asked: Option<i64>,
+    ) -> Result<Self, CommandError> {
+        let Some(previous) = previous else {
+            return Ok(Self {
+                number: 1,
+                total: asked,
+            });
+        };
+        let series = previous.series.unwrap_or(Self {
+            number: 1,
+            total: previous.question_count,
+        });
+        if series.total.is_some_and(|total| series.number >= total) {
+            return Err(invalid("That was the last question in this quiz."));
+        }
+        Ok(Self {
+            number: series.number + 1,
+            total: series.total,
+        })
+    }
 }
 
 impl PrivateQuiz {
@@ -204,6 +378,39 @@ impl PrivateQuiz {
         for id in self.source_ids.iter().chain(self.knowledge_unit_ids.iter()) {
             validate_entity_id(id, "quiz reference")?;
         }
+        if !self.choices.is_empty() {
+            if !(2..=6).contains(&self.choices.len())
+                || !self
+                    .correct_choice
+                    .is_some_and(|index| index < self.choices.len())
+            {
+                return Err(invalid("The quiz options are invalid."));
+            }
+            let mut seen = std::collections::HashSet::new();
+            for choice in &self.choices {
+                bounded(choice, 300, "quiz option", false)?;
+                if !seen.insert(choice.trim().to_lowercase()) {
+                    return Err(invalid("The quiz repeats an option."));
+                }
+            }
+        } else if self.correct_choice.is_some() {
+            return Err(invalid("Only a choose-one question has a right option."));
+        }
+        if self
+            .question_count
+            .is_some_and(|count| !(1..=MAX_QUIZ_QUESTIONS).contains(&count))
+        {
+            return Err(invalid("The quiz length is invalid."));
+        }
+        if let Some(series) = self.series {
+            if series.number < 1
+                || series
+                    .total
+                    .is_some_and(|total| total < series.number || total > MAX_QUIZ_QUESTIONS)
+            {
+                return Err(invalid("The quiz question's place is invalid."));
+            }
+        }
         Ok(())
     }
 }
@@ -223,6 +430,30 @@ pub struct QuizFeedback {
     pub outcome: QuizOutcome,
     pub explanation: String,
     pub criteria_feedback: Vec<String>,
+    /// Whether the answer met each criterion, in order. Empty for feedback
+    /// saved before this was recorded, and for a choose-one question.
+    #[serde(default)]
+    pub criteria_met: Vec<bool>,
+    /// The option a choose-one answer picked.
+    #[serde(default)]
+    pub chosen: Option<usize>,
+}
+
+/// A quiz question's public part. What it expected shows only once it is
+/// answered.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TutorQuestion {
+    pub number: i64,
+    pub total: Option<i64>,
+    pub choices: Vec<String>,
+    pub answered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_answer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub explanation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correct_choice: Option<usize>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -253,12 +484,20 @@ pub struct TutorTurn {
     pub evidence_current: bool,
     pub pending_question: bool,
     pub feedback: Option<QuizFeedback>,
+    /// A quiz question's place in its run and its options.
+    pub question: Option<TutorQuestion>,
+    /// The question an answer answers.
+    pub question_id: Option<String>,
     pub provider: String,
     pub model: String,
     pub error_code: String,
     pub error_message: String,
     pub total_tokens: Option<i64>,
     pub created_at: i64,
+    /// The newer version that replaced this turn; the chat carries on from it.
+    pub replaced_by_turn_id: Option<String>,
+    /// What the learner attached to this message, in order.
+    pub attachments: Vec<TutorAttachment>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -374,6 +613,10 @@ mod tests {
             profile_id: None,
             include_conversations: false,
             question_id: None,
+            replaces_turn_id: None,
+            after_question_id: None,
+            choice: None,
+            attachments: Vec::new(),
         };
         assert!(input.validate().is_err());
         let serialized = serde_json::to_value(input).unwrap();

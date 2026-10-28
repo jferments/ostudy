@@ -4,6 +4,7 @@ use crate::{error::CommandError, task_cancellation::CancellationSignal};
 
 use super::AiRuntimeState;
 
+mod answer_cards;
 mod artifact_metadata;
 mod context;
 mod contracts;
@@ -25,15 +26,19 @@ mod support;
 pub(crate) use support::is_output_failure;
 mod transport;
 
+pub(crate) use answer_cards::{request_answer_cards, AnswerCardDraft};
 pub(crate) use artifact_metadata::{
     DocumentArtifactMetadataCandidate, ARTIFACT_DESCRIPTION_MAX_CHARS,
     ARTIFACT_METADATA_GENERATOR_VERSION, ARTIFACT_METADATA_PROMPT_VERSION,
     ARTIFACT_METADATA_SCHEMA_VERSION, ARTIFACT_TITLE_MAX_CHARS,
 };
 pub(crate) use context::{
-    load_document_task_context, load_tutor_task_context, DocumentTaskContext,
+    load_document_task_context, load_tutor_task_context, load_verified_document_task_context,
+    load_verified_tutor_task_context, DocumentTaskContext,
 };
-pub(crate) use contracts::{DocumentOutline, OutlineSection, SourcePageImage};
+pub(crate) use contracts::{
+    DocumentOutline, ImageShows, OutlineSection, SourcePageImage, MAX_INLINE_IMAGES,
+};
 pub(crate) use curation::curate_document_cards;
 pub(crate) use evidence::AuthoringEvidence;
 pub(crate) use figure_reading::{

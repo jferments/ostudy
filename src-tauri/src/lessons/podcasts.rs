@@ -23,7 +23,7 @@ use super::{
 use crate::{
     ai::{
         document_intelligence::{
-            generate_podcast_script, load_document_task_context, PodcastLesson,
+            generate_podcast_script, load_verified_document_task_context, PodcastLesson,
             PodcastScriptAuthoring, PODCAST_SCRIPT_PROMPT_VERSION,
         },
         document_provider, generation,
@@ -54,8 +54,6 @@ const MAX_SCRIPT_BYTES: usize = 524_288;
 const PURPOSE: &str = "podcast_authoring";
 /// The voices that come with ostudy each host speaks in by default.
 const DEFAULT_CLONED_HOSTS: [&str; 2] = ["calm-older-woman", "relaxed-man"];
-/// Preset voices each host speaks in by default.
-const DEFAULT_PRESET_HOSTS: [&str; 2] = ["af_heart", "am_michael"];
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -467,7 +465,7 @@ pub(crate) fn default_voices(model: &SpeechModel) -> [String; 2] {
     if model.clones_voices {
         DEFAULT_CLONED_HOSTS.map(voices::built_in_key)
     } else {
-        DEFAULT_PRESET_HOSTS.map(str::to_string)
+        model.default_hosts.map(str::to_string)
     }
 }
 
@@ -696,7 +694,7 @@ async fn author(
     target_minutes: u32,
     diagnostics: generation::Context,
 ) -> Result<(PodcastScript, Value), CommandError> {
-    let mut task = load_document_task_context(database)?;
+    let mut task = load_verified_document_task_context(database, runtime).await?;
     let capabilities = document_provider::load_document_provider_capabilities(
         database,
         &task.profile_id,
