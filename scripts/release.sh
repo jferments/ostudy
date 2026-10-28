@@ -8,15 +8,42 @@ source "$ROOT_DIR/versions.env"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/node-toolchain.bash"
 ostudy_activate_node_toolchain
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/cargo-target.sh"
 export OSTUDY_ROOT_DIR="$ROOT_DIR"
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
 cd "$ROOT_DIR"
+
+usage() {
+  cat <<'USAGE'
+Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate]
+
+Qualify and package a tagged release. With no option it runs the complete
+gate in a clean source copy, then builds the Linux files.
+
+--gate-only   only the gate. The tag's Release gate workflow runs this on the
+              CI runner, which deliberately has no Docker.
+--skip-gate   only the files, on a maintainer machine with Podman or Docker
+              and flatpak-builder. HEAD must be the tag, and the tag's Release
+              gate run must have passed (checked with gh).
+
+The files go to artifacts/TAG/linux-x86_64; publish them with
+./scripts/publish-github-release.sh and ostudy-io's tools/publish-release.sh.
+USAGE
+}
+
+MODE=all
+REQUESTED_TAG=""
+while (($#)); do
+  case "$1" in
+    --gate-only) MODE=gate; shift ;;
+    --skip-gate) MODE=packages; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+    *) [[ -z "$REQUESTED_TAG" ]] || { usage >&2; exit 2; }; REQUESTED_TAG="$1"; shift ;;
+  esac
+done
 
 VERSION="$(node -p "require('./package.json').version")"
 EXPECTED_TAG="v$VERSION"
-REQUESTED_TAG="${1:-$EXPECTED_TAG}"
+REQUESTED_TAG="${REQUESTED_TAG:-$EXPECTED_TAG}"
 [[ "$REQUESTED_TAG" == "$EXPECTED_TAG" ]] || {
   printf 'ERROR: release tag %s does not match manifest version %s.\n' "$REQUESTED_TAG" "$VERSION" >&2
   exit 1
@@ -29,50 +56,74 @@ git diff --quiet && git diff --cached --quiet || {
 }
 node "$SCRIPT_DIR/verify-project-manifests.mjs"
 
-"$SCRIPT_DIR/release-check.sh"
-prepare_cargo_target "$ROOT_DIR"
-pnpm install --frozen-lockfile
-"$SCRIPT_DIR/install-native-deps.sh" --pdfium-only
+if [[ "$MODE" == packages ]]; then
+  tag_commit="$(git rev-parse --verify --quiet "refs/tags/$EXPECTED_TAG^{commit}")" || {
+    printf 'ERROR: there is no tag %s here; fetch tags first.\n' "$EXPECTED_TAG" >&2
+    exit 1
+  }
+  [[ "$(git rev-parse HEAD)" == "$tag_commit" ]] || {
+    printf 'ERROR: HEAD is not %s; run git checkout --detach %s first.\n' "$EXPECTED_TAG" "$EXPECTED_TAG" >&2
+    exit 1
+  }
+  command -v gh >/dev/null 2>&1 || { printf 'ERROR: --skip-gate checks the Release gate run with gh; install and log in to gh.\n' >&2; exit 1; }
+  gate="$(gh run list --repo "${OSTUDY_REPO:-jferments/ostudy}" --workflow release.yml --commit "$tag_commit" \
+    --json conclusion --jq 'map(select(.conclusion == "success")) | length')"
+  [[ "$gate" -ge 1 ]] || {
+    printf 'ERROR: the Release gate for %s (%s) has not passed yet.\n' "$EXPECTED_TAG" "${tag_commit:0:12}" >&2
+    exit 1
+  }
+else
+  "$SCRIPT_DIR/release-check.sh"
+fi
 
-printf '\n==> Building Linux Debian and AppImage bundles\n'
-pnpm tauri build --config src-tauri/tauri.linux.conf.json --bundles deb,appimage --ci -- --locked
+if [[ "$MODE" == gate ]]; then
+  mkdir -p "$ROOT_DIR/artifacts/$EXPECTED_TAG"
+  {
+    printf 'tag=%s\n' "$EXPECTED_TAG"
+    printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
+    printf 'gate=passed\n'
+  } > "$ROOT_DIR/artifacts/$EXPECTED_TAG/GATE.txt"
+  printf '\nRelease gate passed for %s.\n' "$EXPECTED_TAG"
+  exit 0
+fi
 
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;
-  aarch64|arm64) ARCH="aarch64" ;;
-  *) printf 'ERROR: unsupported release architecture: %s\n' "$(uname -m)" >&2; exit 1 ;;
+  *) printf 'ERROR: Linux releases are built on x86_64 only, not %s.\n' "$(uname -m)" >&2; exit 1 ;;
 esac
 
 OUT_DIR="$ROOT_DIR/artifacts/$EXPECTED_TAG/linux-$ARCH"
 rm -rf -- "$ROOT_DIR/artifacts/$EXPECTED_TAG"
 mkdir -p "$OUT_DIR"
-BUNDLE_ROOT="$CARGO_TARGET_DIR/release/bundle"
-shopt -s nullglob
-DEB_FILES=("$BUNDLE_ROOT"/deb/*.deb)
-APPIMAGE_FILES=("$BUNDLE_ROOT"/appimage/*.AppImage)
-(( ${#DEB_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one Debian bundle.\n' >&2; exit 1; }
-(( ${#APPIMAGE_FILES[@]} == 1 )) || { printf 'ERROR: expected exactly one AppImage bundle.\n' >&2; exit 1; }
 
-"$SCRIPT_DIR/verify-deb-package.sh" "${DEB_FILES[0]}" "$CARGO_TARGET_DIR/release/ostudy"
+# Built in an Ubuntu 22.04 container so the files start on every maintained
+# distribution; it qualifies the .deb and .rpm with check-linux-package.sh
+# (verify-deb-package.sh, verify-rpm-package.py) before writing anything.
+printf '\n==> Building the portable .deb, .rpm, AppImage and tarball\n'
+"$SCRIPT_DIR/package-linux-portable.sh" --output "$OUT_DIR"
+DEB="$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.deb"
+[[ -f "$DEB" && -f "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.rpm" && -f "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage" ]] || {
+  printf 'ERROR: the portable build did not produce the %s .deb, .rpm and AppImage.\n' "$EXPECTED_TAG" >&2
+  exit 1
+}
 
-cp "${DEB_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.deb"
-cp "${APPIMAGE_FILES[0]}" "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage"
-chmod +x "$OUT_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.AppImage"
+printf '\n==> Building the Flatpak bundle from the portable .deb\n'
+FLATPAK_DIR="$(mktemp -d -t ostudy-release-flatpak.XXXXXXXX)"
+trap 'rm -rf -- "$FLATPAK_DIR"' EXIT
+"$SCRIPT_DIR/build-flatpak.sh" --deb "$DEB" --output "$FLATPAK_DIR"
+cp "$FLATPAK_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.flatpak" "$OUT_DIR/"
+
 git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
   --output="$OUT_DIR/ostudy-$EXPECTED_TAG-source.tar.gz" HEAD
 
 {
-  printf 'version=%s\n' "$VERSION"
   printf 'tag=%s\n' "$EXPECTED_TAG"
-  printf 'commit=%s\n' "$(git rev-parse HEAD)"
-  printf 'architecture=%s\n' "$ARCH"
-  printf 'built_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'cargo_jobs=%s\n' "$CARGO_BUILD_JOBS"
+  printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
   printf 'pdfium_build=%s\n' "$PDFIUM_BUILD"
-} > "$OUT_DIR/BUILD-INFO.txt"
+} >> "$OUT_DIR/BUILD-INFO.txt"
 (
   cd "$OUT_DIR"
-  sha256sum BUILD-INFO.txt *.deb *.AppImage *.tar.gz > SHA256SUMS.txt
+  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
 )
 
 printf '\nRelease artifacts created in: %s\n' "$OUT_DIR"

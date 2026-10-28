@@ -1,4 +1,4 @@
-name: Release artifacts
+name: Release gate
 
 on:
   push:
@@ -34,8 +34,11 @@ jobs:
           echo "OSTUDY_CARGO_TARGET_DIR=$HOME/.cache/ostudy/cargo-target" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/ostudy/cargo-target"
 
-      - name: Generate qualified Linux artifacts
-        run: ./scripts/release.sh "$GITHUB_REF_NAME"
+      # Only the gate runs here: the runner deliberately has no Docker, so the
+      # maintainer builds the Linux files on his own machine with
+      # ./scripts/release.sh TAG --skip-gate, which checks that this run passed.
+      - name: Run the release gate
+        run: ./scripts/release.sh "$GITHUB_REF_NAME" --gate-only
 
       - name: Persist release artifacts on runner
         run: |

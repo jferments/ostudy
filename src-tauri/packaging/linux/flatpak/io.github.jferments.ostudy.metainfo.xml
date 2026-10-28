@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.jferments.ostudy</id>
+  <name>oStudy</name>
+  <summary>Local-first flashcards and study tools</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <launchable type="desktop-id">io.github.jferments.ostudy.desktop</launchable>
+  <description>
+    <p>
+      oStudy turns your own documents into flashcards, study guides and lessons,
+      and schedules review with FSRS. Your library stays on your computer: core
+      study works offline with no account or subscription, and AI help is
+      optional and uses only the provider you choose.
+    </p>
+  </description>
+  <categories>
+    <category>Education</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-21"/>
+  </releases>
+</component>
