@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { listDecks, type DeckSummary } from "../../ipc/decks";
 import type { DocumentSummary } from "../../ipc/documents";
@@ -17,7 +17,7 @@ import { NativeSelect } from "../../ui/primitives/NativeSelect";
 import { Progress } from "../../ui/primitives/Progress";
 import { useSubjectCourse, type LectureAudioProgress } from "../lessons/useSubjectCourse";
 import { formatDocumentType } from "./DocumentProgress";
-import { queueStudySet, takeStudySet } from "./pendingStudySets";
+import { queueStudySet, useWaitingStudySet } from "./pendingStudySets";
 import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
 
 interface SubjectStudyActionsProps {
@@ -91,32 +91,10 @@ export function SubjectStudyActions({
   const course = useSubjectCourse(subjectId);
   const status = bundle.status;
   const [choosing, setChoosing] = useState(false);
-  // The bundle and lessons wait for the cards a Make started, since both read them.
-  const [waiting, setWaiting] = useState<{ choice: MaterialsChoice; documentIds: string[] } | null>(null);
+  // The bundle and lessons wait for the cards a Make or a New study set started, since
+  // both read them; StudySetMaterialsStarter starts them, whichever page is open.
+  const waiting = useWaitingStudySet(subjectId);
   const [makeError, setMakeError] = useState<string | null>(null);
-  // A document not listed yet has only just been added, so it is still to be read.
-  const stillWorking = waiting?.documentIds.some(
-    (documentId) => isDocumentWorking(documentId) || !documents.some((document) => document.id === documentId),
-  ) ?? false;
-  // A New study set made for this subject waits here for its documents.
-  useEffect(() => {
-    const set = takeStudySet(subjectId);
-    if (set) setWaiting({ choice: set, documentIds: set.documentIds });
-  }, [subjectId]);
-  // A page that closes while waiting hands the wait back for the next one.
-  const latestWaiting = useRef(waiting);
-  latestWaiting.current = waiting;
-  useEffect(() => () => {
-    const left = latestWaiting.current;
-    if (left) queueStudySet(subjectId, { ...left.choice, documentIds: left.documentIds });
-  }, [subjectId]);
-  useEffect(() => {
-    if (!waiting || stillWorking) return;
-    setWaiting(null);
-    startOutputs(waiting.choice);
-    // startOutputs reads the latest controllers; only the wait ending matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waiting, stillWorking]);
 
   // A course is written once; rewriting one is a separate decision.
   const lessonsMade = (course.course?.lessons.length ?? 0) > 0;
@@ -147,7 +125,7 @@ export function SubjectStudyActions({
     for (const document of firstCards) {
       await onMakeFirstCards(document, request.instructions, request.deckId ?? undefined);
     }
-    setWaiting({ choice: request, documentIds: firstCards.map((document) => document.id) });
+    queueStudySet(subjectId, { ...request, documentIds: firstCards.map((document) => document.id) });
   }
 
   if (waiting || bundle.busy || course.writing) {

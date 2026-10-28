@@ -195,3 +195,30 @@ fn provider_errors_and_refused_recovery_are_not_repaired() {
     assert!(retryable(&error));
     assert_eq!(*calls.borrow(), 1);
 }
+
+#[test]
+fn the_writer_sees_each_slide_as_it_is_drawn_and_is_told_to_point_only_at_it() {
+    let lesson = crate::lessons::fixture::loop_of_henle(&[]);
+    let mut shown = lecture(0);
+    let mut step = slide("step:two-limbs", LectureSlideKind::Step);
+    step.title = "Two limbs, two jobs".into();
+    shown.slides.insert(1, step);
+    let prompt = user_prompt(&LectureScriptAuthoring {
+        lesson: &lesson,
+        lecture: &shown,
+    })
+    .unwrap();
+    // The step slide carries the comparison it draws beside its points; the others carry none.
+    assert!(
+        prompt.contains(r#""panel":{"kind":"comparison","subjectA":"Descending limb""#),
+        "{prompt}"
+    );
+    assert!(
+        prompt.contains(r#""slideKey":"title","title":"title","points":["A point"],"panel":null"#),
+        "{prompt}"
+    );
+    let system = system_prompt();
+    assert!(system
+        .contains("say a word or phrase is in the title only when it is in that slide's title"));
+    assert!(!system.contains("notice the word in the title"));
+}

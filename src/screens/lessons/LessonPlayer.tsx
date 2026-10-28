@@ -36,7 +36,8 @@ export function LessonPlayer({
   const lane = useRequestLane();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
-  const [openingStep, setOpeningStep] = useState(0);
+  // The step to reopen at; null opens the lecture on its cover slide.
+  const [openingStep, setOpeningStep] = useState<number | null>(null);
   const [progress, setProgress] = useState<LessonProgress | null>(null);
   const [finishing, setFinishing] = useState(false);
   // The step last saved, so showing the same slide again writes nothing.
@@ -48,9 +49,9 @@ export function LessonPlayer({
         if (value === undefined) return;
         const current =
           value.lesson.progress?.revisionNumber === value.revisionNumber ? value.lesson.progress : null;
-        // A finished lesson opens at its start; one in progress where it stopped.
+        // A new or finished lesson opens on its cover; one in progress where it stopped.
         const opening =
-          current && !current.finishedAt ? Math.min(current.currentStep, value.content.steps.length - 1) : 0;
+          current && !current.finishedAt ? Math.min(current.currentStep, value.content.steps.length - 1) : null;
         savedStep.current = current && !current.finishedAt ? current.currentStep : null;
         setLesson(value);
         setProgress(current);
@@ -103,7 +104,7 @@ export function LessonPlayer({
         revisionNumber={lesson.revisionNumber}
         lessonTitle={lesson.content.title}
         subjectId={lesson.lesson.subjectId}
-        stepKey={steps[openingStep]?.key ?? null}
+        stepKey={openingStep === null ? null : steps[openingStep]?.key ?? null}
         steps={steps}
         answered={progress?.checks ?? {}}
         onAnswered={(result) => setProgress(result.progress)}

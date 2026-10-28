@@ -9,8 +9,10 @@ import * as studyMaterials from "../../ipc/studyMaterials";
 import { resetCourseRunsForTests } from "../lessons/useSubjectCourse";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { makeDeck, makeSubjectLibrary } from "../../test/factories";
-import { queueStudySet, takeStudySet } from "./pendingStudySets";
+import { queueStudySet, resetStudySetsForTests, takeStudySet } from "./pendingStudySets";
+import { StudySetMaterialsStarter } from "./StudySetMaterialsStarter";
 import { SubjectStudyActions } from "./SubjectStudyActions";
+import { resetStudyTargetBundleRuns } from "./useStudyTargetBundleController";
 
 vi.mock("../../ipc/studyMaterials", () => ({
   beginStudyTargetBundle: vi.fn(),
@@ -64,6 +66,8 @@ describe("SubjectStudyActions", () => {
     vi.mocked(lessons.getSubjectCourseWritingProgress).mockResolvedValue({ planned: null, written: 0 });
     vi.mocked(listDecks).mockResolvedValue([makeDeck({ id: deckId, name: "Renal physiology" })]);
     resetCourseRunsForTests();
+    resetStudySetsForTests();
+    resetStudyTargetBundleRuns();
   });
 
   it("asks what to make, then makes flashcards, a study guide and lessons together", async () => {
@@ -86,29 +90,30 @@ describe("SubjectStudyActions", () => {
     expect(await screen.findByText("Writing lessons")).toBeTruthy();
   });
 
-  it("starts a New study set's materials once its documents are read", async () => {
+  it("shows a New study set waiting for its documents", async () => {
+    const added = "e".repeat(32);
+    queueStudySet(subjectId, { flashcards: true, studyGuide: true, lessons: false, documentIds: [added] });
+    renderActions({ documents: [] });
+    expect(await screen.findByText("Making flashcards")).toBeTruthy();
+  });
+
+  it("starts a New study set's materials once its documents are read, with no subject page open", async () => {
     const added = "e".repeat(32);
     queueStudySet(subjectId, { flashcards: true, studyGuide: false, lessons: true, podcast: true, documentIds: [added] });
-    // The new document is not listed yet, then it is read.
-    const { update } = renderActions({ documents: [] });
-    expect(await screen.findByText("Making flashcards")).toBeTruthy();
-    update({ documents: [{ ...document(added, "Notes", deckId), lifecycleState: "processing" }] });
+    const working = (documents: DocumentSummary[]) => (documentId: string) =>
+      documents.some((item) => item.id === documentId && item.lifecycleState === "processing");
+    // The new document is not listed yet, then it is being read, then it is read.
+    const { rerender } = render(<StudySetMaterialsStarter documents={[]} isDocumentWorking={working([])} />);
+    const processing = [{ ...document(added, "Notes", deckId), lifecycleState: "processing" } as DocumentSummary];
+    rerender(<StudySetMaterialsStarter documents={processing} isDocumentWorking={working(processing)} />);
     expect(studyMaterials.beginStudyTargetBundle).not.toHaveBeenCalled();
-    update({ documents: [document(added, "Notes", deckId)] });
+    const read = [document(added, "Notes", deckId)];
+    rerender(<StudySetMaterialsStarter documents={read} isDocumentWorking={working(read)} />);
     await waitFor(() => expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith(expect.objectContaining({
       outputPolicy: { flashcards: true, studyGuide: false },
     })));
     expect(lessons.writeSubjectCourse).toHaveBeenCalledWith(subjectId, expect.any(String), false);
     expect(takeStudySet(subjectId)).toBeNull();
-  });
-
-  it("hands a waiting study set back when its page closes", async () => {
-    const added = "e".repeat(32);
-    queueStudySet(subjectId, { flashcards: true, studyGuide: true, lessons: false, documentIds: [added] });
-    const { unmount } = renderActions({ documents: [] });
-    expect(await screen.findByText("Making flashcards")).toBeTruthy();
-    unmount();
-    expect(takeStudySet(subjectId)).toEqual(expect.objectContaining({ documentIds: [added], studyGuide: true }));
   });
 
   it("makes only what is ticked", async () => {
@@ -194,6 +199,8 @@ describe("SubjectStudyActions", () => {
 
     working.delete(withoutCards);
     view.update({});
+    // The app's starter begins the rest once the cards are saved.
+    render(<StudySetMaterialsStarter documents={props.documents} isDocumentWorking={(id) => working.has(id)} />);
     await waitFor(() => expect(studyMaterials.beginStudyTargetBundle).toHaveBeenCalledWith(expect.objectContaining({
       outputPolicy: { flashcards: true, studyGuide: true },
     })));

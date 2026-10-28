@@ -249,9 +249,18 @@ export function AiSetupWizard({
       body = (
         <>
           <Heading>You pay only for what you use</Heading>
+          <p className="tw:m-0 tw:flex tw:items-start tw:gap-3 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-3">
+            <Icon name="check" size={18} className="tw:mt-0.5 tw:shrink-0 tw:text-muted-foreground" />
+            <span className="tw:grid tw:gap-1">
+              <strong className="tw:font-semibold">What you make yourself is always free</strong>
+              <span className="tw:text-label tw:text-muted-foreground">
+                Flashcards, notes, notebooks, marking up documents, reviews and Progress never cost anything. AI costs money only when it reads your documents, writes for you or speaks with an online voice.
+              </span>
+            </span>
+          </p>
           <p className="tw:m-0 tw:grid tw:gap-1">
             <strong className="tw:text-section tw:font-semibold">A few dollars a month</strong>
-            <span className="tw:text-label tw:text-muted-foreground">at most, for most learners</span>
+            <span className="tw:text-label tw:text-muted-foreground">of AI at most, for most learners</span>
           </p>
           <ul aria-label="Typical costs" className="tw:m-0 tw:grid tw:list-none tw:gap-0 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-0">
             {COSTS.map((cost) => (
@@ -275,6 +284,10 @@ export function AiSetupWizard({
           <p className="tw:m-0 tw:text-label tw:text-muted-foreground">
             $10 of credit lasts most learners several months. Unused credit stays in your account.
           </p>
+          <p className="tw:m-0 tw:flex tw:items-start tw:gap-2 tw:text-label tw:text-muted-foreground">
+            <Icon name="mic" size={16} className="tw:mt-0.5 tw:shrink-0" />
+            <span>Talking to the Tutor is turned into text on your device, so it is free and your voice never leaves it. Reading aloud can be free too: choose <b>This device (free)</b> for Voice in Settings → AI to download the Kokoro voice once.</span>
+          </p>
         </>
       );
       actions = <>{back("choose")}<Button variant="primary" onClick={() => setStep("account")}>Next</Button></>;
@@ -283,6 +296,9 @@ export function AiSetupWizard({
       body = hosted ? (
         <>
           <Heading>Create your {hosted.name} account</Heading>
+          <p className="tw:m-0 tw:rounded-lg tw:border tw:border-solid tw:border-border tw:p-3">
+            Already have an account with credit at {hosted.name}? Skip these steps and choose <b>Next</b>.
+          </p>
           <ol className="tw:m-0 tw:grid tw:gap-4 tw:ps-6">
             {hosted.account.map((item, index) => (
               <li key={index} className="tw:grid tw:gap-1">

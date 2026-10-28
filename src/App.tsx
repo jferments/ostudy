@@ -27,6 +27,7 @@ import { LibraryLessons } from "./screens/library/LibraryLessons";
 import { LibraryHome } from "./screens/library/LibraryHome";
 import { LibraryFrame } from "./screens/library/LibraryFrame";
 import { AiIntroduction } from "./screens/settings/AiIntroduction";
+import { AppStudySetMaterialsStarter } from "./screens/documents/StudySetMaterialsStarter";
 import { AiFeaturesProvider, useAiFeaturesSource } from "./controllers/AiFeaturesProvider";
 import { workbenchLaunchFor } from "./screens/library/workbench/workbenchLaunch";
 import { PerformanceProfiler } from "./testing/PerformanceProfiler";
@@ -214,6 +215,7 @@ function App() {
               >
                 <TutorProvider>
                   <AppFrame>
+                    <AppStudySetMaterialsStarter refreshDecks={controller.refreshDecks} />
                     <IncomingShareCoordinator
                       refreshDecks={controller.refreshDecks}
                       showToast={controller.showToast}

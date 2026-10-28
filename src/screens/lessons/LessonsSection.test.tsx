@@ -68,7 +68,7 @@ function course(overrides: Partial<SubjectCourse> = {}): SubjectCourse {
 describe("LessonsSection", () => {
   it("offers to update only lessons written with AI whose sources changed or went", () => {
     const value = course();
-    render(<LessonsSection headingId="h" course={value} hasSources onOpenLesson={vi.fn()} />);
+    render(<LessonsSection headingId="h" subjectId="s" course={value} hasSources onOpenLesson={vi.fn()} />);
     const rows = screen.getAllByTestId("subject-lesson");
     expect(within(rows[0]!).queryByRole("button", { name: /Update/ })).toBeNull();
     expect(within(rows[1]!).getByText("Source changed · 8 min")).toBeTruthy();
@@ -86,6 +86,7 @@ describe("LessonsSection", () => {
     render(
       <LessonsSection
         headingId="h"
+        subjectId="s"
         course={course({ updating: "two", updateError: "The part is gone." })}
         hasSources
         onOpenLesson={vi.fn()}
@@ -102,7 +103,7 @@ describe("LessonsSection", () => {
     const value = course();
     render(
       <OverlayProvider>
-        <LessonsSection headingId="h" course={value} hasSources onOpenLesson={vi.fn()} />
+        <LessonsSection headingId="h" subjectId="s" course={value} hasSources onOpenLesson={vi.fn()} />
       </OverlayProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Rewrite course" }));

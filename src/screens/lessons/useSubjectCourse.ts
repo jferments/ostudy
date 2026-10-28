@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { latestResult, useRequestLane } from "../../controllers/requestLane";
 import { createOperationId, getErrorCode, getErrorMessage } from "../../ipc/common";
@@ -30,6 +30,8 @@ interface CourseRun {
   progress: CourseWritingProgress | null;
   /** True while the podcast asked for with the course is being written. */
   podcast: boolean;
+  /** True when a podcast was asked for with the course. */
+  wantsPodcast?: boolean;
   /** How many lessons' lecture audio is made, while it is being made. */
   audio: LectureAudioProgress | null;
   /** Set when the run ends; the page that sees it clears it. */
@@ -69,7 +71,7 @@ export interface CourseExtras {
 function startRun(subjectId: string, rewrite: boolean, { podcast = false, lectureAudio }: CourseExtras = {}) {
   if (runs.has(subjectId)) return;
   const operationId = createOperationId();
-  publish(subjectId, { operationId, stopping: false, progress: null, podcast: false, audio: null, outcome: null });
+  publish(subjectId, { operationId, stopping: false, progress: null, podcast: false, wantsPodcast: podcast, audio: null, outcome: null });
   watchProgress(subjectId, operationId);
   const current = () => {
     const run = runs.get(subjectId);
@@ -222,6 +224,39 @@ export interface SubjectCourse {
   rewrite: () => void;
   stop: () => void;
   dismissWriteError: () => void;
+}
+
+/** How far a subject's course being written is, for pages that show it without managing it. */
+export interface CourseRunProgress {
+  progress: CourseWritingProgress | null;
+  audio: LectureAudioProgress | null;
+  /** A podcast was asked for and is not written yet. */
+  podcastPending: boolean;
+  /** The podcast is being written now. */
+  writingPodcast: boolean;
+}
+
+/** The subject's course being written, if one is. */
+export function useCourseRun(subjectId: string): CourseRunProgress | null {
+  const run = useSyncExternalStore(subscribe, () => runs.get(subjectId) ?? null);
+  return useMemo(() => (run && run.outcome === null
+    ? { progress: run.progress, audio: run.audio, podcastPending: run.wantsPodcast === true, writingPodcast: run.podcast }
+    : null), [run]);
+}
+
+/** Starts writing a subject's new course from outside its page, as a New study set does. */
+export function startSubjectCourse(subjectId: string, extras?: CourseExtras): void {
+  startRun(subjectId, false, extras);
+}
+
+function writingSubjectsKey(): string {
+  return [...runs].filter(([, run]) => run.outcome === null).map(([subjectId]) => subjectId).sort().join("\n");
+}
+
+/** The subjects whose course, with its podcast and lecture audio, is being written now. */
+export function useSubjectsWritingCourses(): ReadonlySet<string> {
+  const key = useSyncExternalStore(subscribe, writingSubjectsKey);
+  return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
 }
 
 /** A subject's course, and writing it with AI. */

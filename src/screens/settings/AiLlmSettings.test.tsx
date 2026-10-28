@@ -351,12 +351,24 @@ describe("AiLlmSettings", () => {
       }),
     ).toBeTruthy();
     expect(within(wizard()).getByText("$7.99 / month")).toBeTruthy();
+    expect(
+      within(wizard()).getByText("What you make yourself is always free"),
+    ).toBeTruthy();
+    expect(
+      within(wizard()).getByText(/turned into text on your device, so it is free/u),
+    ).toBeTruthy();
+    expect(
+      within(wizard()).getByText(/Reading aloud can be free too/u).textContent,
+    ).toContain("This device (free)");
 
     fireEvent.click(within(wizard()).getByRole("button", { name: "Next" }));
     expect(
       within(wizard()).getByRole("heading", {
         name: "Create your OpenRouter account",
       }),
+    ).toBeTruthy();
+    expect(
+      within(wizard()).getByText(/Already have an account with credit at OpenRouter\?/u),
     ).toBeTruthy();
     fireEvent.click(
       within(wizard()).getByRole("button", { name: "Open openrouter.ai" }),

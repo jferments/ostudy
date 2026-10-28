@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createOperationId } from "../../ipc/common";
 import * as studyMaterials from "../../ipc/studyMaterials";
-import { useStudyTargetBundleController } from "./useStudyTargetBundleController";
+import { resetStudyTargetBundleRuns, useStudyTargetBundleController } from "./useStudyTargetBundleController";
 
 vi.mock("../../ipc/studyMaterials", () => ({
   beginStudyTargetBundle: vi.fn(),
@@ -60,6 +60,7 @@ const complete: studyMaterials.StudyTargetBundleStatus = {
 
 describe("study target bundle controller", () => {
   beforeEach(() => {
+    resetStudyTargetBundleRuns();
     vi.resetAllMocks();
     vi.mocked(createOperationId).mockReturnValue("o".repeat(32));
     vi.mocked(studyMaterials.getStudyTargetBundle).mockResolvedValue(null);

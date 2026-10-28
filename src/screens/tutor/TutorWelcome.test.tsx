@@ -15,6 +15,7 @@ import {
   type TutorTurn,
 } from "../../ipc/tutor";
 import { listSubjectLessons } from "../../ipc/lessons";
+import { getStudyTargetBundle, type StudyTargetBundleStatus } from "../../ipc/studyMaterials";
 import { getSettings, type AppSettings } from "../../ipc/settings";
 import { getSpeechInputStatus, installSpeechInputModel, transcribeSpeech, type SpeechInputStatus } from "../../ipc/speechInput";
 import { microphoneAvailable, startRecording } from "../../platform/microphone";
@@ -71,6 +72,7 @@ vi.mock("../../ui/overlays/overlayContext", () => {
   };
 });
 vi.mock("../../ipc/lessons", () => ({ listSubjectLessons: vi.fn() }));
+vi.mock("../../ipc/studyMaterials", () => ({ getStudyTargetBundle: vi.fn() }));
 vi.mock("../../ipc/settings", () => ({ getSettings: vi.fn() }));
 vi.mock("../../ipc/speechInput", () => ({
   getSpeechInputStatus: vi.fn(),
@@ -140,6 +142,7 @@ beforeEach(() => {
   vi.mocked(microphoneAvailable).mockReturnValue(true);
   vi.mocked(getSettings).mockResolvedValue({ speechAutoSendSeconds: 0 } as AppSettings);
   vi.mocked(listSubjectLessons).mockImplementation(async (subjectId: string) => ({ subjectId, lessons: [] }));
+  vi.mocked(getStudyTargetBundle).mockResolvedValue(null);
   vi.mocked(useOptionalHomeSummary).mockReturnValue({
     summary: {
       studyDate: "2026-10-25",
@@ -170,6 +173,16 @@ describe("Tutor new chat", () => {
     expect(names).toEqual(["Quiz me on Renal", "Sum up Cardiac"]);
     expect(starters.textContent).toContain("12 cards due");
     expect(starters.textContent).toContain("2 study guides");
+  });
+
+  it("leaves out a subject while its study materials are still being made", async () => {
+    vi.mocked(getStudyTargetBundle).mockImplementation(async ({ target }) =>
+      (target.id === other.id ? { latestBatchState: "composing" } as StudyTargetBundleStatus : null));
+    render(<Harness />);
+    await act(async () => { await controller.initialize(); });
+    const starters = await screen.findByRole("list", { name: "Start from your study" });
+    await waitFor(() => expect(starters.textContent).not.toContain("Sum up Cardiac"));
+    expect([...starters.querySelectorAll("strong")].map((node) => node.textContent)).toEqual(["Quiz me on Renal"]);
   });
 
   it("starts a quiz chat on the starter's subject", async () => {

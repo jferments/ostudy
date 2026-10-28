@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { ShowToast } from "../components/Toast";
 import type { StudyGuidePageItem, StudyGuidePdfTheme, StudyGuideLibrarySort, StudyGuideSubjectFilter } from "../ipc/studyGuides";
 import { getErrorMessage } from "../ipc/common";
@@ -23,6 +23,7 @@ import { useLibraryFullPage } from "./library/LibraryFrame";
 import { useGenerationModelMissing } from "./documents/useGenerationModelMissing";
 import { exportGuidePdf } from "./study-guides/exportGuidePdf";
 import { useGuideRemake } from "./study-guides/useGuideRemake";
+import { MaterialBeingMade, useMaterialProgress } from "./documents/MaterialsBeingMade";
 import { useOptionalTutor } from "./tutor/TutorContext";
 
 interface StudyGuidesScreenProps {
@@ -49,6 +50,15 @@ export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openReq
   const remaking = useGuideRemake({ showToast, onRemade: controller.refresh });
   const modelMissing = useGenerationModelMissing();
   const [exportingGuideId, setExportingGuideId] = useState<string | null>(null);
+  // A subject's guide on its way shows above its list, in place of the empty state.
+  const guideComing = useMaterialProgress(subject?.kind === "subject" ? subject.subjectId : "", "studyGuide");
+  const guideWasComing = useRef(false);
+  const refreshGuides = controller.refresh;
+  useEffect(() => {
+    // The finished guide joins the list.
+    if (guideWasComing.current && !guideComing) refreshGuides();
+    guideWasComing.current = guideComing !== null;
+  }, [guideComing, refreshGuides]);
   // An open guide is a page of its own in Library, without the view switcher.
   useLibraryFullPage(controller.selected !== null);
   async function confirmDelete(target: StudyGuideDeleteTarget): Promise<boolean> {
@@ -157,7 +167,8 @@ export function StudyGuidesScreen({ subject, showToast, onPracticeCards, openReq
             </p>
           ) : null}
           {controller.errorMessage ? <InlineNotice kind="error" title="Study Guides could not be refreshed." className="tw:mb-4">{controller.errorMessage}</InlineNotice> : null}
-          {controller.isLoading && controller.page.items.length === 0 ? <LoadingState label="Loading study guides…" /> : controller.page.items.length === 0 ? (
+          {guideComing && subject?.kind === "subject" ? <div className="tw:mb-4"><MaterialBeingMade kind="studyGuide" progress={guideComing} /></div> : null}
+          {controller.isLoading && controller.page.items.length === 0 ? <LoadingState label="Loading study guides…" /> : controller.page.items.length === 0 ? guideComing ? null : (
             <EmptyState icon={<Icon name="study-guide" size={30} />} title={controller.query ? "No matching study guides" : "No study guides yet"}
               description={controller.query ? undefined : "Make guides from Documents."} />
           ) : (

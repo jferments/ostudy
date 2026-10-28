@@ -6,7 +6,9 @@ import type { TutorMode } from "../../ipc/tutor";
 import { Icon, type IconName } from "../../ui/icons/Icon";
 import { ItemTrigger } from "../../ui/primitives/Item";
 import { useHomeLessons } from "../home/HomeStudyPanels";
+import { useDocumentPreparations } from "../home/useDocumentPreparations";
 import { styles } from "./presentation";
+import { useSubjectsPreparing } from "./useSubjectsPreparing";
 
 const MAX_STARTERS = 4;
 
@@ -25,7 +27,8 @@ export interface TutorStarter {
 /**
  * Ways into a new chat from real study state: the subject with the most cards
  * due, a lesson started and not finished, and subjects with study guides. Each
- * subject appears once. Empty when the library has nothing to start from.
+ * subject appears once, and only once its study materials are done being made.
+ * Empty when the library has nothing to start from.
  */
 export function useTutorStarters(): TutorStarter[] {
   const home = useOptionalHomeSummary();
@@ -33,11 +36,18 @@ export function useTutorStarters(): TutorStarter[] {
   const subjects = useMemo(() => librarySubjects ?? [], [librarySubjects]);
   const subjectIds = useMemo(() => subjects.map((subject) => subject.id), [subjects]);
   const lessons = useHomeLessons(subjectIds, 0);
+  const documentSubjects = home?.library?.documents;
+  const placements = useMemo(() => documentSubjects ?? [], [documentSubjects]);
+  const withDocuments = useMemo(
+    () => (home?.summary?.subjects ?? []).flatMap((row) => (row.subjectId !== null && row.sourceCount > 0 ? [row.subjectId] : [])),
+    [home?.summary?.subjects],
+  );
+  const preparing = useSubjectsPreparing(placements, useDocumentPreparations(), withDocuments);
 
   return useMemo(() => {
     const summary = home?.summary;
     if (!summary) return [];
-    const names = new Map(subjects.map((subject) => [subject.id, subject.name]));
+    const names = new Map(subjects.filter((subject) => !preparing.has(subject.id)).map((subject) => [subject.id, subject.name]));
     const used = new Set<string>();
     const starters: TutorStarter[] = [];
     const scopeOf = (subjectId: string): StudyScope => ({ kind: "collection", id: subjectId });
@@ -101,7 +111,7 @@ export function useTutorStarters(): TutorStarter[] {
       });
     }
     return starters.slice(0, MAX_STARTERS);
-  }, [home?.summary, subjects, lessons]);
+  }, [home?.summary, subjects, lessons, preparing]);
 }
 
 export function TutorStarters({
