@@ -674,7 +674,8 @@ function ReadyNotebook({
   const mapMenu = mapActions(isTopic(selected) && selectedTree ? { topic: selected, tree: selectedTree } : null, controller, () => chooseTool("mindmap"));
   const topicMenu: PointMenuItem[] = isTopic(selected) && selectedTree ? topicMenuItems(selected, selectedTree, controller, mapMenu, {
     onLink: () => setLinkDialog({ editing: selected }),
-  }) : [];  const selectedLink = linkOf(selected);
+  }) : [];
+  const selectedLink = linkOf(selected);
   const selectedClip = clipOf(selected);
   return (
     <div className="tw:flex tw:min-w-0 tw:flex-col" onKeyDown={keyDown} onKeyUp={keyUp}>
