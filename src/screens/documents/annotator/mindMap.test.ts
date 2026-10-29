@@ -14,6 +14,7 @@ import {
   newTopic,
   promote,
   retopic,
+  tidyEdits,
   topicToward,
   visibleMarks,
   type Topic,
@@ -130,6 +131,49 @@ describe("mind maps", () => {
     const after = applyEdits(pages, arrangeMaps([{ id: "a2", before: a2, after: raised }], pages, height, pageSize));
     const tree = mapsOn(after.get(1) ?? []).get("root");
     expect(tree?.children.get("a")?.map((child) => child.id)).toEqual(["a2", "a1"]);
+  });
+
+  it("keeps a topic where it was let go, with its branches, and moves the others out of its way", () => {
+    const pages = build(heart());
+    const a = find(pages, "a");
+    const b = find(pages, "b");
+    // Dragged a little to the right and down onto Diastole's row, missing Diastole itself.
+    const dropped: Topic = { ...a, shape: { ...a.shape, x: b.shape.x + b.shape.width + 120, y: b.shape.y + 6 } };
+    const after = applyEdits(pages, arrangeMaps([{ id: "a", before: a, after: dropped }], pages, height, pageSize));
+    const moved = find(after, "a");
+    expect(moved.shape.x).toBeCloseTo(dropped.shape.x, 1);
+    expect(moved.shape.y).toBeCloseTo(dropped.shape.y, 1);
+    expect(moved.shape.topic.offset).toBeDefined();
+    // Its branches come along, further out.
+    expect(find(after, "a1").shape.x).toBeGreaterThan(moved.shape.x);
+    const all = (after.get(1) ?? []).filter(isTopic);
+    for (const one of all) {
+      for (const other of all) {
+        if (one.id !== other.id) expect(overlaps(one, other), `${one.id} and ${other.id}`).toBe(false);
+      }
+    }
+
+    // Let go half over its neighbour: the neighbour moves aside, the dropped one stays put.
+    const b2 = find(after, "b");
+    const a2 = find(after, "a2");
+    const over: Topic = { ...b2, shape: { ...b2.shape, x: a2.shape.x + 10, y: a2.shape.y + height(a2) - 6 } };
+    const crowded = applyEdits(after, arrangeMaps([{ id: "b", before: b2, after: over }], after, height, pageSize));
+    expect(find(crowded, "b").shape.y).toBeCloseTo(over.shape.y, 1);
+    expect(find(crowded, "b").shape.topic.parent).toBe("root");
+    expect(find(crowded, "a2").shape.y).not.toBeCloseTo(a2.shape.y, 1);
+    const marks = (crowded.get(1) ?? []).filter(isTopic);
+    for (const one of marks) {
+      for (const other of marks) {
+        if (one.id !== other.id) expect(overlaps(one, other), `${one.id} and ${other.id}`).toBe(false);
+      }
+    }
+
+    // Tidying puts it back in the map's own layout.
+    const tree = mapsOn(after.get(1) ?? []).get("root");
+    if (!tree) throw new Error("no map");
+    const tidied = applyEdits(after, arrangeMaps(tidyEdits(tree), after, height, pageSize));
+    expect(find(tidied, "a").shape.topic.offset).toBeUndefined();
+    expect(find(tidied, "a").shape.x).toBeLessThan(moved.shape.x);
   });
 
   it("makes room for a topic added after another", () => {

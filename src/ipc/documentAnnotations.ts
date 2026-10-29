@@ -108,6 +108,8 @@ export interface MapTopic {
   layout?: MapLayout;
   /** Its branches are folded away. */
   folded?: true;
+  /** Not on the central topic: where the learner dragged it, with its branches, from where the layout puts it. */
+  offset?: [number, number];
 }
 
 /** What a link on a notebook page opens. Targets are looked up when the notebook opens. */

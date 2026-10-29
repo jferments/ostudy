@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
@@ -13,7 +14,7 @@ import {
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
 import type { DocumentClip } from "../../../ipc/notebooks";
 import { cn } from "../../../ui/internal/cn";
-import { createAnnotationId, isStickyNote, type Annotation, type AnnotatorTool } from "./annotationModel";
+import { createAnnotationId, isStickyNote, topmostAt, type Annotation, type AnnotatorTool } from "./annotationModel";
 import { AnnotatorPage, StickyNoteEditor, type PageDraft, type PaperPages } from "./AnnotatorPage";
 import { AnnotatorGestures, type GestureContext, type GestureEffect, type GestureSurface, type PointerSample } from "./gestures";
 import { PageImageCache } from "./pageImages";
@@ -64,6 +65,8 @@ interface AnnotatorCanvasProps {
   /** The notebooks each page was clipped into, and how to open one. */
   clipsByPage?: ReadonlyMap<number, readonly DocumentClip[]>;
   onOpenClip?: (clip: DocumentClip) => void;
+  /** A right-click or long press on a mind-map topic, which is selected first; `client` is where it was. */
+  onTopicMenu?: (topic: Annotation, client: { x: number; y: number }) => void;
 }
 
 function pointerKind(type: string): PointerSample["kind"] {
@@ -91,7 +94,7 @@ function sampleOf(event: PointerEvent, button = 0): PointerSample {
  */
 export function AnnotatorCanvas({
   documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null, paperPages,
-  onClip, clipsByPage, onOpenClip,
+  onClip, clipsByPage, onOpenClip, onTopicMenu,
 }: AnnotatorCanvasProps) {
   const helpId = useId();
   const gestures = useMemo(() => new AnnotatorGestures(), []);
@@ -320,6 +323,23 @@ export function AnnotatorCanvas({
   // A new tool starts clean: nothing half drawn or half moved carries over.
   useEffect(() => { run(gestures.reset()); }, [controller.tool, gestures, run]);
 
+  // A right-click (or a long press) on a topic opens what can be done with it.
+  const contextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const { controller: current } = latest.current;
+    if (!onTopicMenu || (event.target instanceof HTMLElement && event.target.closest("textarea, input, [contenteditable]"))) return;
+    const pageNumber = surface.pageAt(event.clientX, event.clientY);
+    if (pageNumber === null) return;
+    const point = surface.toPage(pageNumber, event.clientX, event.clientY);
+    const marks = visibleMarks(current.annotationsRef.current.get(pageNumber) ?? EMPTY);
+    const topic = topmostAt(marks, point, 2, current.textHeight, isTopic);
+    if (!topic) return;
+    event.preventDefault();
+    run(gestures.reset());
+    current.finishEditing();
+    current.select(topic.id, pageNumber);
+    onTopicMenu(topic, { x: event.clientX, y: event.clientY });
+  }, [gestures, onTopicMenu, run, surface]);
+
   function pointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("textarea")) return;
     viewport.stopFling();
@@ -473,6 +493,7 @@ export function AnnotatorCanvas({
         onLostPointerCapture={pointerCancel}
         onScroll={() => { rects.current = null; }}
         onKeyDown={keyDown}
+        onContextMenu={contextMenu}
       >
         <div ref={contentRef} className="tw:relative tw:w-max tw:min-w-full tw:p-4 tw:compact:p-2">
           {pages.map((page) => {

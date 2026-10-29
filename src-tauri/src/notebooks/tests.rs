@@ -1117,7 +1117,7 @@ fn mind_map_topics_keep_their_place_and_are_checked_one_by_one() {
                 &notebook.notebook.id,
                 vec![
                     topic(&root, &board, "Heart", json!({ "map": root, "order": 0, "layout": "down" })),
-                    topic(&id('2'), &board, "Systole", json!({ "map": root, "parent": root, "order": 0, "side": "left", "folded": true })),
+                    topic(&id('2'), &board, "Systole", json!({ "map": root, "parent": root, "order": 0, "side": "left", "folded": true, "offset": [12.5, -40] })),
                 ],
             )?;
             assert_eq!(applied.items.len(), 2);
@@ -1128,6 +1128,7 @@ fn mind_map_topics_keep_their_place_and_are_checked_one_by_one() {
             let place = note.topic.as_ref().expect("a topic");
             assert_eq!(place.parent.as_deref(), Some(root.as_str()));
             assert_eq!(place.folded, Some(true));
+            assert_eq!(place.offset.as_deref(), Some([12.5, -40.0].as_slice()));
 
             for wrong in [
                 json!({ "map": "not-an-id", "order": 0 }),
@@ -1135,6 +1136,9 @@ fn mind_map_topics_keep_their_place_and_are_checked_one_by_one() {
                 json!({ "map": root, "parent": root, "order": 0, "layout": "down" }),
                 json!({ "map": root, "order": 0, "folded": false }),
                 json!({ "map": root, "order": 1_000_000 }),
+                json!({ "map": root, "order": 0, "offset": [10, 10] }),
+                json!({ "map": root, "parent": root, "order": 0, "offset": [10] }),
+                json!({ "map": root, "parent": root, "order": 0, "offset": [10, 90_000] }),
             ] {
                 assert!(
                     apply(connection, &notebook.notebook.id, vec![topic(&id('3'), &board, "Valves", wrong.clone())]).is_err(),
