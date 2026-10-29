@@ -34,9 +34,25 @@ describe("PointMenu", () => {
   it("opens where it was asked for, runs an action and closes", async () => {
     const { onEdit } = renderMenu(false);
     const menu = await screen.findByRole("menu", { name: "Topic" });
-    expect(within(menu).getByRole("menuitem", { name: "Colour" })).toBeTruthy();
+    const colour = within(menu).getByRole("menuitem", { name: "Colour" });
+    colour.focus();
+    fireEvent.keyDown(colour, { key: "ArrowRight" });
+    const colours = await screen.findByRole("menu", { name: "Colour" });
+    expect(within(colours).getByRole("menuitemcheckbox", { name: "Red" })).toBeTruthy();
+    expect(screen.getByRole("menu", { name: "Topic" })).toBe(menu);
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Edit" }));
     expect(onEdit).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  });
+
+  it("runs a choice from a submenu and closes the whole menu", async () => {
+    const { onRed } = renderMenu(false);
+    const menu = await screen.findByRole("menu", { name: "Topic" });
+    const colour = within(menu).getByRole("menuitem", { name: "Colour" });
+    colour.focus();
+    fireEvent.keyDown(colour, { key: "ArrowRight" });
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Colour" })).getByRole("menuitemcheckbox", { name: "Red" }));
+    expect(onRed).toHaveBeenCalledOnce();
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   });
 

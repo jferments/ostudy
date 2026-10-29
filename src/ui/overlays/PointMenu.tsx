@@ -89,7 +89,8 @@ export function PointMenu({ label, point, items, onClose }: PointMenuProps) {
     ? <DropdownMenuCheckboxItem key={item.id} checked={item.checked} disabled={item.disabled} onClick={() => select(item)}>{item.label}</DropdownMenuCheckboxItem>
     : <DropdownMenuItem key={item.id} destructive={item.destructive} disabled={item.disabled} onClick={() => select(item)}>{item.label}</DropdownMenuItem>;
   return (
-    <DropdownMenu open={open} onOpenChange={(next) => { if (!next) onClose(); }} modal={false}>
+    // A menu opened without a trigger hears its own submenu open as a sibling menu's; that does not close it.
+    <DropdownMenu open={open} onOpenChange={(next, details) => { if (!next && details.reason !== "sibling-open") onClose(); }} modal={false}>
       <DropdownMenuContent aria-label={label} anchor={anchor}>
         {standard.map((item) => item.items ? (
           <DropdownMenuSub key={item.id}>
