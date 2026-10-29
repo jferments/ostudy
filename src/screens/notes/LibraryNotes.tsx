@@ -488,7 +488,8 @@ function NotebookGrid({ notebooks, subjects, folders, showToast, onOpen, onChang
                     <p className="tw:m-0 tw:text-caption tw:text-muted-foreground">
                       {[
                         changedLabel(notebook.updatedAt),
-                        `${item.pageCount} ${item.pageCount === 1 ? "page" : "pages"}`,
+                        item.pageCount > 0 || item.boardCount === 0 ? `${item.pageCount} ${item.pageCount === 1 ? "page" : "pages"}` : null,
+                        item.boardCount > 0 ? `${item.boardCount} ${item.boardCount === 1 ? "board" : "boards"}` : null,
                         item.linkCount > 0 ? `${item.linkCount} ${item.linkCount === 1 ? "link" : "links"}` : null,
                       ].filter(Boolean).join(" · ")}
                     </p>

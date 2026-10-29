@@ -49,7 +49,9 @@ export interface NotebookItem {
 /** One notebook in the list, with its first page's marks for a small preview. */
 export interface NotebookSummary {
   notebook: Notebook;
+  /** Its pages of paper; boards are counted apart. */
   pageCount: number;
+  boardCount: number;
   linkCount: number;
   /** The first few links' labels, in page order, each once. */
   linkLabels: string[];

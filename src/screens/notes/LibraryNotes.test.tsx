@@ -27,12 +27,13 @@ function summary(
   seed: string,
   title: string,
   subjectId: string | null,
-  shelf: Partial<Pick<notebooksIpc.NotebookSummary, "linkLabels" | "folderId" | "pinnedAt">> = {},
+  shelf: Partial<Pick<notebooksIpc.NotebookSummary, "linkLabels" | "folderId" | "pinnedAt" | "pageCount" | "boardCount" | "linkCount">> = {},
 ): notebooksIpc.NotebookSummary {
   const id = seed.repeat(32);
   return {
     notebook: { id, subjectId, title, paper: "lined", pageSize: "letter", revision: 1, createdAt: 1, updatedAt: 1 },
     pageCount: 3,
+    boardCount: 0,
     linkCount: 1,
     firstPage: { id: seed === "a" ? "1".repeat(32) : "2".repeat(32), position: 1, paper: "lined", width: 612, height: 792, layout: "page" },
     preview: [],
@@ -75,6 +76,15 @@ describe("Library notes", () => {
     renderNotes({ kind: "subject", subjectId: SUBJECT });
     expect(await screen.findByRole("button", { name: "Open Cardiac cycle" })).toBeTruthy();
     expect(screen.getByText(/3 pages · 1 link$/u)).toBeTruthy();
+  });
+
+  it("counts a notebook's boards apart from its pages", async () => {
+    vi.mocked(notebooksIpc.listNotebooks).mockResolvedValue([
+      summary("a", "Heart map", SUBJECT, { pageCount: 0, boardCount: 1, linkCount: 0 }),
+    ]);
+    renderNotes({ kind: "subject", subjectId: SUBJECT });
+    expect(await screen.findByText(/· 1 board$/u)).toBeTruthy();
+    expect(screen.queryByText(/pages?/u)).toBeNull();
     expect(screen.queryByRole("button", { name: "Open Loose ideas" })).toBeNull();
   });
 

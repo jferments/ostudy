@@ -166,7 +166,9 @@ pub struct NotebookItemDto {
 #[serde(rename_all = "camelCase")]
 pub struct NotebookSummaryDto {
     pub notebook: NotebookDto,
+    /// Its pages of paper; boards are counted apart.
     pub page_count: i64,
+    pub board_count: i64,
     pub link_count: i64,
     /// The first few links' labels, in page order, each once.
     pub link_labels: Vec<String>,
@@ -394,6 +396,8 @@ pub(crate) fn list(connection: &Connection) -> Result<Vec<NotebookSummaryDto>, C
         .prepare(&format!(
             "SELECT {NOTEBOOK_COLUMNS},
                     (SELECT COUNT(*) FROM notebook_pages p WHERE p.notebook_id = n.id),
+                    (SELECT COUNT(*) FROM notebook_pages p
+                     JOIN notebook_boards b ON b.page_id = p.id WHERE p.notebook_id = n.id),
                     (SELECT COUNT(*) FROM notebook_items i
                      JOIN notebook_pages p ON p.id = i.page_id
                      WHERE p.notebook_id = n.id AND i.kind = 'text'
@@ -408,13 +412,14 @@ pub(crate) fn list(connection: &Connection) -> Result<Vec<NotebookSummaryDto>, C
                 notebook_row(row),
                 row.get::<_, i64>(8)?,
                 row.get::<_, i64>(9)?,
+                row.get::<_, i64>(10)?,
             ))
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
     let mut summaries = Vec::with_capacity(rows.len());
-    for (notebook, page_count, link_count) in rows {
+    for (notebook, all_pages, board_count, link_count) in rows {
         let notebook = notebook?;
         let first_page = pages(connection, &notebook.id)?.into_iter().next();
         let preview = match &first_page {
@@ -429,7 +434,8 @@ pub(crate) fn list(connection: &Connection) -> Result<Vec<NotebookSummaryDto>, C
         let shelf = folders::shelf(connection, &notebook.id)?;
         summaries.push(NotebookSummaryDto {
             notebook,
-            page_count,
+            page_count: all_pages - board_count,
+            board_count,
             link_count,
             link_labels,
             folder_id: shelf.folder_id,

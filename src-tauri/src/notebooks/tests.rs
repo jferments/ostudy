@@ -1020,6 +1020,8 @@ fn a_board_is_a_page_of_the_largest_size_that_goes_with_its_page() {
                 .map_err(CommandError::database)?;
             assert_eq!(boards, 1);
             let listed = list(connection)?;
+            // The list counts pages of paper and boards apart.
+            assert_eq!((listed[0].page_count, listed[0].board_count), (1, 1));
             assert_eq!(
                 listed[0].first_page.as_ref().unwrap().layout,
                 PageLayout::Board
