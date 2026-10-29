@@ -461,11 +461,25 @@ describe("notebook editor", () => {
 
     // Up to the branch with the arrow key, then fold it from the toolbar.
     fireEvent.keyDown(canvas, { key: "ArrowLeft" });
-    fireEvent.click(screen.getByRole("button", { name: "Fold branches" }));
+    // One Mind map button: the map's actions open from the arrow beside it.
+    expect(screen.getAllByRole("button", { name: /Mind map/ })).toHaveLength(2);
+    await openMenu(screen.getByRole("button", { name: "Mind map actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Fold branches (/)" }));
     expect(document.querySelectorAll("[data-map-branch]")).toHaveLength(1);
     expect(document.querySelector("[data-fold-badge]")?.getAttribute("data-fold-badge")).toBe("2");
     fireEvent.keyDown(canvas, { key: "/" });
     expect(document.querySelectorAll("[data-map-branch]")).toHaveLength(3);
+
+    // A right-click on a topic opens its own menu, which adds a branch to it.
+    const contraction = saved().find((shape) => shape.text === "Contraction");
+    if (!contraction) throw new Error("no topic");
+    fireEvent.contextMenu(canvas, onPage(contraction.x + 10, contraction.y + 10));
+    const menu = await screen.findByRole("menu", { name: "Topic" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Add a branch (Tab)" }));
+    const branch = await screen.findByRole("textbox", { name: "New topic" });
+    fireEvent.change(branch, { target: { value: "Aortic valve opens" } });
+    fireEvent.keyDown(branch, { key: "Escape" });
+    await waitFor(() => expect(saved().find((shape) => shape.text === "Aortic valve opens")?.topic?.parent).toBeDefined());
   });
 
   it("makes a map of a pasted outline, copies it back as a list, and keeps an arrow on its topics", async () => {
@@ -476,7 +490,7 @@ describe("notebook editor", () => {
     await waitFor(() => expect(document.querySelectorAll("[data-map-branch]")).toHaveLength(3));
 
     // The central topic opens selected, with the map's actions.
-    await openMenu(screen.getByRole("button", { name: "More map actions" }));
+    await openMenu(screen.getByRole("button", { name: "Mind map actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Copy the map as a list" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("- Heart\n  - Systole\n    - Ejection\n  - Diastole"));
     expect(showToast).toHaveBeenCalledWith("success", "Copied the map as a list.");

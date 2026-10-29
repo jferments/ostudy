@@ -157,9 +157,11 @@ function layoutOf(tree: MapTree): MapLayout {
  * Where the map puts each of its topics, from where its central topic is:
  * branches to either side (or one side) stacked so no two overlap, or, laid
  * out downward, in rows like an outline turned on its side. Folded branches
- * take no room.
+ * take no room. A topic the learner dragged keeps its offset from that place,
+ * and its branches come with it; then (unless `settle` is false) branches in
+ * its way move aside, along the way they are stacked, so nothing overlaps.
  */
-export function layoutMap(tree: MapTree, height: (topic: Topic) => number): Map<string, Point> {
+export function layoutMap(tree: MapTree, height: (topic: Topic) => number, settle = true): Map<string, Point> {
   const placed = new Map<string, Point>();
   const root = tree.root;
   if (!root) return placed;
@@ -187,9 +189,10 @@ export function layoutMap(tree: MapTree, height: (topic: Topic) => number): Map<
   const place = (topic: Topic, edge: number, middle: number, direction: Direction) => {
     if (placed.has(topic.id)) return;
     const { width, height: tall } = size(topic);
+    const [dx, dy] = topic.shape.topic.offset ?? [0, 0];
     const point = direction === "down"
-      ? { x: middle - width / 2, y: edge }
-      : { x: direction === "right" ? edge : edge - width, y: middle - tall / 2 };
+      ? { x: middle - width / 2 + dx, y: edge + dy }
+      : { x: (direction === "right" ? edge : edge - width) + dx, y: middle - tall / 2 + dy };
     placed.set(topic.id, point);
     placeChildren(topic, point, shownChildren(topic), direction);
   };
@@ -228,7 +231,143 @@ export function layoutMap(tree: MapTree, height: (topic: Topic) => number): Map<
     placeChildren(root, at, first.filter((topic) => side.get(topic.id) === "right"), "right");
     placeChildren(root, at, first.filter((topic) => side.get(topic.id) === "left"), "left");
   }
+  if (settle) settleAround(root, placed, shownChildren, size, layout === "down");
   return placed;
+}
+
+interface Box { left: number; top: number; right: number; bottom: number; }
+
+/**
+ * Moves branches out of the way of the ones the learner dragged, from the
+ * deepest up: under each topic, a branch that overlaps its topic, a dragged
+ * branch (or one holding a dragged topic), or a branch already settled moves
+ * along the way branches are stacked (down a column, or along a row for a
+ * downward map), away from what it hit, taking its own branches with it.
+ */
+function settleAround(
+  root: Topic,
+  placed: Map<string, Point>,
+  shownChildren: (topic: Topic) => readonly Topic[],
+  size: (topic: Topic) => Size,
+  down: boolean,
+): void {
+  const gap = down ? DOWN_SIBLING_GAP : SIBLING_GAP;
+  const visited = new Set<string>();
+  const members = new Map<string, Topic[]>();
+  const all = (topic: Topic): Topic[] => {
+    const known = members.get(topic.id);
+    if (known) return known;
+    const found: Topic[] = [];
+    const seen = new Set<string>();
+    const visit = (one: Topic) => {
+      if (seen.has(one.id) || !placed.has(one.id)) return;
+      seen.add(one.id);
+      found.push(one);
+      for (const child of shownChildren(one)) visit(child);
+    };
+    visit(topic);
+    members.set(topic.id, found);
+    return found;
+  };
+  const boxOf = (topic: Topic): Box | null => {
+    const at = placed.get(topic.id);
+    if (!at) return null;
+    const { width, height } = size(topic);
+    return { left: at.x, top: at.y, right: at.x + width, bottom: at.y + height };
+  };
+  const bounds = (topic: Topic): Box | null => all(topic).reduce<Box | null>((box, one) => {
+    const own = boxOf(one);
+    if (!own) return box;
+    return box ? {
+      left: Math.min(box.left, own.left), top: Math.min(box.top, own.top),
+      right: Math.max(box.right, own.right), bottom: Math.max(box.bottom, own.bottom),
+    } : own;
+  }, null);
+  const shift = (topic: Topic, by: number) => {
+    for (const one of all(topic)) {
+      const at = placed.get(one.id);
+      if (at) placed.set(one.id, down ? { x: at.x + by, y: at.y } : { x: at.x, y: at.y + by });
+    }
+  };
+  const anchored = (topic: Topic): boolean => all(topic).some((one) => one.shape.topic.offset !== undefined);
+  // Overlapping, with the stacking gap kept along the stack.
+  const hits = (a: Box, b: Box) => down
+    ? a.left < b.right + gap && b.left < a.right + gap && a.top < b.bottom && b.top < a.bottom
+    : a.top < b.bottom + gap && b.top < a.bottom + gap && a.left < b.right && b.left < a.right;
+
+  const visit = (topic: Topic) => {
+    if (visited.has(topic.id)) return;
+    visited.add(topic.id);
+    const children = shownChildren(topic).filter((child) => placed.has(child.id));
+    for (const child of children) visit(child);
+    if (children.length === 0) return;
+    const own = boxOf(topic);
+    const settled: Box[] = own ? [own] : [];
+    for (const child of children) {
+      const box = anchored(child) ? bounds(child) : null;
+      if (box) settled.push(box);
+    }
+    for (const child of children) {
+      if (anchored(child)) continue;
+      let away = 0;
+      for (let attempt = 0; attempt <= settled.length + 1; attempt += 1) {
+        const box = bounds(child);
+        const hit = box ? settled.find((other) => hits(box, other)) : undefined;
+        if (!box || !hit) break;
+        if (away === 0) {
+          const middle = down ? (box.left + box.right) / 2 : (box.top + box.bottom) / 2;
+          away = middle < (down ? (hit.left + hit.right) / 2 : (hit.top + hit.bottom) / 2) ? -1 : 1;
+        }
+        const by = away > 0
+          ? (down ? hit.right + gap - box.left : hit.bottom + gap - box.top)
+          : (down ? hit.left - gap - box.right : hit.top - gap - box.bottom);
+        shift(child, by);
+      }
+      const box = bounds(child);
+      if (box) settled.push(box);
+    }
+  };
+  visit(root);
+
+  // Then a branch that still lands on a topic elsewhere in the map, such as one
+  // under a dragged topic meeting another dragged topic, moves aside the same way.
+  const units: Topic[] = [];
+  const collect = (topic: Topic, seen: Set<string>) => {
+    if (seen.has(topic.id)) return;
+    seen.add(topic.id);
+    for (const child of shownChildren(topic)) {
+      if (!placed.has(child.id)) continue;
+      if (anchored(child)) collect(child, seen);
+      else units.push(child);
+    }
+  };
+  collect(root, new Set());
+  const everyone = all(root);
+  for (const unit of units) {
+    const inside = new Set(all(unit).map((one) => one.id));
+    let away = 0;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const own = all(unit).map(boxOf).filter((box): box is Box => box !== null);
+      let hit: { mine: Box; other: Box } | null = null;
+      for (const other of everyone) {
+        if (inside.has(other.id)) continue;
+        const theirs = boxOf(other);
+        const mine = theirs ? own.find((box) => hits(box, theirs)) : undefined;
+        if (theirs && mine) {
+          hit = { mine, other: theirs };
+          break;
+        }
+      }
+      if (!hit) break;
+      if (away === 0) {
+        const middle = down ? (hit.mine.left + hit.mine.right) / 2 : (hit.mine.top + hit.mine.bottom) / 2;
+        away = middle < (down ? (hit.other.left + hit.other.right) / 2 : (hit.other.top + hit.other.bottom) / 2) ? -1 : 1;
+      }
+      shift(unit, away > 0
+        ? (down ? hit.other.right + gap - hit.mine.left : hit.other.bottom + gap - hit.mine.top)
+        : (down ? hit.other.left - gap - hit.mine.right : hit.other.top - gap - hit.mine.bottom));
+    }
+  }
 }
 
 /** A branch line from a topic to one of its branches. */
@@ -302,7 +441,7 @@ export function foldBadges(annotations: readonly Annotation[], height: (annotati
 
 function sameTopic(a: MapTopic, b: MapTopic): boolean {
   return a.map === b.map && a.parent === b.parent && a.order === b.order && a.side === b.side
-    && a.layout === b.layout && a.folded === b.folded;
+    && a.layout === b.layout && a.folded === b.folded && a.offset?.[0] === b.offset?.[0] && a.offset?.[1] === b.offset?.[1];
 }
 
 function withTopic(annotation: Topic, topic: MapTopic): Topic {
@@ -311,6 +450,7 @@ function withTopic(annotation: Topic, topic: MapTopic): Topic {
   if (topic.side !== undefined) clean.side = topic.side;
   if (topic.layout !== undefined) clean.layout = topic.layout;
   if (topic.folded) clean.folded = true;
+  if (topic.offset && topic.parent !== undefined) clean.offset = topic.offset;
   return { ...annotation, shape: { ...annotation.shape, topic: clean } };
 }
 
@@ -328,8 +468,8 @@ function centerOf(topic: Topic, height: (annotation: Annotation) => number): Poi
  * The edits a change to mind maps really makes: deleting a topic deletes its
  * branches; dropping a topic on another makes it one of that topic's
  * branches, and dropping it elsewhere moves it among its neighbours (or to
- * the other side); then every map the change touched is laid out again from
- * its central topic. Edits to anything else pass through unchanged, and the
+ * the other side) and keeps it where it was let go; then every map the
+ * change touched is laid out again from its central topic. Edits to anything else pass through unchanged, and the
  * result is still one step to undo.
  */
 export function arrangeMaps(
@@ -429,7 +569,7 @@ export function arrangeMaps(
       touch(target);
       continue;
     }
-    // Dropped elsewhere: it takes its place among its neighbours by where it was let go.
+    // Dropped elsewhere: it takes its place among its neighbours by where it was let go, and stays there.
     const parent = tree.topics.get(topic.parent);
     if (!parent) continue;
     const layout = layoutOf(tree);
@@ -451,9 +591,19 @@ export function arrangeMaps(
     all.forEach((sibling, order) => {
       const latest = current(sibling.id, sibling.pageNumber);
       if (!isTopic(latest)) return;
-      const next: MapTopic = { ...latest.shape.topic, order, ...(sibling.id === self.id && side ? { side } : {}) };
+      const next: MapTopic = sibling.id === self.id
+        ? { ...latest.shape.topic, order, offset: undefined, ...(side ? { side } : {}) }
+        : { ...latest.shape.topic, order };
       if (!sameTopic(next, latest.shape.topic)) change(latest, withTopic(latest, next));
     });
+    // It stays where it was let go: its offset is from where the map would now put it.
+    const settledTree = mapsOn(state.get(edit.after.pageNumber) ?? []).get(topic.map);
+    const base = settledTree ? layoutMap(settledTree, height, false).get(self.id) : undefined;
+    const latest = current(self.id, self.pageNumber);
+    if (base && isTopic(latest)) {
+      const offset: [number, number] = [round(edit.after.shape.x - base.x), round(edit.after.shape.y - base.y)];
+      if (offset[0] !== 0 || offset[1] !== 0) change(latest, withTopic(latest, { ...latest.shape.topic, offset }));
+    }
   }
 
   // Each map the change touched is laid out again.
@@ -733,4 +883,11 @@ export function mapFromList(
     parents.push(topic);
   }
   return { topics, named };
+}
+
+/** Puts a dragged topic, or with none every dragged topic of the map, back where the map's layout puts it. */
+export function tidyEdits(tree: MapTree, only?: Topic): AnnotationEdit[] {
+  return (only ? [only] : [...tree.topics.values()])
+    .filter((topic) => topic.shape.topic.offset !== undefined)
+    .map((topic) => ({ id: topic.id, before: topic, after: withTopic(topic, { ...topic.shape.topic, offset: undefined }) }));
 }

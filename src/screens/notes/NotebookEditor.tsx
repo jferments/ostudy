@@ -19,7 +19,8 @@ import { copyText } from "../../platform/clipboard";
 import { selectExternalImport } from "../../platform/files";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { InlineWorkspace } from "../../ui/overlays/Dialog";
-import { OverflowMenu } from "../../ui/overlays/OverflowMenu";
+import { OverflowMenu, type OverflowMenuItem } from "../../ui/overlays/OverflowMenu";
+import { PointMenu, type PointMenuItem } from "../../ui/overlays/PointMenu";
 import { useConfirm } from "../../ui/overlays/overlayContext";
 import { Button } from "../../ui/primitives/Button";
 import { LoadingState } from "../../ui/primitives/EmptyState";
@@ -38,9 +39,9 @@ import {
 } from "../documents/annotator/annotationModel";
 import { AnnotatorCanvas } from "../documents/annotator/AnnotatorCanvas";
 import type { PaperPages } from "../documents/annotator/AnnotatorPage";
-import { AnnotatorToolbar, type TopicActions } from "../documents/annotator/AnnotatorToolbar";
+import { AnnotatorToolbar } from "../documents/annotator/AnnotatorToolbar";
 import { SaveStatus, SHORTCUTS, useAnnotatorLeave } from "../documents/annotator/DocumentAnnotator";
-import { isTopic, mapAsList, mapsOn } from "../documents/annotator/mindMap";
+import { BRANCH_COLORS, CENTRAL_TOPIC_COLOR, depthOf, isTopic, mapAsList, mapsOn, type MapTree, type Topic } from "../documents/annotator/mindMap";
 import { SourcePassageDialog } from "../documents/annotator/SourcePassageDialog";
 import {
   ACTUAL_SIZE_SCALE,
@@ -343,6 +344,12 @@ function ReadyNotebook({
   const [lastShape, setLastShape] = useState<ShapeTool>("arrow");
   const [lastNote, setLastNote] = useState<"text" | "sticky">("text");
   const [linkDialog, setLinkDialog] = useState<{ editing: Annotation | null } | null>(null);
+  /** Where the selected topic's menu was opened, by a right-click or a long press. */
+  const [topicMenuAt, setTopicMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const closeTopicMenu = useCallback(() => {
+    setTopicMenuAt(null);
+    viewportRef.current?.focus({ preventScroll: true });
+  }, []);
   const [busy, setBusy] = useState(false);
   const [addingPicture, setAddingPicture] = useState(false);
   const textFormat = useTextFormat(controller);
@@ -665,22 +672,16 @@ function ReadyNotebook({
 
   const selected = controller.selected;
   const selectedTree = isTopic(selected) ? mapsOn(controller.annotations.get(selected.pageNumber) ?? []).get(selected.shape.topic.map) : undefined;
-  const topicActions: TopicActions | null = isTopic(selected) && selectedTree ? {
-    central: selected.shape.topic.parent === undefined,
-    hasBranches: (selectedTree.children.get(selected.id) ?? []).length > 0,
-    folded: selected.shape.topic.folded === true,
-    layout: selectedTree.root?.shape.topic.layout ?? "both",
-    onAddBranch: () => controller.addTopic("child"),
-    onAddNext: () => controller.addTopic("sibling"),
-    onFold: controller.toggleFolded,
-    onLayout: controller.setMapLayout,
-    onCopyList: () => {
-      copyText(mapAsList(selectedTree)).then(
-        () => showToast("success", "Copied the map as a list."),
-        (error: unknown) => showToast("error", `The map could not be copied: ${getErrorMessage(error)}`),
-      );
-    },
-  } : null;
+  const copyMap = (tree: MapTree) => {
+    copyText(mapAsList(tree)).then(
+      () => showToast("success", "Copied the map as a list."),
+      (error: unknown) => showToast("error", `The map could not be copied: ${getErrorMessage(error)}`),
+    );
+  };
+  const mapMenu = mapActions(isTopic(selected) && selectedTree ? { topic: selected, tree: selectedTree } : null, controller, () => chooseTool("mindmap"), copyMap);
+  const topicMenu: PointMenuItem[] = isTopic(selected) && selectedTree ? topicMenuItems(selected, selectedTree, controller, mapMenu, {
+    onLink: () => setLinkDialog({ editing: selected }),
+  }) : [];
   const selectedLink = linkOf(selected);
   const selectedClip = clipOf(selected);
   return (
@@ -774,7 +775,7 @@ function ReadyNotebook({
         style={controller.activeStyle}
         onStyle={controller.chooseStyle}
         // A phone's one row of settings keeps a topic's map actions rather than lists and formulas.
-        textFormat={compact && (topicActions || isTopic(controller.editing?.annotation)) ? null : textFormat.format}
+        textFormat={compact && (isTopic(selected) || isTopic(controller.editing?.annotation)) ? null : textFormat.format}
         selection={selected ? {
           isText: selected.shape.kind === "text",
           isSticky: isStickyNote(selected.shape),
@@ -813,7 +814,7 @@ function ReadyNotebook({
         canPan={board !== null}
         fitAll={board !== null}
         canMap
-        topic={topicActions}
+        mapMenu={mapMenu}
       />
       <div className="tw:relative tw:min-w-0">
         <AnnotatorCanvas
@@ -826,7 +827,9 @@ function ReadyNotebook({
           contentRef={contentRef}
           coarse={inputMode === "coarse"}
           paperPages={paperPages}
+          onTopicMenu={(_topic, client) => setTopicMenuAt(client)}
         />
+        <PointMenu label="Topic" point={isTopic(selected) ? topicMenuAt : null} items={topicMenu} onClose={closeTopicMenu} />
         {board !== null && boardPage && !compact ? (
           <BoardOverview
             pageNumber={board}
@@ -861,4 +864,92 @@ function ReadyNotebook({
 /** Where a clip came from, as its button names it: "From Lecture 7 · p. 4". */
 export function clipLabel(clip: ClipSource, documentTitle: string | undefined): string {
   return documentTitle === undefined ? `From p. ${clip.pageNumber} (removed)` : `From ${documentTitle} · p. ${clip.pageNumber}`;
+}
+
+const MAP_LAYOUTS = [
+  { layout: "both", label: "Branches both sides" },
+  { layout: "right", label: "Branches to the right" },
+  { layout: "down", label: "Branches downward" },
+] as const;
+
+const TOPIC_COLORS: ReadonlyArray<{ color: string; label: string }> = [
+  { color: CENTRAL_TOPIC_COLOR, label: "Slate" },
+  ...BRANCH_COLORS.map((color, index) => ({ color, label: ["Blue", "Red", "Green", "Orange", "Purple", "Teal"][index] ?? color })),
+];
+
+const TOPIC_SIZES = [
+  { size: 14, label: "Small" },
+  { size: 16, label: "Medium" },
+  { size: 20, label: "Large" },
+  { size: 24, label: "Largest" },
+] as const;
+
+/** The Mind map button's dropdown: starting a map, and what can be done with the selected topic and its map. */
+function mapActions(
+  found: { topic: Topic; tree: MapTree } | null,
+  controller: DocumentAnnotatorController,
+  onStart: () => void,
+  onCopy: (tree: MapTree) => void,
+): OverflowMenuItem[] {
+  const topic = found?.topic;
+  const tree = found?.tree;
+  const branches = topic && tree ? (tree.children.get(topic.id) ?? []).length : 0;
+  const layout = tree?.root?.shape.topic.layout ?? "both";
+  const dragged = tree ? [...tree.topics.values()].some((one) => one.shape.topic.offset !== undefined) : false;
+  return [
+    { id: "start", label: "Start a new map", onSelect: onStart },
+    { id: "branch", label: "Add a branch (Tab)", disabled: !topic, onSelect: () => controller.addTopic("child") },
+    { id: "next", label: "Add the next topic (Enter)", disabled: !topic || topic.shape.topic.parent === undefined, onSelect: () => controller.addTopic("sibling") },
+    { id: "promote", label: "Move up a level (Shift+Tab)", disabled: !topic || !tree || depthOf(tree, topic) < 2, onSelect: controller.promoteTopic },
+    { id: "fold", label: topic?.shape.topic.folded ? "Show branches (/)" : "Fold branches (/)", disabled: branches === 0, onSelect: controller.toggleFolded },
+    ...MAP_LAYOUTS.map((choice) => ({
+      id: choice.layout, label: choice.label, disabled: !topic, checked: topic ? choice.layout === layout : false,
+      onSelect: () => controller.setMapLayout(choice.layout),
+    })),
+    { id: "put-back", label: "Put this topic back in place", disabled: topic?.shape.topic.offset === undefined, onSelect: () => controller.tidyMap(true) },
+    { id: "tidy", label: "Tidy the map", disabled: !dragged, onSelect: () => controller.tidyMap(false) },
+    { id: "copy-list", label: "Copy the map as a list", disabled: !tree, onSelect: () => { if (tree) onCopy(tree); } },
+  ];
+}
+
+/** A topic's own menu, opened on it: the map's actions, and the topic's words, look, link and deletion. */
+function topicMenuItems(
+  topic: Topic,
+  tree: MapTree,
+  controller: DocumentAnnotatorController,
+  mapMenu: readonly OverflowMenuItem[],
+  { onLink }: { onLink: () => void },
+): PointMenuItem[] {
+  const action = (id: string) => mapMenu.find((item) => item.id === id);
+  const shown = (id: string): PointMenuItem[] => {
+    const item = action(id);
+    return item && !item.disabled ? [item] : [];
+  };
+  return [
+    { id: "edit", label: "Edit topic (F2)", onSelect: () => controller.editText(topic) },
+    ...shown("branch"),
+    ...shown("next"),
+    ...shown("promote"),
+    ...shown("fold"),
+    {
+      id: "color", label: "Colour",
+      items: TOPIC_COLORS.map((choice) => ({
+        id: choice.color, label: choice.label, checked: topic.shape.color === choice.color,
+        onSelect: () => controller.chooseStyle({ color: choice.color }),
+      })),
+    },
+    {
+      id: "size", label: "Text size",
+      items: TOPIC_SIZES.map((choice) => ({
+        id: String(choice.size), label: choice.label, checked: topic.shape.fontSize === choice.size,
+        onSelect: () => controller.chooseStyle({ size: choice.size }),
+      })),
+    },
+    { id: "layout", label: "Map layout", items: mapMenu.filter((item) => MAP_LAYOUTS.some((choice) => choice.layout === item.id)) },
+    ...shown("put-back"),
+    ...shown("tidy"),
+    ...shown("copy-list"),
+    { id: "link", label: "Add link… (K)", onSelect: onLink },
+    { id: "delete", label: (tree.children.get(topic.id) ?? []).length > 0 ? "Delete topic and its branches" : "Delete topic", destructive: true, onSelect: controller.deleteSelected },
+  ];
 }

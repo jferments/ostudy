@@ -64,6 +64,7 @@ import {
   newTopic,
   promote,
   retopic,
+  tidyEdits,
   topicToward,
   type ListItem,
   type MapTree,
@@ -436,6 +437,12 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     if (next.shape.topic.layout !== root.shape.topic.layout) commit([{ id: root.id, before: root, after: next }]);
   }, [commit, currentTopic]);
 
+  /** Puts the selected topic, or every topic of its map, back where the map's layout puts it. */
+  const tidyMap = useCallback((onlySelected: boolean) => {
+    const found = currentTopic();
+    if (found) commit(tidyEdits(found.tree, onlySelected ? found.topic : undefined));
+  }, [commit, currentTopic]);
+
   /** Selects the topic an arrow key leads to from the selected one; false when there is none. */
   const goToTopic = useCallback((key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown"): boolean => {
     const found = currentTopic();
@@ -627,6 +634,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     toggleFolded,
     promoteTopic,
     setMapLayout,
+    tidyMap,
     goToTopic,
     typeText,
     finishEditing,

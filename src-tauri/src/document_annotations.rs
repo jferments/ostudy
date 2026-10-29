@@ -230,6 +230,10 @@ pub struct MapTopic {
     pub layout: Option<MapLayout>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folded: Option<bool>,
+    /// Where the learner dragged the topic, with its branches: `[dx, dy]`
+    /// points from where the map's layout would put it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<Vec<f64>>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -246,6 +250,9 @@ pub enum MapLayout {
     Right,
     Down,
 }
+
+/// Farther than any page reaches, in points; it bounds a dragged topic's offset.
+const MAX_TOPIC_OFFSET: f64 = 30_000.0;
 
 /// More branches than any one topic needs; it bounds the stored order.
 const MAX_TOPIC_ORDER: u32 = 100_000;
@@ -554,6 +561,18 @@ impl MapTopic {
         }
         if self.folded == Some(false) {
             return Err(invalid("A topic is either folded or not marked at all."));
+        }
+        if let Some(offset) = &self.offset {
+            if self.parent.is_none() {
+                return Err(invalid("A central topic is placed by its own position."));
+            }
+            if offset.len() != 2
+                || offset
+                    .iter()
+                    .any(|value| !value.is_finite() || value.abs() > MAX_TOPIC_OFFSET)
+            {
+                return Err(invalid("A topic's moved place is out of range."));
+            }
         }
         Ok(())
     }
