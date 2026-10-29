@@ -41,6 +41,19 @@ export function DeviceVoicesDialog({
   const [error, setError] = useState<string | null>(null);
   const current = useRef(settings);
   current.current = settings;
+  // A download's reads can finish after the dialog closes; drop them then.
+  const mounted = useRef(true);
+  const progressTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      window.clearTimeout(progressTimer.current);
+    };
+  }, []);
+  const showVoices = (next: DeviceVoices) => {
+    if (mounted.current) setVoices(next);
+  };
 
   const downloading = voices?.models.some((model) => model.installingBytes !== null) ?? false;
   useEffect(() => {
@@ -88,19 +101,23 @@ export function DeviceVoicesDialog({
     setError(null);
     const chosen = model.installed
       ? Promise.resolve()
-      : installDeviceVoice(model.modelId).then(setVoices);
+      : installDeviceVoice(model.modelId).then(showVoices);
     chosen
       .then(() => {
         const latest = current.current;
         return saveSpeechSettings(latest.profileId, speech.id, speech.defaultVoice, latest.revision);
       })
       .then(onChanged, (failure: unknown) => {
+        if (!mounted.current) return;
         setError(getErrorMessage(failure));
-        void getDeviceVoices().then(setVoices, () => undefined);
+        void getDeviceVoices().then(showVoices, () => undefined);
       })
-      .finally(() => setBusy(null));
+      .finally(() => {
+        if (mounted.current) setBusy(null);
+      });
     // The download's own progress shows while it runs.
-    window.setTimeout(() => void getDeviceVoices().then(setVoices, () => undefined), 100);
+    window.clearTimeout(progressTimer.current);
+    progressTimer.current = window.setTimeout(() => void getDeviceVoices().then(showVoices, () => undefined), 100);
   };
 
   return (

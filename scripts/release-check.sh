@@ -34,6 +34,17 @@ mkdir -p "$TEMP_ROOT/project"
     -cf - .
 ) | tar -xf - -C "$TEMP_ROOT/project"
 
+# check.sh guards each step with git status, so the copy needs its own
+# repository. One local commit of the copied tree is enough; nothing in it
+# is pushed or tagged.
+(
+  cd "$TEMP_ROOT/project"
+  git init -q
+  git add -A
+  git -c user.name='ostudy release check' -c user.email='release-check@localhost' \
+    -c commit.gpgsign=false commit -q --no-verify -m 'Release candidate source copy'
+)
+
 printf '\n==> Running the complete gate in the clean source copy\n'
 (
   cd "$TEMP_ROOT/project"
