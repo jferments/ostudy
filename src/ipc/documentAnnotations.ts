@@ -84,6 +84,30 @@ export interface TextShape {
   link?: NoteLink;
   /** Marks of one page that share a group are selected and moved together. */
   group?: string;
+  /** Only on a notebook page: the note is a topic of a mind map. */
+  topic?: MapTopic;
+}
+
+/** How a mind map spreads from its central topic. */
+export type MapLayout = "both" | "right" | "down";
+
+/**
+ * A topic's place in its mind map. A map is the central topic (no `parent`)
+ * and the topics under it on the same page; `map` is the central topic's id.
+ * The map places its topics: they are drawn where its layout puts them.
+ */
+export interface MapTopic {
+  map: string;
+  /** The topic it branches from; none for the central topic. */
+  parent?: string;
+  /** Its place among its parent's topics, from 0. */
+  order: number;
+  /** Which side of the central topic a first-level branch goes, in a map spread both ways. */
+  side?: "left" | "right";
+  /** Only on the central topic: how the map spreads. */
+  layout?: MapLayout;
+  /** Its branches are folded away. */
+  folded?: true;
 }
 
 /** What a link on a notebook page opens. Targets are looked up when the notebook opens. */

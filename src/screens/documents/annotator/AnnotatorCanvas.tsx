@@ -19,6 +19,7 @@ import { AnnotatorGestures, type GestureContext, type GestureEffect, type Gestur
 import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
 import { createPageTextCache, type PageTextCache } from "./textSelection";
+import { isTopic, visibleMarks } from "./mindMap";
 import type { DocumentAnnotatorController } from "./useDocumentAnnotator";
 import { MAX_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
 
@@ -42,6 +43,7 @@ const CURSORS: Readonly<Record<AnnotatorTool, string>> = {
   eraser: "tw:cursor-cell",
   clip: "tw:cursor-crosshair",
   hand: "tw:cursor-grab tw:active:cursor-grabbing",
+  mindmap: "tw:cursor-cell",
 };
 
 interface AnnotatorCanvasProps {
@@ -196,7 +198,8 @@ export function AnnotatorCanvas({
       maxScale: MAX_SCALE,
       selected: current.selected,
       group: current.group,
-      annotationsOn: (pageNumber) => current.annotationsRef.current.get(pageNumber) ?? EMPTY,
+      // Topics folded away can be neither seen nor picked.
+      annotationsOn: (pageNumber) => visibleMarks(current.annotationsRef.current.get(pageNumber) ?? EMPTY),
       textHeight: current.textHeight,
       pageText: (pageNumber) => pageText.current?.get(pageNumber) ?? null,
       newId: createAnnotationId,
@@ -288,6 +291,11 @@ export function AnnotatorCanvas({
           if (size) current.newText(effect.pageNumber, effect.point, size, effect.sticky);
           break;
         }
+        case "new-map": {
+          const size = pageSizes.get(effect.pageNumber);
+          if (size) current.newMap(effect.pageNumber, effect.point, size);
+          break;
+        }
         case "scroll-by": {
           const element = viewportRef.current;
           if (element) {
@@ -355,6 +363,10 @@ export function AnnotatorCanvas({
       return;
     }
     if (!selected || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (isTopic(selected) && event.target === event.currentTarget && topicKey(event)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Enter" && selected.shape.kind === "text" && event.target === event.currentTarget) {
       event.preventDefault();
       controller.editText(selected);
@@ -366,6 +378,37 @@ export function AnnotatorCanvas({
     event.preventDefault();
     const step = event.shiftKey ? 10 : 1;
     controller.nudgeSelected(direction[0] * step, direction[1] * step, size);
+  }
+
+  /**
+   * A mind map's keys on a selected topic: Tab adds a branch, Enter the next
+   * topic, Shift+Tab moves it up a level, the arrows go from topic to topic,
+   * F2 types in it and / folds it.
+   */
+  function topicKey(event: KeyboardEvent<HTMLDivElement>): boolean {
+    switch (event.key) {
+      case "Tab":
+        if (event.shiftKey) controller.promoteTopic();
+        else controller.addTopic("child");
+        return true;
+      case "Enter":
+        if (event.shiftKey) return false;
+        controller.addTopic("sibling");
+        return true;
+      case "F2":
+        if (controller.selected) controller.editText(controller.selected);
+        return true;
+      case "/":
+        controller.toggleFolded();
+        return true;
+      case "ArrowLeft":
+      case "ArrowRight":
+      case "ArrowUp":
+      case "ArrowDown":
+        return !event.shiftKey && controller.goToTopic(event.key);
+      default:
+        return false;
+    }
   }
 
   const focusAnnotation = useCallback((annotation: Annotation) => {
@@ -389,13 +432,26 @@ export function AnnotatorCanvas({
     viewportRef.current?.querySelector("textarea")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [viewport.height, viewportRef]);
 
-  const selectable = controller.tool === "select";
+  // A topic closed with Escape leaves the keys with the map, for its next topic.
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (wasEditing.current && !controller.editing && element
+      && (document.activeElement === null || document.activeElement === document.body)) {
+      element.focus({ preventScroll: true });
+    }
+    wasEditing.current = controller.editing !== null;
+  }, [controller.editing, viewportRef]);
+
+  const selectable = controller.tool === "select" || controller.tool === "mindmap";
   return (
     <>
       <p id={helpId} className="tw:sr-only">
         Choose a tool in the toolbar, then draw on a page. Two fingers scroll and zoom. With the Select tool, Tab
         moves through the annotations on the pages in view, arrow keys move the selected one, Delete removes it and
-        Enter opens a text or sticky note. Ctrl+Z undoes.
+        Enter opens a text or sticky note. On a mind map's selected topic, Tab adds a branch, Enter adds the next
+        topic, Shift+Tab moves it up a level, arrow keys go from topic to topic, F2 types in it and / folds it.
+        Ctrl+Z undoes.
       </p>
       <div
         ref={viewportRef}
@@ -448,6 +504,7 @@ export function AnnotatorCanvas({
                 onMeasureText={controller.measureText}
                 onTypeText={controller.typeText}
                 onFinishText={controller.finishEditing}
+                onAddTopic={controller.addTopic}
                 onFocusAnnotation={focusAnnotation}
                 onOpenAnnotation={openAnnotation}
                 onChangeText={changeText}

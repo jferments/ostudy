@@ -1093,3 +1093,177 @@ fn a_board_is_saved_cut_to_its_marks_whole_or_in_printable_pieces() {
         .unwrap();
     let _ = std::fs::remove_dir_all(paths.app_data_dir());
 }
+
+fn topic(item: &str, page: &str, text: &str, place: Value) -> NotebookItemChange {
+    change(json!({
+        "op": "put", "id": item, "pageId": page,
+        "shape": {
+            "kind": "text", "x": 7000, "y": 7000, "width": 160, "text": text,
+            "color": "#2563eb", "fontSize": 16, "topic": place
+        }
+    }))
+}
+
+#[test]
+fn mind_map_topics_keep_their_place_and_are_checked_one_by_one() {
+    let database = library();
+    database
+        .with_connection(|connection| {
+            let notebook = new_board(connection);
+            let board = notebook.pages[0].id.clone();
+            let root = id('1');
+            let applied = apply(
+                connection,
+                &notebook.notebook.id,
+                vec![
+                    topic(&root, &board, "Heart", json!({ "map": root, "order": 0, "layout": "down" })),
+                    topic(&id('2'), &board, "Systole", json!({ "map": root, "parent": root, "order": 0, "side": "left", "folded": true })),
+                ],
+            )?;
+            assert_eq!(applied.items.len(), 2);
+            let opened = contents(connection, &notebook.notebook.id)?;
+            let AnnotationShape::Text(note) = &opened.items[1].shape else {
+                panic!("not a text note");
+            };
+            let place = note.topic.as_ref().expect("a topic");
+            assert_eq!(place.parent.as_deref(), Some(root.as_str()));
+            assert_eq!(place.folded, Some(true));
+
+            for wrong in [
+                json!({ "map": "not-an-id", "order": 0 }),
+                json!({ "map": root, "order": 0, "side": "left" }),
+                json!({ "map": root, "parent": root, "order": 0, "layout": "down" }),
+                json!({ "map": root, "order": 0, "folded": false }),
+                json!({ "map": root, "order": 1_000_000 }),
+            ] {
+                assert!(
+                    apply(connection, &notebook.notebook.id, vec![topic(&id('3'), &board, "Valves", wrong.clone())]).is_err(),
+                    "{wrong}"
+                );
+            }
+            // A field a topic does not have is refused as the request is read.
+            assert!(serde_json::from_value::<NotebookItemChange>(json!({
+                "op": "put", "id": id('3'), "pageId": board,
+                "shape": {
+                    "kind": "text", "x": 20, "y": 20, "width": 120, "text": "Valves",
+                    "color": "#2563eb", "fontSize": 14,
+                    "topic": { "map": root, "order": 0, "colour": "red" }
+                }
+            }))
+            .is_err());
+            let sticky_topic = change(json!({
+                "op": "put", "id": id('4'), "pageId": board,
+                "shape": {
+                    "kind": "text", "x": 20, "y": 20, "width": 120, "text": "Valves",
+                    "color": "#fff3b0", "fontSize": 14, "sticky": true,
+                    "topic": { "map": id('4'), "order": 0 }
+                }
+            }));
+            assert!(apply(connection, &notebook.notebook.id, vec![sticky_topic]).is_err());
+            Ok(())
+        })
+        .unwrap();
+}
+
+#[test]
+fn a_mind_map_is_saved_with_its_branches_and_without_what_is_folded() {
+    let root = id('1');
+    let shapes: Vec<(String, AnnotationShape)> = [
+        (id('1'), json!({ "map": root, "order": 0 }), "Heart", 7000.0),
+        (
+            id('2'),
+            json!({ "map": root, "parent": root, "order": 0, "folded": true }),
+            "Systole",
+            7300.0,
+        ),
+        (
+            id('3'),
+            json!({ "map": root, "parent": id('2'), "order": 0 }),
+            "Ejection",
+            7600.0,
+        ),
+        (
+            id('4'),
+            json!({ "map": root, "parent": root, "order": 1 }),
+            "Diastole",
+            6700.0,
+        ),
+    ]
+    .into_iter()
+    .map(|(item, place, text, x)| {
+        let shape = serde_json::from_value(json!({
+            "kind": "text", "x": x, "y": 7000, "width": 120, "text": text,
+            "color": "#2563eb", "fontSize": 16, "topic": place
+        }))
+        .unwrap();
+        (item, shape)
+    })
+    .collect();
+    let items: Vec<(&str, &AnnotationShape)> = shapes
+        .iter()
+        .map(|(item, shape)| (item.as_str(), shape))
+        .collect();
+    let marks = crate::document_annotations::mind_map_marks(&items);
+    // Two branches from the central topic, drawn first; Ejection is folded away.
+    let lines: Vec<_> = marks
+        .iter()
+        .filter(|mark| matches!(mark, AnnotationShape::Line(_)))
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert!(matches!(marks[0], AnnotationShape::Line(_)));
+    let texts: Vec<_> = marks
+        .iter()
+        .filter_map(|mark| match mark {
+            AnnotationShape::Text(note) => Some(note.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts, ["Heart", "Systole", "Diastole"]);
+    // A branch to the left leaves from the central topic's left side.
+    let AnnotationShape::Line(left) = lines
+        .iter()
+        .find(|line| matches!(line, AnnotationShape::Line(segment) if segment.x2 < 7000.0))
+        .expect("a branch to the left")
+    else {
+        unreachable!();
+    };
+    assert_eq!(left.x1, 7000.0);
+    assert_eq!(left.x2, 6820.0);
+    assert!(left.curve.is_some());
+
+    // And the PDF holds it.
+    let database = library();
+    let paths = test_paths();
+    let destination = paths.app_data_dir().join("map-test.pdf");
+    database
+        .with_connection(|connection| {
+            let notebook = new_board(connection);
+            let board = notebook.pages[0].id.clone();
+            apply(
+                connection,
+                &notebook.notebook.id,
+                vec![
+                    topic(&root, &board, "Heart", json!({ "map": root, "order": 0 })),
+                    topic(
+                        &id('2'),
+                        &board,
+                        "Systole",
+                        json!({ "map": root, "parent": root, "order": 0 }),
+                    ),
+                ],
+            )?;
+            let opened = contents(connection, &notebook.notebook.id)?;
+            assert_eq!(
+                save_pdf::write_notebook(
+                    &opened,
+                    &[],
+                    &destination,
+                    save_pdf::BoardPrint::OnePage
+                )?,
+                (1, 0)
+            );
+            Ok(())
+        })
+        .unwrap();
+    let _ = std::fs::remove_dir_all(paths.app_data_dir());
+}

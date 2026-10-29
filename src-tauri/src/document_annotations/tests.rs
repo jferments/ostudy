@@ -229,6 +229,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             collapsed: None,
             link: None,
             group: None,
+            topic: None,
         }),
         AnnotationShape::Text(TextNote {
             x: 300.0,
@@ -241,6 +242,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             collapsed: None,
             link: None,
             group: None,
+            topic: None,
         }),
     ]
 }
@@ -334,6 +336,7 @@ fn shapes_outside_their_limits_are_refused() {
             collapsed: None,
             link: None,
             group: None,
+            topic: None,
         })
     };
     let frame = |width: f64, height: f64| {
@@ -568,6 +571,16 @@ fn a_refused_change_leaves_the_whole_request_unapplied() {
         vec![put(&id('b'), 1, arrow(30.0)), delete(&id('b'))],
         vec![put("ABABABABABABABABABABABABABABABAB", 1, arrow(30.0))],
         vec![put(&id('b'), 0, arrow(30.0))],
+        // A mind map goes only on a notebook page.
+        vec![put(
+            &id('b'),
+            1,
+            serde_json::from_value(serde_json::json!({
+                "kind": "text", "x": 10, "y": 10, "width": 100, "text": "Heart",
+                "color": "#334155", "fontSize": 16, "topic": { "map": id('b'), "order": 0 }
+            }))
+            .unwrap(),
+        )],
     ] {
         assert!(apply(&fixture, DOCUMENT, refused, NOW).is_err());
     }
@@ -814,6 +827,7 @@ fn sticky_notes_hold_longer_text_and_are_marked_only_one_way() {
             collapsed: None,
             link: None,
             group: None,
+            topic: None,
         })
     };
     let long = "a".repeat(MAX_TEXT_CHARS + 1);
@@ -843,6 +857,7 @@ fn only_a_sticky_note_can_be_collapsed() {
             collapsed,
             link: None,
             group: None,
+            topic: None,
         })
     };
     let folded = note(Some(true), Some(true));

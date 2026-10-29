@@ -42,6 +42,8 @@ export interface LinkChoice {
 interface LinkDialogProps {
   /** The link being changed; none adds a new one. */
   initial: LinkChoice | null;
+  /** The label to start from when there is no link yet. */
+  initialLabel?: string;
   /** The notebook the link sits in, and its pages, for links within it; none on a study guide's pages. */
   notebookId?: string;
   onClose: () => void;
@@ -53,7 +55,7 @@ interface LinkDialogProps {
  * of any notebook, shown as a small link or as a button. A deck's button
  * starts Practice on its cards.
  */
-export function LinkDialog({ initial, notebookId, onClose, onSave }: LinkDialogProps) {
+export function LinkDialog({ initial, initialLabel, notebookId, onClose, onSave }: LinkDialogProps) {
   const [choices, setChoices] = useState<Choices | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const start = initial?.link.target;
@@ -63,8 +65,8 @@ export function LinkDialog({ initial, notebookId, onClose, onSave }: LinkDialogP
   const [deckId, setDeckId] = useState(start?.kind === "deck" ? start.deckId : "");
   const [targetNotebookId, setTargetNotebookId] = useState(start?.kind === "notebookPage" ? start.notebookId : notebookId ?? "");
   const [pageId, setPageId] = useState(start?.kind === "notebookPage" ? start.pageId : "");
-  const [label, setLabel] = useState(initial?.label ?? "");
-  const [labelEdited, setLabelEdited] = useState(initial !== null);
+  const [label, setLabel] = useState(initial?.label ?? initialLabel ?? "");
+  const [labelEdited, setLabelEdited] = useState(initial !== null || Boolean(initialLabel));
   const [button, setButton] = useState(initial ? initial.link.button === true : false);
   const [buttonChosen, setButtonChosen] = useState(initial !== null);
 

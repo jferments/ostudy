@@ -282,6 +282,7 @@ impl Canvas<'_> {
             AnnotationShape::Ellipse(frame) => self.frame(frame, true),
             AnnotationShape::Image(picture) => self.picture(picture),
             AnnotationShape::Text(note) if note.sticky == Some(true) => self.sticky(note),
+            AnnotationShape::Text(note) if note.topic.is_some() => self.topic(note),
             AnnotationShape::Text(note) if note.link.is_some() => self.link(note),
             AnnotationShape::Text(note) => self.text(note),
         }
@@ -1423,7 +1424,9 @@ fn number(value: f64) -> String {
 
 #[path = "notebook_pdf.rs"]
 mod notebook_pdf;
-pub use notebook_pdf::{notebook_pdf, shape_bounds, shifted, NotebookPdfPage, Ruling};
+pub use notebook_pdf::{
+    mind_map_marks, notebook_pdf, shape_bounds, shifted, NotebookPdfPage, Ruling,
+};
 
 #[cfg(test)]
 #[path = "pdf_export_tests.rs"]

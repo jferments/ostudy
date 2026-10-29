@@ -200,7 +200,47 @@ pub struct TextNote {
     pub link: Option<NoteLink>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// Only on a notebook page: the note is a topic of a mind map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic: Option<MapTopic>,
 }
+
+/// A topic's place in its mind map. A map is its central topic (no
+/// `parent`) and the topics under it on the same page; `map` is the central
+/// topic's id. The app lays the map out and tolerates a topic whose parent
+/// is gone, so only each topic's own fields are checked here.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MapTopic {
+    pub map: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    pub order: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side: Option<MapSide>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<MapLayout>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folded: Option<bool>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MapSide {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MapLayout {
+    Both,
+    Right,
+    Down,
+}
+
+/// More branches than any one topic needs; it bounds the stored order.
+const MAX_TOPIC_ORDER: u32 = 100_000;
 
 /// Where a link on a notebook page goes. `button` shows it as a button that
 /// does the thing (a deck's Study starts Practice) rather than a small link.
@@ -400,6 +440,12 @@ impl AnnotationShape {
                 if let Some(link) = &note.link {
                     link.validate()?;
                 }
+                if let Some(topic) = &note.topic {
+                    if note.sticky.is_some() {
+                        return Err(invalid("A sticky note cannot also be a mind-map topic."));
+                    }
+                    topic.validate()?;
+                }
                 validate_color(&note.color)?;
                 if !note.font_size.is_finite()
                     || !(MIN_FONT_SIZE..=MAX_FONT_SIZE).contains(&note.font_size)
@@ -457,12 +503,38 @@ impl AnnotationShape {
         matches!(self, Self::Text(TextNote { link: Some(_), .. }))
     }
 
+    /// Whether this is a mind-map topic, which only a notebook page holds.
+    pub(crate) fn is_topic(&self) -> bool {
+        matches!(self, Self::Text(TextNote { topic: Some(_), .. }))
+    }
+
     /// The managed asset a picture shows; only notebook pages hold pictures.
     pub(crate) fn image_asset(&self) -> Option<&str> {
         match self {
             Self::Image(image) => Some(&image.asset_id),
             _ => None,
         }
+    }
+}
+
+impl MapTopic {
+    fn validate(&self) -> Result<(), CommandError> {
+        validate_annotation_id(&self.map)?;
+        if let Some(parent) = &self.parent {
+            validate_annotation_id(parent)?;
+        } else if self.side.is_some() {
+            return Err(invalid("A central topic has no side."));
+        }
+        if self.parent.is_some() && self.layout.is_some() {
+            return Err(invalid("Only a central topic chooses its map's layout."));
+        }
+        if self.order > MAX_TOPIC_ORDER {
+            return Err(invalid("A topic's place in its map is out of range."));
+        }
+        if self.folded == Some(false) {
+            return Err(invalid("A topic is either folded or not marked at all."));
+        }
+        Ok(())
     }
 }
 
@@ -650,6 +722,11 @@ pub(crate) fn apply_changes(
             shape.validate()?;
             if shape.is_link() {
                 return Err(invalid("Links go on notebook pages, not on a document."));
+            }
+            if shape.is_topic() {
+                return Err(invalid(
+                    "Mind maps go on notebook pages, not on a document.",
+                ));
             }
             if shape.image_asset().is_some() {
                 return Err(invalid("Pictures go on notebook pages, not on a document."));
@@ -1115,7 +1192,9 @@ pub(crate) use page_text::{get_document_page_text, DocumentPageTextDto, GetDocum
 
 #[path = "document_annotations/pdf_export.rs"]
 mod pdf_export;
-pub(crate) use pdf_export::{notebook_pdf, shape_bounds, shifted, NotebookPdfPage, Ruling};
+pub(crate) use pdf_export::{
+    mind_map_marks, notebook_pdf, shape_bounds, shifted, NotebookPdfPage, Ruling,
+};
 
 #[path = "document_annotations/annotated_pdf.rs"]
 mod annotated_pdf;

@@ -37,8 +37,9 @@ import {
 } from "../documents/annotator/annotationModel";
 import { AnnotatorCanvas } from "../documents/annotator/AnnotatorCanvas";
 import type { PaperPages } from "../documents/annotator/AnnotatorPage";
-import { AnnotatorToolbar } from "../documents/annotator/AnnotatorToolbar";
+import { AnnotatorToolbar, type TopicActions } from "../documents/annotator/AnnotatorToolbar";
 import { SaveStatus, SHORTCUTS, useAnnotatorLeave } from "../documents/annotator/DocumentAnnotator";
+import { isTopic, mapsOn } from "../documents/annotator/mindMap";
 import { SourcePassageDialog } from "../documents/annotator/SourcePassageDialog";
 import {
   ACTUAL_SIZE_SCALE,
@@ -649,10 +650,10 @@ function ReadyNotebook({
       controller.deleteGroup();
       return;
     }
-    const tool = event.shiftKey ? undefined : key === "k" ? undefined : SHORTCUTS[key];
+    const tool = event.shiftKey ? undefined : key === "k" ? undefined : key === "m" ? "mindmap" : SHORTCUTS[key];
     if (key === "k" && !event.shiftKey) {
       event.preventDefault();
-      setLinkDialog({ editing: null });
+      setLinkDialog({ editing: isTopic(controller.selected) ? controller.selected : null });
       return;
     }
     if (tool) {
@@ -662,12 +663,23 @@ function ReadyNotebook({
   }
 
   const selected = controller.selected;
+  const selectedTree = isTopic(selected) ? mapsOn(controller.annotations.get(selected.pageNumber) ?? []).get(selected.shape.topic.map) : undefined;
+  const topicActions: TopicActions | null = isTopic(selected) && selectedTree ? {
+    central: selected.shape.topic.parent === undefined,
+    hasBranches: (selectedTree.children.get(selected.id) ?? []).length > 0,
+    folded: selected.shape.topic.folded === true,
+    layout: selectedTree.root?.shape.topic.layout ?? "both",
+    onAddBranch: () => controller.addTopic("child"),
+    onAddNext: () => controller.addTopic("sibling"),
+    onFold: controller.toggleFolded,
+    onLayout: controller.setMapLayout,
+  } : null;
   const selectedLink = linkOf(selected);
   const selectedClip = clipOf(selected);
   return (
     <div className="tw:flex tw:min-w-0 tw:flex-col" onKeyDown={keyDown} onKeyUp={keyUp}>
       <div className="tw:flex tw:min-w-0 tw:flex-wrap tw:items-center tw:gap-2 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background tw:px-3 tw:py-1.5">
-        <Button size="small" variant="secondary" aria-keyshortcuts="K" onClick={() => setLinkDialog({ editing: null })}>
+        <Button size="small" variant="secondary" aria-keyshortcuts="K" onClick={() => setLinkDialog({ editing: isTopic(controller.selected) ? controller.selected : null })}>
           <Icon name="link" />
           Add link
         </Button>
@@ -792,6 +804,8 @@ function ReadyNotebook({
         onFit={board === null ? viewport.fitToWidth : fitAll}
         canPan={board !== null}
         fitAll={board !== null}
+        canMap
+        topic={topicActions}
       />
       <div className="tw:relative tw:min-w-0">
         <AnnotatorCanvas
@@ -826,6 +840,8 @@ function ReadyNotebook({
           initial={linkDialog.editing && linkDialog.editing.shape.kind === "text" && linkDialog.editing.shape.link
             ? { link: linkDialog.editing.shape.link, label: linkDialog.editing.shape.text }
             : null}
+          // A topic becomes a link with its words as the label.
+          initialLabel={linkDialog.editing && isTopic(linkDialog.editing) ? linkDialog.editing.shape.text : undefined}
           onClose={() => setLinkDialog(null)}
           onSave={placeLink}
         />

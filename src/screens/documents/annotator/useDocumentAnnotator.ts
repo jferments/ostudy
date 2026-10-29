@@ -8,6 +8,7 @@ import {
   type AnnotatedPage,
   type DocumentAnnotationChange,
   type DocumentAnnotations,
+  type MapLayout,
 } from "../../../ipc/documentAnnotations";
 import {
   applyEdits,
@@ -53,6 +54,18 @@ import {
   type ToolStyles,
 } from "./annotationModel";
 import { AnnotationSaveQueue, type SaveState } from "./annotationSaveQueue";
+import {
+  arrangeMaps,
+  isTopic,
+  mapsOn,
+  newCentralTopic,
+  newTopic,
+  promote,
+  retopic,
+  topicToward,
+  type MapTree,
+  type Topic,
+} from "./mindMap";
 
 export type AnnotatorLoad =
   | { state: "loading" }
@@ -93,6 +106,8 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
   const [history, setHistoryState] = useState<AnnotationHistory>(EMPTY_HISTORY);
   const historyRef = useRef(history);
   const [selection, setSelection] = useState<{ id: string; pageNumber: number } | null>(null);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
   /** What the lasso or a Select rectangle took: one page's annotations. Selecting one annotation drops it. */
   const [lassoed, setLassoed] = useState<{ ids: readonly string[]; pageNumber: number } | null>(null);
   const [tool, setToolState] = useState<AnnotatorTool>("pen");
@@ -107,6 +122,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
   const [saveState, setSaveState] = useState<SaveState>({ state: "idle" });
   const lastCreated = useRef(0);
   const textHeights = useRef(new Map<string, { shape: TextShape; height: number }>());
+  const pageSizes = useRef(new Map<number, { width: number; height: number }>());
 
   const queue = useMemo(
     () => new AnnotationSaveQueue({ documentId, send: source.send, onState: setSaveState }),
@@ -127,6 +143,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
       lastCreated.current = Math.max(0, ...loaded.annotations.map((annotation) => annotation.createdAt));
       annotationsRef.current = grouped;
       setAnnotations(grouped);
+      pageSizes.current = new Map(loaded.pages.map((page) => [page.pageNumber, { width: page.width, height: page.height }]));
       setLoad({ state: "ready", pages: loaded.pages });
     }, (error: unknown) => {
       if (current) setLoad({ state: "failed", message: getErrorMessage(error) });
@@ -152,13 +169,21 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     queue.record(edits);
   }, [queue]);
 
-  /** Applies edits as one undoable step. */
+  const textHeight = useCallback((annotation: Annotation): number => {
+    if (annotation.shape.kind !== "text") return 0;
+    if (isStickyNote(annotation.shape)) return stickyHeight(annotation.shape);
+    const measured = textHeights.current.get(annotation.id);
+    return measured?.shape === annotation.shape ? measured.height : estimateTextHeight(annotation.shape);
+  }, []);
+
+  /** Applies edits as one undoable step; mind maps they touch are tidied in the same step. */
   const commit = useCallback((edits: readonly AnnotationEdit[]) => {
-    const kept = edits.filter((edit) => !edit.after || isStorable(edit.after.shape));
+    const storable = edits.filter((edit) => !edit.after || isStorable(edit.after.shape));
+    const kept = arrangeMaps(storable, annotationsRef.current, textHeight, (pageNumber) => pageSizes.current.get(pageNumber) ?? null);
     if (kept.length === 0) return;
     apply(kept);
     setHistory(recordStep(historyRef.current, kept));
-  }, [apply, setHistory]);
+  }, [apply, setHistory, textHeight]);
 
   const find = useCallback((id: string, pageNumber: number): Annotation | null => (
     annotationsRef.current.get(pageNumber)?.find((annotation) => annotation.id === id) ?? null
@@ -191,16 +216,28 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     setLassoed(ids.length > 0 ? { ids, pageNumber } : null);
   }, []);
 
-  const textHeight = useCallback((annotation: Annotation): number => {
-    if (annotation.shape.kind !== "text") return 0;
-    if (isStickyNote(annotation.shape)) return stickyHeight(annotation.shape);
-    const measured = textHeights.current.get(annotation.id);
-    return measured?.shape === annotation.shape ? measured.height : estimateTextHeight(annotation.shape);
-  }, []);
+
+  /** Topics whose drawn height differs from the one their map was laid out with. */
+  const remeasured = useRef(new Map<string, number>());
+  const relayout = useCallback(() => {
+    const pending = [...remeasured.current];
+    remeasured.current.clear();
+    const edits: AnnotationEdit[] = pending.flatMap(([id, pageNumber]) => {
+      const topic = annotationsRef.current.get(pageNumber)?.find((annotation) => annotation.id === id);
+      return topic ? [{ id, before: topic, after: topic }] : [];
+    });
+    // Not a step of its own: the map only settles around what was drawn.
+    apply(arrangeMaps(edits, annotationsRef.current, textHeight, (pageNumber) => pageSizes.current.get(pageNumber) ?? null));
+  }, [apply, textHeight]);
 
   const measureText = useCallback((annotation: Annotation, height: number) => {
-    if (annotation.shape.kind === "text") textHeights.current.set(annotation.id, { shape: annotation.shape, height });
-  }, []);
+    if (annotation.shape.kind !== "text") return;
+    const laidOut = textHeight(annotation);
+    textHeights.current.set(annotation.id, { shape: annotation.shape, height });
+    if (!isTopic(annotation) || Math.abs(laidOut - height) < 0.5) return;
+    if (remeasured.current.size === 0) queueMicrotask(relayout);
+    remeasured.current.set(annotation.id, annotation.pageNumber);
+  }, [relayout, textHeight]);
 
   /** Creation times only increase, so a new annotation is always drawn on top. */
   const now = useCallback(() => {
@@ -294,6 +331,91 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     setSelection(null);
     setEditing({ annotation: { id: createAnnotationId(), pageNumber, shape, createdAt: now() }, isNew: true, text: "" });
   }, [finishEditing, now, setEditing, styles.sticky, styles.text]);
+
+  /** Opens a new central topic around `point`: a mind map starts there once it has words. */
+  const newMap = useCallback((pageNumber: number, point: Point, page: { width: number; height: number }) => {
+    finishEditing();
+    setSelection(null);
+    setEditing({ annotation: newCentralTopic(pageNumber, point, page, now()), isNew: true, text: "" });
+  }, [finishEditing, now, setEditing]);
+
+  /** The topic being typed, or else the selected one. */
+  const topicTarget = useCallback((): { id: string; pageNumber: number } | null => {
+    const open = editingRef.current;
+    return open ? { id: open.annotation.id, pageNumber: open.annotation.pageNumber } : selectionRef.current;
+  }, []);
+
+  /** A topic as it is now in its map. */
+  const topicIn = useCallback((target: { id: string; pageNumber: number } | null): { topic: Topic; tree: MapTree } | null => {
+    if (!target) return null;
+    const page = annotationsRef.current.get(target.pageNumber) ?? [];
+    const topic = page.find((annotation) => annotation.id === target.id);
+    if (!isTopic(topic)) return null;
+    const tree = mapsOn(page).get(topic.shape.topic.map);
+    return tree ? { topic, tree } : null;
+  }, []);
+  const currentTopic = useCallback(() => topicIn(topicTarget()), [topicIn, topicTarget]);
+
+  /**
+   * Opens a new topic for typing: a branch of the current topic, or the one
+   * after it (a branch of the central topic, from there). The map makes room
+   * for it once it has words.
+   */
+  const addTopic = useCallback((relation: "child" | "sibling") => {
+    const target = topicTarget();
+    finishEditing();
+    const found = topicIn(target);
+    if (!found) return;
+    let { topic, tree } = found;
+    const asChild = relation === "child" || topic.shape.topic.parent === undefined;
+    if (asChild && topic.shape.topic.folded) {
+      // A branch added under a folded topic is shown with the rest.
+      commit([{ id: topic.id, before: topic, after: retopic(topic, { folded: undefined }) }]);
+      const again = topicIn(target);
+      if (!again) return;
+      ({ topic, tree } = again);
+    }
+    const created = newTopic(tree, asChild ? { parent: topic } : { after: topic }, now());
+    if (!created) return;
+    // Opened where the map will put it.
+    const placed = arrangeMaps([{ id: created.id, before: null, after: created }], annotationsRef.current, textHeight,
+      (pageNumber) => pageSizes.current.get(pageNumber) ?? null).find((edit) => edit.id === created.id)?.after;
+    const annotation = isTopic(placed) ? placed : created;
+    setSelection(null);
+    setEditing({ annotation, isNew: true, text: "" });
+  }, [commit, finishEditing, now, setEditing, textHeight, topicIn, topicTarget]);
+
+  /** Folds the selected topic's branches away, or shows them again. */
+  const toggleFolded = useCallback(() => {
+    const found = currentTopic();
+    if (!found || (found.tree.children.get(found.topic.id) ?? []).length === 0) return;
+    const { topic } = found;
+    commit([{ id: topic.id, before: topic, after: retopic(topic, { folded: topic.shape.topic.folded ? undefined : true }) }]);
+  }, [commit, currentTopic]);
+
+  /** Moves the selected topic up a level, beside its parent. */
+  const promoteTopic = useCallback(() => {
+    const found = currentTopic();
+    if (found) commit(promote(found.tree, found.topic));
+  }, [commit, currentTopic]);
+
+  /** Spreads the selected topic's map another way. */
+  const setMapLayout = useCallback((layout: MapLayout) => {
+    const found = currentTopic();
+    const root = found?.tree.root;
+    if (!root) return;
+    const next = retopic(root, { layout: layout === "both" ? undefined : layout });
+    if (next.shape.topic.layout !== root.shape.topic.layout) commit([{ id: root.id, before: root, after: next }]);
+  }, [commit, currentTopic]);
+
+  /** Selects the topic an arrow key leads to from the selected one; false when there is none. */
+  const goToTopic = useCallback((key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown"): boolean => {
+    const found = currentTopic();
+    if (!found) return false;
+    const next = topicToward(found.tree, found.topic, key);
+    if (next) setSelection({ id: next.id, pageNumber: next.pageNumber });
+    return true;
+  }, [currentTopic]);
 
   const typeText = useCallback((text: string) => {
     const open = editingRef.current;
@@ -471,6 +593,12 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     editing,
     editText,
     newText,
+    newMap,
+    addTopic,
+    toggleFolded,
+    promoteTopic,
+    setMapLayout,
+    goToTopic,
     typeText,
     finishEditing,
     commit,

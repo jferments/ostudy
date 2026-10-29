@@ -24,6 +24,20 @@ On a board, the **Hand** tool drags the view, and holding **Space** picks it unt
 
 Text notes can hold bulleted and numbered lists, checklists and formulas, as described in [Text notes](pdf-annotation.md#text-notes). A formula on its own in a note is a movable formula: drag the note to place it.
 
+## Mind maps
+
+The **Mind map** tool (**M**) starts a map on any notebook page or board: tap empty paper and type the central idea. With a topic selected or being typed, **Tab** adds a branch to it and **Enter** adds the next topic beside it (**Shift+Enter** starts a new line instead). The map keeps itself tidy: branches spread to both sides of the central topic, and each topic is as wide as its words. The Mind map tool otherwise works like Select, so it picks up and drags topics and other marks.
+
+Select a topic to see the map's actions on the toolbar's second row: **Add a branch**, **Add the next topic**, **Fold branches** (and **Show branches**, which the folded topic's count also tells you about) and **Map layout**, which spreads the map to both sides, to the right, or downward like an outline turned on its side. On a phone the same buttons sit in the bar under the tools.
+
+- Drag a topic onto another topic to make it that topic's branch; its own branches come with it. Drag it anywhere else to move it among its neighbours, or to the other side of the central topic. Dragging the central topic moves the whole map.
+- The arrow keys go from topic to topic as the map is drawn, **Shift+Tab** moves a topic up a level, **F2** types in it and **/** folds or shows its branches.
+- Deleting a topic deletes its branches with it; **Undo** brings them back.
+- A topic takes the color and text size you choose like any text note. A new color is passed to the topic's branches that had its old color, so a branch keeps one color.
+- **Add link** (**K**) with a topic selected turns the topic into a link with its words as the label.
+
+Save PDF draws each map as it is shown: its topics in their boxes, the curved branches between them, and nothing that is folded away.
+
 ## A document beside your notes
 
 On a wide screen, **Document beside** opens a PDF from your library next to the notebook, so you can read and write at once. The document has every annotation tool, and its marks are saved with the document as you work; the notebook keeps its own tools on the other side. While a document is open beside the notes, a link to a document page opens there instead of over the notebook. **Change document** picks another, and **Close document** closes it. Leaving the notebook saves both. On a phone, a document page link opens over the notebook instead.

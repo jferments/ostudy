@@ -1,5 +1,6 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
 
+import type { MapLayout } from "../../../ipc/documentAnnotations";
 import { Icon, type IconName } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
 import { Sheet } from "../../../ui/overlays/Dialog";
@@ -36,6 +37,7 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   eraser: { label: "Eraser", icon: "eraser", shortcut: "E" },
   clip: { label: "Clip to notes", icon: "crop", shortcut: "X" },
   hand: { label: "Hand", icon: "pan", shortcut: "Space" },
+  mindmap: { label: "Mind map", icon: "mind-map", shortcut: "M" },
 };
 
 const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "lasso", "pen", "highlighter"];
@@ -78,6 +80,10 @@ interface AnnotatorToolbarProps {
   canClip?: boolean;
   /** Offers the Hand tool, which drags the view around a board. */
   canPan?: boolean;
+  /** Offers the Mind map tool, on a notebook's pages and boards. */
+  canMap?: boolean;
+  /** What can be done with the selected mind-map topic. */
+  topic?: TopicActions | null;
   /** The fit button fits everything on a board in the window rather than the page width. */
   fitAll?: boolean;
   /** How many annotations the lasso took. */
@@ -107,6 +113,23 @@ interface AnnotatorToolbarProps {
   onZoomOut: () => void;
   onFit: () => void;
 }
+
+export interface TopicActions {
+  central: boolean;
+  hasBranches: boolean;
+  folded: boolean;
+  layout: MapLayout;
+  onAddBranch: () => void;
+  onAddNext: () => void;
+  onFold: () => void;
+  onLayout: (layout: MapLayout) => void;
+}
+
+const MAP_LAYOUTS: ReadonlyArray<{ layout: MapLayout; label: string }> = [
+  { layout: "both", label: "Branches both sides" },
+  { layout: "right", label: "Branches to the right" },
+  { layout: "down", label: "Branches downward" },
+];
 
 /**
  * One row of tools in groups (pick, mark, add, history, view), then one row
@@ -181,6 +204,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
                 }))}
               />
               {toolButton("eraser")}
+              {props.canMap ? toolButton("mindmap") : null}
               {addLink}
               {props.canClip ? toolButton("clip") : null}
             </ToolbarGroup>
@@ -230,6 +254,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
                 }))}
               />
             </span>
+            {props.canMap ? toolButton("mindmap") : null}
             {addLink}
             {props.canClip ? toolButton("clip") : null}
           </ToolbarGroup>
@@ -288,7 +313,7 @@ const sizeGroupLabel = (style: ActiveStyle) => isLetterFamily(style.family) ? "T
 function StyleRow(props: AnnotatorToolbarProps) {
   const { compact, tool, style, onStyle, selection, onDeleteSelection, onEditSelection, onMakeCard, disabled } = props;
   const choices = style ? STYLE_CHOICES[style.family] : null;
-  if ((tool === "lasso" || tool === "select") && props.groupSize > 0 && !selection) {
+  if ((tool === "lasso" || tool === "select" || tool === "mindmap") && props.groupSize > 0 && !selection) {
     return (
       <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-2 tw:coarse:min-h-touch">
         <Toolbar label="Selected annotations" disabled={disabled} className="tw:flex-nowrap tw:gap-1">
@@ -329,6 +354,33 @@ function StyleRow(props: AnnotatorToolbarProps) {
   }
   // Nothing to set: the strip keeps its height, so the pages never jump.
   if (!choices && !selection) return <div aria-hidden="true" className="tw:min-h-7 tw:coarse:min-h-touch" />;
+  const topic = props.topic;
+  const topicActions = topic ? (
+    <ToolbarGroup label="Mind map" className="tw:flex-nowrap">
+      <ToolbarAction label="Add a branch" title="Add a branch (Tab)" aria-keyshortcuts="Tab" onClick={topic.onAddBranch}>
+        <Icon name="plus" />
+      </ToolbarAction>
+      {topic.central ? null : (
+        <ToolbarAction label="Add the next topic" title="Add the next topic (Enter)" aria-keyshortcuts="Enter" onClick={topic.onAddNext}>
+          <Icon name="arrow-down" />
+        </ToolbarAction>
+      )}
+      {topic.hasBranches ? (
+        <ToolbarAction label={topic.folded ? "Show branches" : "Fold branches"} title={`${topic.folded ? "Show" : "Fold"} branches (/)`}
+          aria-keyshortcuts="/" pressed={topic.folded} onClick={topic.onFold}>
+          <Icon name={topic.folded ? "maximize" : "minimize"} />
+        </ToolbarAction>
+      ) : null}
+      <OverflowMenu
+        label="Map layout"
+        triggerIcon="mind-map"
+        disabled={disabled}
+        items={MAP_LAYOUTS.map((choice) => ({
+          id: choice.layout, label: choice.label, checked: choice.layout === topic.layout, onSelect: () => topic.onLayout(choice.layout),
+        }))}
+      />
+    </ToolbarGroup>
+  ) : null;
   const selectionActions = selection ? (
     <ToolbarGroup label="Selection" className="tw:flex-nowrap">
       {selection.isLink && props.onOpenLink ? (
@@ -364,6 +416,7 @@ function StyleRow(props: AnnotatorToolbarProps) {
       <Toolbar label={label} disabled={disabled} className="tw:flex-nowrap tw:gap-1">
         {style && choices ? <StyleSheetButton style={style} choices={choices} onStyle={onStyle} /> : null}
         {textActions}
+        {topicActions}
         {selectionActions}
       </Toolbar>
     );
@@ -392,6 +445,7 @@ function StyleRow(props: AnnotatorToolbarProps) {
       {selectionActions ? (
         // What can be done with the selection sits apart, at the row's end.
         <Toolbar label={label} disabled={disabled} className="tw:ms-auto tw:flex-nowrap tw:gap-3">
+          {topicActions}
           {selectionActions}
         </Toolbar>
       ) : null}
