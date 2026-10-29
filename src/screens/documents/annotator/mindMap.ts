@@ -266,6 +266,8 @@ export function branchLines(annotations: readonly Annotation[], height: (annotat
 }
 
 /** The count shown on a folded topic, at the edge its branches would grow from. */
+const BADGE_OFFSET = 10;
+
 export interface FoldBadge { id: string; x: number; y: number; count: number; color: string; }
 
 export function foldBadges(annotations: readonly Annotation[], height: (annotation: Annotation) => number): FoldBadge[] {
@@ -284,8 +286,9 @@ export function foldBadges(annotations: readonly Annotation[], height: (annotati
         id: topic.id,
         count,
         color: topic.shape.color,
-        x: down ? topic.shape.x + topic.shape.width / 2 : leftward ? topic.shape.x : topic.shape.x + topic.shape.width,
-        y: down ? topic.shape.y + tall : topic.shape.y + tall / 2,
+        // Just outside the edge its branches would leave from.
+        x: down ? topic.shape.x + topic.shape.width / 2 : leftward ? topic.shape.x - BADGE_OFFSET : topic.shape.x + topic.shape.width + BADGE_OFFSET,
+        y: down ? topic.shape.y + tall + BADGE_OFFSET : topic.shape.y + tall / 2,
       });
     }
   }
@@ -537,8 +540,9 @@ export function newTopic(tree: MapTree, relative: { parent: Topic } | { after: T
   if ("after" in relative) {
     order = relative.after.shape.topic.order + 1;
     side = relative.after.shape.topic.side;
-  } else if (parent.id === tree.root?.id && layoutOf(tree) === "both") {
-    // A new first branch keeps to the side with fewer, so the others never swap sides.
+  }
+  if (parent.id === tree.root?.id && layoutOf(tree) === "both") {
+    // A new first branch goes to the side with fewer, so a map grows both ways and the others never swap sides.
     const placed = [...sides(tree, parent).values()];
     side = placed.filter((one) => one === "right").length <= placed.filter((one) => one === "left").length ? "right" : "left";
   }

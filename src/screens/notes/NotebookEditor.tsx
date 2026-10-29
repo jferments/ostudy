@@ -766,7 +766,8 @@ function ReadyNotebook({
         onTool={chooseTool}
         style={controller.activeStyle}
         onStyle={controller.chooseStyle}
-        textFormat={textFormat.format}
+        // A phone's one row of settings keeps a topic's map actions rather than lists and formulas.
+        textFormat={compact && (topicActions || isTopic(controller.editing?.annotation)) ? null : textFormat.format}
         selection={selected ? {
           isText: selected.shape.kind === "text",
           isSticky: isStickyNote(selected.shape),

@@ -365,20 +365,34 @@ function StyleRow(props: AnnotatorToolbarProps) {
           <Icon name="arrow-down" />
         </ToolbarAction>
       )}
-      {topic.hasBranches ? (
+      {compact ? (
+        // A phone's row has room for one menu for the rest.
+        <OverflowMenu
+          label="More map actions"
+          triggerIcon="mind-map"
+          disabled={disabled}
+          items={[
+            ...(topic.hasBranches ? [{ id: "fold", label: topic.folded ? "Show branches" : "Fold branches", onSelect: topic.onFold }] : []),
+            ...MAP_LAYOUTS.map((choice) => ({
+              id: choice.layout, label: choice.label, checked: choice.layout === topic.layout, onSelect: () => topic.onLayout(choice.layout),
+            })),
+          ]}
+        />
+      ) : null}
+      {!compact && topic.hasBranches ? (
         <ToolbarAction label={topic.folded ? "Show branches" : "Fold branches"} title={`${topic.folded ? "Show" : "Fold"} branches (/)`}
           aria-keyshortcuts="/" pressed={topic.folded} onClick={topic.onFold}>
           <Icon name={topic.folded ? "maximize" : "minimize"} />
         </ToolbarAction>
       ) : null}
-      <OverflowMenu
+      {compact ? null : <OverflowMenu
         label="Map layout"
         triggerIcon="mind-map"
         disabled={disabled}
         items={MAP_LAYOUTS.map((choice) => ({
           id: choice.layout, label: choice.label, checked: choice.layout === topic.layout, onSelect: () => topic.onLayout(choice.layout),
         }))}
-      />
+      />}
     </ToolbarGroup>
   ) : null;
   const selectionActions = selection ? (
