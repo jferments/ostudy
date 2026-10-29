@@ -116,6 +116,13 @@ pub struct Segment {
     pub curve: Option<Vec<f64>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
+    /// Only on a notebook page: the marks its first and second ends are
+    /// attached to. The app keeps attached ends on their marks; a mark that
+    /// is gone simply leaves its end where it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
 }
 
 /// The outline of a rectangle or of the ellipse inside it, optionally filled
@@ -357,6 +364,12 @@ impl AnnotationShape {
                         validate_coordinate(*value)?;
                     }
                 }
+                for end in [&segment.from, &segment.to].into_iter().flatten() {
+                    validate_annotation_id(end)?;
+                }
+                if segment.from.is_some() && segment.from == segment.to {
+                    return Err(invalid("A line's two ends attach to different marks."));
+                }
                 match segment.both_ends {
                     None => Ok(()),
                     Some(true) if matches!(self, Self::Arrow(_)) => Ok(()),
@@ -507,6 +520,13 @@ impl AnnotationShape {
     /// Whether this is a mind-map topic, which only a notebook page holds.
     pub(crate) fn is_topic(&self) -> bool {
         matches!(self, Self::Text(TextNote { topic: Some(_), .. }))
+    }
+
+    /// Whether this is a line or arrow attached to other marks, which only a
+    /// notebook page holds.
+    pub(crate) fn is_attached(&self) -> bool {
+        matches!(self, Self::Line(segment) | Self::Arrow(segment)
+            if segment.from.is_some() || segment.to.is_some())
     }
 
     /// The managed asset a picture shows; only notebook pages hold pictures.
@@ -727,6 +747,11 @@ pub(crate) fn apply_changes(
             if shape.is_topic() {
                 return Err(invalid(
                     "Mind maps go on notebook pages, not on a document.",
+                ));
+            }
+            if shape.is_attached() {
+                return Err(invalid(
+                    "Attached lines go on notebook pages, not on a document.",
                 ));
             }
             if shape.image_asset().is_some() {

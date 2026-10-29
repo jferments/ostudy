@@ -31,6 +31,7 @@ import {
   type AnnotationShape,
   type TextShape,
 } from "./annotationModel";
+import { connectedPreview, snappedDraft } from "./connectors";
 import { branchLines, foldBadges, visibleMarks } from "./mindMap";
 import { NoteBody } from "./NoteBody";
 import { continueList, toggleCheck } from "./noteText";
@@ -92,6 +93,8 @@ interface AnnotatorPageProps {
   selectable: boolean;
   coarse: boolean;
   textHeight: (annotation: Annotation) => number;
+  /** Lines and arrows attach to the marks their ends are on, and follow them. */
+  connects?: boolean;
   onMeasureText: (annotation: Annotation, height: number) => void;
   onTypeText: (text: string) => void;
   onFinishText: () => void;
@@ -158,12 +161,23 @@ function ClipBadges({ clips, onOpen }: { clips: readonly DocumentClip[]; onOpen:
 }
 
 function PageContent({
-  page, paperPages, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse,
-  textHeight, onMeasureText, onTypeText, onFinishText, onAddTopic, onFocusAnnotation, onOpenAnnotation, onChangeText, imageUrl, imageFailed, sharpTiles,
+  page, paperPages, scale, annotations, draft: drawn, preview, group, loop, erasing, selected, editing, selectable, coarse,
+  textHeight, connects, onMeasureText, onTypeText, onFinishText, onAddTopic, onFocusAnnotation, onOpenAnnotation, onChangeText, imageUrl, imageFailed, sharpTiles,
 }: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean; sharpTiles: readonly ShownTile[] }) {
   const moving = new Map(group.map((annotation) => [annotation.id, annotation]));
   // Topics folded away are not drawn; their folded topic shows how many there are.
-  const shown = useMemo(() => visibleMarks(annotations), [annotations]).map((annotation) => preview?.id === annotation.id ? preview : moving.get(annotation.id) ?? annotation);
+  const visible = useMemo(() => visibleMarks(annotations), [annotations]);
+  const moved = visible.flatMap((annotation) => {
+    const after = preview?.id === annotation.id ? preview : moving.get(annotation.id);
+    return after ? [{ id: annotation.id, before: annotation, after }] : [];
+  });
+  // Lines attached to what is being moved follow it, and a line being drawn shows where it will attach.
+  const shown = connects && moved.length > 0
+    ? connectedPreview(visible, moved, textHeight, page)
+    : visible.map((annotation) => moved.find((edit) => edit.id === annotation.id)?.after ?? annotation);
+  const draft = connects && drawn && (drawn.shape.kind === "line" || drawn.shape.kind === "arrow")
+    ? { ...drawn, shape: snappedDraft(visible, drawn.shape, page.pageNumber, textHeight, page) }
+    : drawn;
   const viewBox = `0 0 ${page.width} ${page.height}`;
   const faded = (annotation: Annotation) => erasing?.has(annotation.id) ? 0.25 : undefined;
   const highlights = shown.filter((annotation) => annotation.shape.kind === "highlight");
@@ -265,7 +279,7 @@ function PageContent({
       ) : null}
       {selected && !editing ? (
         <SelectionOutline page={page} scale={scale} coarse={coarse}
-          annotation={preview?.id === selected.id ? preview : selected} textHeight={textHeight} />
+          annotation={shown.find((annotation) => annotation.id === selected.id) ?? (preview?.id === selected.id ? preview : selected)} textHeight={textHeight} />
       ) : null}
       {selectable && shown.length > 0 ? (
         <ul className="tw:sr-only" aria-label={`Annotations on page ${page.pageNumber}`}>

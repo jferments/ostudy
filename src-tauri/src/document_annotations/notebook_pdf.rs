@@ -454,6 +454,8 @@ pub fn mind_map_marks(items: &[(&str, &AnnotationShape)]) -> Vec<AnnotationShape
                 both_ends: None,
                 curve: Some(controls.to_vec()),
                 group: None,
+                from: None,
+                to: None,
             }),
         ));
     }
@@ -465,7 +467,21 @@ pub fn mind_map_marks(items: &[(&str, &AnnotationShape)]) -> Vec<AnnotationShape
         .chain(
             items
                 .iter()
-                .filter(|(id, _)| !topics.contains_key(id) || !hidden(id))
+                .filter(|(id, shape)| {
+                    // A line attached to a folded-away topic is out of sight with it.
+                    let attached_hidden = match shape {
+                        AnnotationShape::Line(segment) | AnnotationShape::Arrow(segment) => {
+                            [&segment.from, &segment.to]
+                                .into_iter()
+                                .flatten()
+                                .any(|end| {
+                                    topics.contains_key(end.as_str()) && hidden(end.as_str())
+                                })
+                        }
+                        _ => false,
+                    };
+                    (!topics.contains_key(id) || !hidden(id)) && !attached_hidden
+                })
                 .map(|(_, shape)| (*shape).clone()),
         )
         .collect()

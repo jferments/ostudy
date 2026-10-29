@@ -1057,7 +1057,10 @@ export function isStorable(shape: AnnotationShape): boolean {
         && strokeWidthAllowed(shape.strokeWidth)
         && dashAllowed(shape.dash)
         && (shape.bothEnds === undefined || (shape.bothEnds === true && shape.kind === "arrow"))
-        && (shape.curve === undefined || (shape.curve.length === 4 && shape.curve.every(coordinate)));
+        && (shape.curve === undefined || (shape.curve.length === 4 && shape.curve.every(coordinate)))
+        && (shape.from === undefined || IDENTIFIER.test(shape.from))
+        && (shape.to === undefined || IDENTIFIER.test(shape.to))
+        && (shape.from === undefined || shape.from !== shape.to);
     case "rectangle":
     case "ellipse":
       return coordinate(shape.x) && coordinate(shape.y)

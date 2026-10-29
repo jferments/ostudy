@@ -123,6 +123,7 @@ export interface TopicActions {
   onAddNext: () => void;
   onFold: () => void;
   onLayout: (layout: MapLayout) => void;
+  onCopyList: () => void;
 }
 
 const MAP_LAYOUTS: ReadonlyArray<{ layout: MapLayout; label: string }> = [
@@ -365,34 +366,25 @@ function StyleRow(props: AnnotatorToolbarProps) {
           <Icon name="arrow-down" />
         </ToolbarAction>
       )}
-      {compact ? (
-        // A phone's row has room for one menu for the rest.
-        <OverflowMenu
-          label="More map actions"
-          triggerIcon="mind-map"
-          disabled={disabled}
-          items={[
-            ...(topic.hasBranches ? [{ id: "fold", label: topic.folded ? "Show branches" : "Fold branches", onSelect: topic.onFold }] : []),
-            ...MAP_LAYOUTS.map((choice) => ({
-              id: choice.layout, label: choice.label, checked: choice.layout === topic.layout, onSelect: () => topic.onLayout(choice.layout),
-            })),
-          ]}
-        />
-      ) : null}
       {!compact && topic.hasBranches ? (
         <ToolbarAction label={topic.folded ? "Show branches" : "Fold branches"} title={`${topic.folded ? "Show" : "Fold"} branches (/)`}
           aria-keyshortcuts="/" pressed={topic.folded} onClick={topic.onFold}>
           <Icon name={topic.folded ? "maximize" : "minimize"} />
         </ToolbarAction>
       ) : null}
-      {compact ? null : <OverflowMenu
-        label="Map layout"
+      {/* A phone's row has room for one menu for the rest, folding included. */}
+      <OverflowMenu
+        label="More map actions"
         triggerIcon="mind-map"
         disabled={disabled}
-        items={MAP_LAYOUTS.map((choice) => ({
-          id: choice.layout, label: choice.label, checked: choice.layout === topic.layout, onSelect: () => topic.onLayout(choice.layout),
-        }))}
-      />}
+        items={[
+          ...(compact && topic.hasBranches ? [{ id: "fold", label: topic.folded ? "Show branches" : "Fold branches", onSelect: topic.onFold }] : []),
+          ...MAP_LAYOUTS.map((choice) => ({
+            id: choice.layout, label: choice.label, checked: choice.layout === topic.layout, onSelect: () => topic.onLayout(choice.layout),
+          })),
+          { id: "copy-list", label: "Copy the map as a list", onSelect: topic.onCopyList },
+        ]}
+      />
     </ToolbarGroup>
   ) : null;
   const selectionActions = selection ? (

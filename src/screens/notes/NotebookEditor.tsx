@@ -15,6 +15,7 @@ import {
 } from "../../ipc/notebooks";
 import { managedAssetUrl } from "../../platform/assets";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
+import { copyText } from "../../platform/clipboard";
 import { selectExternalImport } from "../../platform/files";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { InlineWorkspace } from "../../ui/overlays/Dialog";
@@ -39,7 +40,7 @@ import { AnnotatorCanvas } from "../documents/annotator/AnnotatorCanvas";
 import type { PaperPages } from "../documents/annotator/AnnotatorPage";
 import { AnnotatorToolbar, type TopicActions } from "../documents/annotator/AnnotatorToolbar";
 import { SaveStatus, SHORTCUTS, useAnnotatorLeave } from "../documents/annotator/DocumentAnnotator";
-import { isTopic, mapsOn } from "../documents/annotator/mindMap";
+import { isTopic, mapAsList, mapsOn } from "../documents/annotator/mindMap";
 import { SourcePassageDialog } from "../documents/annotator/SourcePassageDialog";
 import {
   ACTUAL_SIZE_SCALE,
@@ -673,6 +674,12 @@ function ReadyNotebook({
     onAddNext: () => controller.addTopic("sibling"),
     onFold: controller.toggleFolded,
     onLayout: controller.setMapLayout,
+    onCopyList: () => {
+      copyText(mapAsList(selectedTree)).then(
+        () => showToast("success", "Copied the map as a list."),
+        (error: unknown) => showToast("error", `The map could not be copied: ${getErrorMessage(error)}`),
+      );
+    },
   } : null;
   const selectedLink = linkOf(selected);
   const selectedClip = clipOf(selected);

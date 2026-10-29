@@ -1165,6 +1165,59 @@ fn mind_map_topics_keep_their_place_and_are_checked_one_by_one() {
         .unwrap();
 }
 
+fn attached_arrow(item: &str, page: &str, ends: Value) -> NotebookItemChange {
+    let mut shape = json!({
+        "kind": "arrow", "x1": 100, "y1": 100, "x2": 300, "y2": 300,
+        "color": "#1f2328", "strokeWidth": 2
+    });
+    if let (Some(shape), Some(ends)) = (shape.as_object_mut(), ends.as_object()) {
+        shape.extend(ends.clone());
+    }
+    change(json!({ "op": "put", "id": item, "pageId": page, "shape": shape }))
+}
+
+#[test]
+fn lines_keep_the_marks_their_ends_are_attached_to() {
+    let database = library();
+    database
+        .with_connection(|connection| {
+            let notebook = new_board(connection);
+            let board = notebook.pages[0].id.clone();
+            apply(
+                connection,
+                &notebook.notebook.id,
+                vec![attached_arrow(
+                    &id('1'),
+                    &board,
+                    json!({ "from": id('a'), "to": id('b') }),
+                )],
+            )?;
+            let opened = contents(connection, &notebook.notebook.id)?;
+            let AnnotationShape::Arrow(segment) = &opened.items[0].shape else {
+                panic!("not an arrow");
+            };
+            assert_eq!(segment.from.as_deref(), Some(id('a').as_str()));
+            assert_eq!(segment.to.as_deref(), Some(id('b').as_str()));
+
+            for wrong in [
+                json!({ "from": "not-an-id" }),
+                json!({ "from": id('a'), "to": id('a') }),
+            ] {
+                assert!(
+                    apply(
+                        connection,
+                        &notebook.notebook.id,
+                        vec![attached_arrow(&id('2'), &board, wrong.clone())]
+                    )
+                    .is_err(),
+                    "{wrong}"
+                );
+            }
+            Ok(())
+        })
+        .unwrap();
+}
+
 #[test]
 fn a_mind_map_is_saved_with_its_branches_and_without_what_is_folded() {
     let root = id('1');
@@ -1199,11 +1252,29 @@ fn a_mind_map_is_saved_with_its_branches_and_without_what_is_folded() {
         (item, shape)
     })
     .collect();
+    let mut shapes = shapes;
+    // Arrows attached to a folded-away topic and to one in sight.
+    for (item, to) in [(id('5'), id('3')), (id('6'), id('4'))] {
+        let shape = serde_json::from_value(json!({
+            "kind": "arrow", "x1": 7000, "y1": 7100, "x2": 7200, "y2": 7300,
+            "color": "#1f2328", "strokeWidth": 2, "from": root, "to": to
+        }))
+        .unwrap();
+        shapes.push((item, shape));
+    }
     let items: Vec<(&str, &AnnotationShape)> = shapes
         .iter()
         .map(|(item, shape)| (item.as_str(), shape))
         .collect();
     let marks = crate::document_annotations::mind_map_marks(&items);
+    let arrows: Vec<_> = marks
+        .iter()
+        .filter_map(|mark| match mark {
+            AnnotationShape::Arrow(segment) => segment.to.as_deref(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(arrows, [id('4').as_str()]);
     // Two branches from the central topic, drawn first; Ejection is folded away.
     let lines: Vec<_> = marks
         .iter()

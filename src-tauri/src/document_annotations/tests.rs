@@ -97,6 +97,8 @@ fn arrow(x2: f64) -> AnnotationShape {
         both_ends: None,
         curve: None,
         group: None,
+        from: None,
+        to: None,
     })
 }
 
@@ -168,6 +170,8 @@ fn every_kind() -> Vec<AnnotationShape> {
             both_ends: None,
             curve: None,
             group: None,
+            from: None,
+            to: None,
         }),
         arrow(30.0),
         AnnotationShape::Rectangle(Frame {
@@ -205,6 +209,8 @@ fn every_kind() -> Vec<AnnotationShape> {
             both_ends: Some(true),
             curve: Some(vec![40.0, 10.0, 90.0, 100.0]),
             group: Some("ab".repeat(16)),
+            from: None,
+            to: None,
         }),
         AnnotationShape::Ellipse(Frame {
             x: 50.0,
@@ -581,6 +587,16 @@ fn a_refused_change_leaves_the_whole_request_unapplied() {
             }))
             .unwrap(),
         )],
+        // So does a line attached to other marks.
+        vec![put(
+            &id('b'),
+            1,
+            serde_json::from_value(serde_json::json!({
+                "kind": "arrow", "x1": 10, "y1": 10, "x2": 50, "y2": 50,
+                "color": "#334155", "strokeWidth": 2, "to": id('c')
+            }))
+            .unwrap(),
+        )],
     ] {
         assert!(apply(&fixture, DOCUMENT, refused, NOW).is_err());
     }
@@ -884,6 +900,8 @@ fn line_styles_fills_and_double_heads_are_kept_only_where_they_mean_something() 
         both_ends,
         curve: None,
         group: None,
+        from: None,
+        to: None,
     };
     AnnotationShape::Arrow(segment(Some(true)))
         .validate()
@@ -941,6 +959,8 @@ fn curves_have_two_control_points_and_groups_are_named_by_identifiers() {
             both_ends: None,
             curve,
             group,
+            from: None,
+            to: None,
         })
     };
     curve(Some(vec![10.0, 30.0, 30.0, 30.0]), None)

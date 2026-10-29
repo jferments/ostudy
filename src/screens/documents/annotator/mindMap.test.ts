@@ -9,9 +9,11 @@ import {
   foldBadges,
   isTopic,
   mapAsList,
+  mapFromList,
   mapsOn,
   newCentralTopic,
   newTopic,
+  parseList,
   promote,
   retopic,
   topicToward,
@@ -197,6 +199,36 @@ describe("mind maps", () => {
       "  - Diastole",
       "  - Valves",
     ].join("\n"));
+  });
+
+  it("reads an outline's bullets, numbers, headings and indented lines as levels", () => {
+    expect(parseList("## Heart\n### Valves\n1. Mitral\n2) Aortic\n\tSemilunar\n- [ ] Tricuspid\n## Vessels")).toEqual([
+      { text: "Heart", depth: 0 },
+      { text: "Valves", depth: 1 },
+      { text: "Mitral", depth: 2 },
+      { text: "Aortic", depth: 2 },
+      { text: "Semilunar", depth: 3 },
+      { text: "Tricuspid", depth: 2 },
+      { text: "Vessels", depth: 0 },
+    ]);
+    // A line never sits more than one level under the one before it.
+    expect(parseList("Heart\n        Ejection").map((item) => item.depth)).toEqual([0, 1]);
+  });
+
+  it("makes a map of a pasted outline, its one top line in the middle", () => {
+    let time = 0;
+    const made = mapFromList(parseList("- Heart\n  - Systole\n    - Ejection\n  - Diastole"), 1, { x: 7000, y: 7000 }, BOARD, () => ++time);
+    if (!made) throw new Error("no map");
+    expect(made.named).toBe(true);
+    const pages = build(made.topics);
+    const tree = mapsOn(pages.get(1) ?? []).get(made.topics[0]?.id ?? "");
+    expect(tree && mapAsList(tree)).toBe("- Heart\n  - Systole\n    - Ejection\n  - Diastole");
+
+    // Several top lines branch from a new central topic, to be named.
+    const several = mapFromList(parseList("Systole\nDiastole"), 1, { x: 7000, y: 7000 }, BOARD, () => ++time);
+    expect(several?.named).toBe(false);
+    expect(several?.topics.map((topic) => topic.shape.topic.parent === several.topics[0]?.id)).toEqual([false, true, true]);
+    expect(several?.topics[1]?.shape.color).not.toBe(several?.topics[2]?.shape.color);
   });
 
   it("starts a map around the point tapped, kept on the page", () => {

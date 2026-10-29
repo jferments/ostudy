@@ -28,13 +28,22 @@ Text notes can hold bulleted and numbered lists, checklists and formulas, as des
 
 The **Mind map** tool (**M**) starts a map on any notebook page or board: tap empty paper and type the central idea. With a topic selected or being typed, **Tab** adds a branch to it and **Enter** adds the next topic beside it (**Shift+Enter** starts a new line instead). The map keeps itself tidy: branches spread to both sides of the central topic, and each topic is as wide as its words. The Mind map tool otherwise works like Select, so it picks up and drags topics and other marks.
 
-Select a topic to see the map's actions on the toolbar's second row: **Add a branch**, **Add the next topic**, **Fold branches** (and **Show branches**, which the folded topic's count also tells you about) and **Map layout**, which spreads the map to both sides, to the right, or downward like an outline turned on its side. On a phone the same buttons sit in the bar under the tools.
+Select a topic to see the map's actions on the toolbar's second row: **Add a branch**, **Add the next topic**, **Fold branches** (and **Show branches**, which the folded topic's count also tells you about) and **More map actions**, which spreads the map to both sides, to the right, or downward like an outline turned on its side, and copies the map as an indented list. On a phone the same buttons sit in the bar under the tools, with folding in the menu.
 
 - Drag a topic onto another topic to make it that topic's branch; its own branches come with it. Drag it anywhere else to move it among its neighbours, or to the other side of the central topic. Dragging the central topic moves the whole map.
 - The arrow keys go from topic to topic as the map is drawn, **Shift+Tab** moves a topic up a level, **F2** types in it and **/** folds or shows its branches.
 - Deleting a topic deletes its branches with it; **Undo** brings them back.
 - A topic takes the color and text size you choose like any text note. A new color is passed to the topic's branches that had its old color, so a branch keeps one color.
 - **Add link** (**K**) with a topic selected turns the topic into a link with its words as the label.
+- Paste an outline (Markdown bullets, numbered lines, headings, or lines indented with spaces or tabs) onto a page or board to make a map of it in the middle of the view. An outline with one top line makes that line the central topic; one with several top lines branches them from a new central topic, which opens for you to name.
+
+## Lines that stay attached
+
+On a notebook page or board, a line, arrow or curve drawn from one box, ellipse, text note, sticky note or mind-map topic to another stays attached to both. Its ends sit just outside each mark's edge and follow the marks wherever they go, so a concept map or flow chart stays connected as you rearrange it. A line drawn inside one mark, or from empty paper, stays where you drew it, and pictures are pointed at rather than attached to.
+
+- Drag one end of a selected line onto another mark to attach it there, or onto empty paper to let it go. Moving the line on its own lets go of any end that leaves its mark; moving it together with a mark it is attached to keeps hold of both.
+- Deleting a mark lets go of the lines attached to it; they stay where they were. **Undo** puts the mark and its lines back together.
+- A line attached to a topic that is folded away is hidden with the topic.
 
 Save PDF draws each map as it is shown: its topics in their boxes, the curved branches between them, and nothing that is folded away.
 
