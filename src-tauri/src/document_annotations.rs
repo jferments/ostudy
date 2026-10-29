@@ -200,9 +200,10 @@ pub struct TextNote {
     pub link: Option<NoteLink>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
-    /// Only on a notebook page: the note is a topic of a mind map.
+    /// Only on a notebook page: the note is a topic of a mind map. Boxed,
+    /// so that every other mark stays small.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub topic: Option<MapTopic>,
+    pub topic: Option<Box<MapTopic>>,
 }
 
 /// A topic's place in its mind map. A map is its central topic (no
