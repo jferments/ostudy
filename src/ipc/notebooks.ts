@@ -8,6 +8,10 @@ import { invoke } from "./transport";
 export type Paper = "blank" | "lined" | "grid" | "dots";
 /** A new page's size: US Letter, A4, or a wide landscape page for mind maps and diagrams. */
 export type PageSize = "letter" | "a4" | "wide";
+/** A page is a sheet of paper; a board is one very large sheet learners pan and zoom around. */
+export type PageLayout = "page" | "board";
+/** How a board goes into a saved PDF: one page cut to its marks, or split across printable pages. */
+export type BoardPrint = "onePage" | { split: PageSize };
 
 export interface Notebook {
   id: string;
@@ -30,6 +34,7 @@ export interface NotebookPage {
   /** The page size in points. */
   width: number;
   height: number;
+  layout: PageLayout;
 }
 
 export interface NotebookItem {
@@ -91,6 +96,8 @@ export async function createNotebook(input: {
   subjectId: string | null;
   paper: Paper;
   pageSize: PageSize;
+  /** A board notebook starts with a board instead of a page. */
+  layout?: PageLayout;
 }): Promise<NotebookContents> {
   return invoke<NotebookContents>("create_notebook", { input });
 }
@@ -147,14 +154,18 @@ export async function pinNotebook(notebookId: string, pinned: boolean): Promise<
   return invoke<void>("pin_notebook", { input: { notebookId, pinned } });
 }
 
-/** Adds a page at `position` (from 1; past the end adds it last), with the notebook's paper unless given. */
+/**
+ * Adds a page at `position` (from 1; past the end adds it last), with the
+ * notebook's paper unless given, or a board with `layout: "board"`.
+ */
 export async function addNotebookPage(
   notebookId: string,
   position: number,
   paper?: Paper,
+  layout?: PageLayout,
 ): Promise<NotebookContents> {
   return invoke<NotebookContents>("add_notebook_page", {
-    input: { notebookId, position, ...(paper ? { paper } : {}) },
+    input: { notebookId, position, ...(paper ? { paper } : {}), ...(layout === "board" ? { layout } : {}) },
   });
 }
 
@@ -194,8 +205,11 @@ export interface PreparedNotebookPdf {
 export async function prepareNotebookPdf(
   notebookId: string,
   operationId = createOperationId(),
+  boards?: BoardPrint,
 ): Promise<PreparedNotebookPdf> {
-  return invoke<PreparedNotebookPdf>("prepare_notebook_pdf", { input: { notebookId, operationId } });
+  return invoke<PreparedNotebookPdf>("prepare_notebook_pdf", {
+    input: { notebookId, operationId, ...(boards ? { boards } : {}) },
+  });
 }
 
 /** A region of a PDF page, in points from its top-left corner, and the page's size. */

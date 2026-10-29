@@ -1423,7 +1423,7 @@ fn number(value: f64) -> String {
 
 #[path = "notebook_pdf.rs"]
 mod notebook_pdf;
-pub use notebook_pdf::{notebook_pdf, NotebookPdfPage, Ruling};
+pub use notebook_pdf::{notebook_pdf, shape_bounds, shifted, NotebookPdfPage, Ruling};
 
 #[cfg(test)]
 #[path = "pdf_export_tests.rs"]

@@ -19,8 +19,8 @@ use oxidize_pdf::{Document, Page};
 
 use super::{
     sticky_notes, unreadable, wrap, write_failed, AnnotationShape, Canvas, ExportError,
-    PageAnnotations, PageFrame, PageLink, TextNote, Update, FONT_NAME, TEXT_LINE_HEIGHT,
-    TEXT_PADDING,
+    PageAnnotations, PageFrame, PageLink, TextNote, Update, FONT_NAME, STICKY_HEIGHT,
+    STICKY_ICON_SIZE, TEXT_LINE_HEIGHT, TEXT_PADDING,
 };
 
 /// Spacing of ruled lines, grid squares and dots, in points, as the app draws them.
@@ -150,6 +150,127 @@ pub(super) fn link_box(note: &TextNote) -> (f64, f64, f64, f64) {
     let lines = wrap(&note.text, note.width - 2.0 * TEXT_PADDING, note.font_size).len();
     let height = lines.max(1) as f64 * note.font_size * TEXT_LINE_HEIGHT + 2.0 * TEXT_PADDING;
     (note.x, note.y, note.width, height)
+}
+
+/// What a mark covers on its page, as `(left, top, right, bottom)` in points,
+/// with half its line width around strokes. A text note's height follows its
+/// wrapped lines, as the app lays them out.
+pub fn shape_bounds(shape: &AnnotationShape) -> (f64, f64, f64, f64) {
+    fn around(coordinates: impl Iterator<Item = (f64, f64)>, pad: f64) -> (f64, f64, f64, f64) {
+        let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for (x, y) in coordinates {
+            left = left.min(x);
+            top = top.min(y);
+            right = right.max(x);
+            bottom = bottom.max(y);
+        }
+        if left > right {
+            return (0.0, 0.0, 0.0, 0.0);
+        }
+        (left - pad, top - pad, right + pad, bottom + pad)
+    }
+    match shape {
+        AnnotationShape::Ink(stroke) => around(
+            stroke
+                .points
+                .chunks_exact(3)
+                .map(|point| (point[0], point[1])),
+            stroke.stroke_width / 2.0,
+        ),
+        AnnotationShape::Highlight(stroke) => match &stroke.rects {
+            Some(rects) if !rects.is_empty() => around(
+                rects
+                    .chunks_exact(4)
+                    .flat_map(|rect| [(rect[0], rect[1]), (rect[0] + rect[2], rect[1] + rect[3])]),
+                0.0,
+            ),
+            _ => around(
+                stroke
+                    .points
+                    .chunks_exact(2)
+                    .map(|point| (point[0], point[1])),
+                stroke.stroke_width / 2.0,
+            ),
+        },
+        AnnotationShape::Line(segment) | AnnotationShape::Arrow(segment) => {
+            let controls = segment.curve.as_deref().unwrap_or(&[]);
+            around(
+                [(segment.x1, segment.y1), (segment.x2, segment.y2)]
+                    .into_iter()
+                    .chain(controls.chunks_exact(2).map(|point| (point[0], point[1]))),
+                // Room for an arrow's head as well as the line.
+                segment.stroke_width * 3.0,
+            )
+        }
+        AnnotationShape::Rectangle(frame) | AnnotationShape::Ellipse(frame) => around(
+            [
+                (frame.x, frame.y),
+                (frame.x + frame.width, frame.y + frame.height),
+            ]
+            .into_iter(),
+            frame.stroke_width / 2.0,
+        ),
+        AnnotationShape::Text(note) if note.sticky == Some(true) => {
+            let (width, height) = if note.collapsed == Some(true) {
+                (STICKY_ICON_SIZE, STICKY_ICON_SIZE)
+            } else {
+                (note.width, STICKY_HEIGHT)
+            };
+            (note.x, note.y, note.x + width, note.y + height)
+        }
+        AnnotationShape::Text(note) => {
+            let (x, top, width, height) = link_box(note);
+            (x, top, x + width, top + height)
+        }
+        AnnotationShape::Image(picture) => (
+            picture.x,
+            picture.y,
+            picture.x + picture.width,
+            picture.y + picture.height,
+        ),
+    }
+}
+
+/// The mark moved `dx` points right and `dy` down.
+pub fn shifted(shape: &AnnotationShape, dx: f64, dy: f64) -> AnnotationShape {
+    fn pairs(values: &mut [f64], stride: usize, dx: f64, dy: f64) {
+        for chunk in values.chunks_exact_mut(stride) {
+            chunk[0] += dx;
+            chunk[1] += dy;
+        }
+    }
+    let mut moved = shape.clone();
+    match &mut moved {
+        AnnotationShape::Ink(stroke) => pairs(&mut stroke.points, 3, dx, dy),
+        AnnotationShape::Highlight(stroke) => {
+            pairs(&mut stroke.points, 2, dx, dy);
+            if let Some(rects) = stroke.rects.as_mut() {
+                pairs(rects, 4, dx, dy);
+            }
+        }
+        AnnotationShape::Line(segment) | AnnotationShape::Arrow(segment) => {
+            segment.x1 += dx;
+            segment.y1 += dy;
+            segment.x2 += dx;
+            segment.y2 += dy;
+            if let Some(curve) = segment.curve.as_mut() {
+                pairs(curve, 2, dx, dy);
+            }
+        }
+        AnnotationShape::Rectangle(frame) | AnnotationShape::Ellipse(frame) => {
+            frame.x += dx;
+            frame.y += dy;
+        }
+        AnnotationShape::Text(note) => {
+            note.x += dx;
+            note.y += dy;
+        }
+        AnnotationShape::Image(picture) => {
+            picture.x += dx;
+            picture.y += dy;
+        }
+    }
+    moved
 }
 
 fn draw_pages(

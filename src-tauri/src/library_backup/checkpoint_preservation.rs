@@ -363,6 +363,15 @@ const CONTRACTS: &[Contract] = &[
             description: "Tutor message attachments",
         }],
     },
+    // Boards are made in the app; the upgrade only creates their table.
+    Contract {
+        version: 26,
+        setup: "",
+        rules: &[Rule::AddedEmpty {
+            table: "notebook_boards",
+            description: "notebook boards",
+        }],
+    },
 ];
 
 /// Learner evidence that no upgrade may rewrite, extend or remove, with the

@@ -1,6 +1,7 @@
 import { useId } from "react";
 
 import type { NotebookItem, NotebookPage, Paper } from "../../ipc/notebooks";
+import { shapeBounds } from "../documents/annotator/annotationModel";
 import { ShapeGraphic } from "../documents/annotator/AnnotatorPage";
 
 export const PAPER_LABELS: Readonly<Record<Paper, string>> = {
@@ -58,13 +59,40 @@ function PaperRuling({ paper, width, height, pattern }: { paper: Paper; width: n
   );
 }
 
-/** A notebook's first page, small: its paper and the marks drawn on it. */
+/** Space kept around a board's marks in its thumbnail, in points. */
+const BOARD_THUMBNAIL_MARGIN = 36;
+
+/** The part of a page a thumbnail shows: all of a page, the marks of a board (or its middle when empty). */
+function thumbnailView(page: NotebookPage | null, items: readonly NotebookItem[]): string {
+  const width = page?.width ?? 612;
+  const height = page?.height ?? 792;
+  if (page?.layout !== "board") return `0 0 ${width} ${height}`;
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const item of items) {
+    // A thumbnail's text is one line, so one line's height is enough.
+    const bounds = shapeBounds(item.shape, item.shape.kind === "text" ? item.shape.fontSize * 1.4 : 0);
+    left = Math.min(left, bounds.left);
+    top = Math.min(top, bounds.top);
+    right = Math.max(right, bounds.right);
+    bottom = Math.max(bottom, bounds.bottom);
+  }
+  if (left > right) return `${(width - 612) / 2} ${(height - 792) / 2} 612 792`;
+  // Kept to a page's shape, so a wide map is not squeezed into a sliver.
+  const viewWidth = Math.max(right - left, (bottom - top) * 612 / 792) + BOARD_THUMBNAIL_MARGIN * 2;
+  const viewHeight = Math.max(bottom - top, (right - left) * 792 / 612) + BOARD_THUMBNAIL_MARGIN * 2;
+  return `${(left + right - viewWidth) / 2} ${(top + bottom - viewHeight) / 2} ${viewWidth} ${viewHeight}`;
+}
+
+/** A notebook's first page, small: its paper and the marks drawn on it; a board shows where its marks are. */
 export function NotebookThumbnail({ page, items }: { page: NotebookPage | null; items: readonly NotebookItem[] }) {
   const pattern = `thumb-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const width = page?.width ?? 612;
   const height = page?.height ?? 792;
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} aria-hidden="true" preserveAspectRatio="xMidYMin meet"
+    <svg viewBox={thumbnailView(page, items)} aria-hidden="true" preserveAspectRatio="xMidYMin meet"
       className="tw:block tw:size-full tw:bg-[var(--ostudy-color-neutral-0)]">
       <rect width={width} height={height} fill="#ffffff" />
       {page ? <PaperRuling paper={page.paper} width={width} height={height} pattern={pattern} /> : null}

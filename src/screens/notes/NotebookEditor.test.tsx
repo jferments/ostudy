@@ -11,6 +11,7 @@ import * as studyGuidesIpc from "../../ipc/studyGuides";
 import * as files from "../../platform/files";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
+import { openMenu } from "../../test/menus";
 import { NotebookEditor } from "./NotebookEditor";
 import * as pictures from "./pictures";
 
@@ -53,7 +54,11 @@ const PAGE_TOP = 100;
 const PAGE_GAP = 20;
 
 function page(seed: string, position: number): notebooksIpc.NotebookPage {
-  return { id: seed.repeat(32), position, paper: "grid", width: 612, height: 792 };
+  return { id: seed.repeat(32), position, paper: "grid", width: 612, height: 792, layout: "page" };
+}
+
+function board(seed: string, position: number): notebooksIpc.NotebookPage {
+  return { id: seed.repeat(32), position, paper: "dots", width: 14400, height: 14400, layout: "board" };
 }
 
 function contents(overrides: Partial<notebooksIpc.NotebookContents> = {}): notebooksIpc.NotebookContents {
@@ -93,7 +98,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function openNotebook(overrides: Partial<Parameters<typeof NotebookEditor>[0]> = {}) {
+async function openNotebook(overrides: Partial<Parameters<typeof NotebookEditor>[0]> = {}, canvasName = "Pages of Cardiac cycle") {
   const props = {
     notebookId,
     title: "Cardiac cycle",
@@ -112,7 +117,7 @@ async function openNotebook(overrides: Partial<Parameters<typeof NotebookEditor>
     </LayoutModeProvider>,
   );
   await screen.findByRole("toolbar", { name: "Annotation tools" });
-  const canvas = screen.getByRole("group", { name: "Pages of Cardiac cycle" });
+  const canvas = screen.getByRole("group", { name: canvasName });
   return { ...props, canvas };
 }
 
@@ -365,5 +370,59 @@ describe("notebook editor", () => {
     await waitFor(() => expect(notebooksIpc.addNotebookPage).toHaveBeenCalledWith(notebookId, 2));
     await waitFor(() => expect(notebooksIpc.getNotebook).toHaveBeenCalledTimes(2));
     expect(await screen.findByText(/of 3$/)).toBeTruthy();
+  });
+
+  it("opens a notebook of boards on its board, with the Hand tool, Fit all and an overview", async () => {
+    vi.mocked(notebooksIpc.getNotebook).mockResolvedValue(contents({ pages: [board("1", 1)] }));
+    const { canvas } = await openNotebook({}, "Pages of Cardiac cycle, Board 1");
+    expect(screen.getByText("Board 1")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add page" })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Fit all/u })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Board overview" })).toBeTruthy();
+
+    // Holding Space picks the Hand tool for as long as it is held.
+    const pen = screen.getByRole("button", { name: "Pen" });
+    fireEvent.click(pen);
+    fireEvent.keyDown(canvas, { key: " " });
+    expect(screen.getByRole("button", { name: "Hand" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.keyUp(canvas, { key: " " });
+    expect(screen.getByRole("button", { name: "Pen" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("shows pages apart from boards, adds a board and goes to it", async () => {
+    const withBoard = contents({ pages: [page("1", 1), page("2", 2), board("3", 3)] });
+    vi.mocked(notebooksIpc.getNotebook).mockResolvedValue(contents());
+    vi.mocked(notebooksIpc.addNotebookPage).mockResolvedValue(withBoard);
+    await openNotebook();
+    expect(screen.queryByRole("button", { name: "Hand" })).toBeNull();
+
+    vi.mocked(notebooksIpc.getNotebook).mockResolvedValue(withBoard);
+    const actions = screen.getByRole("button", { name: "Page 1 actions" });
+    fireEvent.click(await within(await openMenu(actions)).findByRole("menuitem", { name: "Add board" }));
+    await waitFor(() => expect(notebooksIpc.addNotebookPage).toHaveBeenCalledWith(notebookId, 3, undefined, "board"));
+    expect(await screen.findByRole("group", { name: "Pages of Cardiac cycle, Board 1" })).toBeTruthy();
+
+    // The place in the notebook is a menu of its pages and boards.
+    const place = screen.getByRole("button", { name: "Board 1" });
+    fireEvent.click(await within(await openMenu(place)).findByRole("menuitemcheckbox", { name: "Pages (2)" }));
+    expect(await screen.findByRole("group", { name: "Pages of Cardiac cycle" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Page 1 of 2" })).toBeTruthy();
+  });
+
+  it("asks how boards go into a saved PDF", async () => {
+    const exportId = "9".repeat(32);
+    vi.mocked(notebooksIpc.getNotebook).mockResolvedValue(contents({ pages: [page("1", 1), board("2", 2)] }));
+    vi.mocked(notebooksIpc.prepareNotebookPdf).mockResolvedValue({
+      preparedExport: { id: exportId } as notebooksIpc.PreparedNotebookPdf["preparedExport"],
+      pageCount: 3,
+      missingPictureCount: 0,
+    });
+    vi.mocked(externalFilesIpc.publishPreparedExport).mockResolvedValue({} as Awaited<ReturnType<typeof externalFilesIpc.publishPreparedExport>>);
+    vi.mocked(externalFilesIpc.releasePreparedExport).mockResolvedValue();
+    await openNotebook();
+
+    const save = screen.getByRole("button", { name: "Save PDF" });
+    fireEvent.click(await within(await openMenu(save)).findByRole("menuitem", { name: "Boards across Letter pages" }));
+    await waitFor(() => expect(notebooksIpc.prepareNotebookPdf).toHaveBeenCalledWith(notebookId, undefined, { split: "letter" }));
   });
 });

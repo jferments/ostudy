@@ -505,6 +505,10 @@ export class AnnotatorGestures {
     }
     // A stylus's eraser end erases, whichever tool is chosen.
     const tool: AnnotatorTool = sample.kind === "pen" && sample.button === PEN_ERASER_BUTTON ? "eraser" : context.tool;
+    if (tool === "hand") {
+      this.active = { kind: "pan", ...base, last: client, samples: [{ ...client, time: sample.time }] };
+      return [];
+    }
     const placesNotes = tool === "text" || tool === "sticky";
     // With pen-only drawing a finger still places and opens notes.
     const fingerPans = sample.kind === "touch" && context.penOnly && isDrawingTool(tool) && !placesNotes;

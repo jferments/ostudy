@@ -10,6 +10,11 @@
 //! notebook opens and never followed by a write, so deleting their target
 //! leaves the link in place, reported as unavailable.
 //!
+//! A page may be a board (release schema 26, `notebook_boards`): one large
+//! sheet without paper edges, panned and zoomed around, for mind maps and
+//! diagrams. It is stored as a page of `BOARD_SIZE` points a side, so its marks
+//! follow the same rules as any other page's.
+//!
 //! Item writes carry the whole new state of each item, so a request repeated
 //! after a lost response changes nothing further. Whole-library backups keep
 //! notebooks; device sync packages leave them out.
@@ -38,6 +43,9 @@ const MAX_PREVIEW_ITEMS: i64 = 400;
 /// Links a notebook's tile names, and how much of each label.
 const MAX_LINK_LABELS: usize = 4;
 const MAX_LINK_LABEL_CHARS: usize = 40;
+/// A board's width and height in points: the largest page a notebook (or a
+/// PDF) may have, 200 inches a side.
+pub(crate) const BOARD_SIZE: f64 = 14_400.0;
 
 /// The paper a page is drawn on.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -68,6 +76,15 @@ impl Paper {
             _ => return Err(unreadable()),
         })
     }
+}
+
+/// Whether a page is a page of paper or a board.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageLayout {
+    #[default]
+    Page,
+    Board,
 }
 
 /// A new page's size: US Letter, A4, or a wide landscape page (11 by 17
@@ -127,9 +144,10 @@ pub struct NotebookPageDto {
     pub id: String,
     pub position: i64,
     pub paper: Paper,
-    /// The page size in points.
+    /// The page size in points; a board's is `BOARD_SIZE` both ways.
     pub width: f64,
     pub height: f64,
+    pub layout: PageLayout,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -191,6 +209,9 @@ pub struct CreateNotebookInput {
     pub subject_id: Option<String>,
     pub paper: Paper,
     pub page_size: PageSize,
+    /// The first page is a board; later pages default to `page_size`.
+    #[serde(default)]
+    pub layout: PageLayout,
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,6 +243,9 @@ pub struct AddNotebookPageInput {
     /// Defaults to the notebook's paper and page size.
     pub paper: Option<Paper>,
     pub page_size: Option<PageSize>,
+    /// A board ignores `page_size`.
+    #[serde(default)]
+    pub layout: PageLayout,
 }
 
 #[derive(Debug, Deserialize)]
@@ -447,7 +471,15 @@ pub(crate) fn create(
             ],
         )
         .map_err(CommandError::database)?;
-    insert_page(&transaction, &id, 1, input.paper, input.page_size, now)?;
+    insert_page(
+        &transaction,
+        &id,
+        1,
+        input.paper,
+        input.page_size,
+        input.layout,
+        now,
+    )?;
     let contents = contents(&transaction, &id)?;
     transaction.commit().map_err(CommandError::database)?;
     Ok(contents)
@@ -569,6 +601,7 @@ fn add_page(
         position,
         input.paper.unwrap_or(notebook.paper),
         input.page_size.unwrap_or(notebook.page_size),
+        input.layout,
         now,
     )?;
     touch(&transaction, &notebook, now)?;
@@ -1124,8 +1157,9 @@ fn require_subject(connection: &Connection, subject_id: &str) -> Result<(), Comm
 fn pages(connection: &Connection, notebook_id: &str) -> Result<Vec<NotebookPageDto>, CommandError> {
     let mut statement = connection
         .prepare(
-            "SELECT id, position, paper, width, height FROM notebook_pages
-             WHERE notebook_id = ?1 ORDER BY position",
+            "SELECT p.id, p.position, p.paper, p.width, p.height, b.page_id IS NOT NULL
+             FROM notebook_pages p LEFT JOIN notebook_boards b ON b.page_id = p.id
+             WHERE p.notebook_id = ?1 ORDER BY p.position",
         )
         .map_err(CommandError::database)?;
     let rows = statement
@@ -1136,19 +1170,25 @@ fn pages(connection: &Connection, notebook_id: &str) -> Result<Vec<NotebookPageD
                 row.get::<_, String>(2)?,
                 row.get::<_, f64>(3)?,
                 row.get::<_, f64>(4)?,
+                row.get::<_, bool>(5)?,
             ))
         })
         .map_err(CommandError::database)?
         .collect::<Result<Vec<_>, _>>()
         .map_err(CommandError::database)?;
     rows.into_iter()
-        .map(|(id, position, paper, width, height)| {
+        .map(|(id, position, paper, width, height, board)| {
             Ok(NotebookPageDto {
                 id,
                 position,
                 paper: Paper::parse(&paper)?,
                 width,
                 height,
+                layout: if board {
+                    PageLayout::Board
+                } else {
+                    PageLayout::Page
+                },
             })
         })
         .collect()
@@ -1209,18 +1249,35 @@ fn insert_page(
     position: i64,
     paper: Paper,
     size: PageSize,
+    layout: PageLayout,
     now: i64,
 ) -> Result<(), CommandError> {
     let id = generate_id(connection)?;
-    let (width, height) = size.points();
+    let (width, height) = match layout {
+        PageLayout::Page => size.points(),
+        PageLayout::Board => (BOARD_SIZE, BOARD_SIZE),
+    };
+    // Ruled lines belong to writing down a page; a board spreads every way.
+    let paper = match (layout, paper) {
+        (PageLayout::Board, Paper::Lined) => Paper::Dots,
+        (_, paper) => paper,
+    };
     connection
         .execute(
             "INSERT INTO notebook_pages(id, notebook_id, position, paper, width, height, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![id, notebook_id, position, paper.as_str(), width, height, now],
         )
-        .map(|_| ())
-        .map_err(CommandError::database)
+        .map_err(CommandError::database)?;
+    if layout == PageLayout::Board {
+        connection
+            .execute(
+                "INSERT INTO notebook_boards(page_id, created_at) VALUES (?1, ?2)",
+                params![id, now],
+            )
+            .map_err(CommandError::database)?;
+    }
+    Ok(())
 }
 
 fn page_count(connection: &Connection, notebook_id: &str) -> Result<i64, CommandError> {

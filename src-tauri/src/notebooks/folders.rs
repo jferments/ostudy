@@ -333,7 +333,9 @@ fn invalid(message: impl Into<String>) -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::notebooks::{create as create_notebook, CreateNotebookInput, PageSize, Paper};
+    use crate::notebooks::{
+        create as create_notebook, CreateNotebookInput, PageLayout, PageSize, Paper,
+    };
 
     const NOW: i64 = 1_700_000_000_000;
 
@@ -345,6 +347,7 @@ mod tests {
                 subject_id: None,
                 paper: Paper::Lined,
                 page_size: PageSize::Letter,
+                layout: PageLayout::Page,
             },
             NOW,
         )

@@ -110,6 +110,7 @@ fn kept(connection: &Connection) -> Kept {
         "notebook_shelf",
         "tutor_turn_replacements",
         "tutor_turn_attachments",
+        "notebook_boards",
     ] {
         if let Some((_, values)) = rows.remove(table) {
             assert!(values.is_empty(), "{table} must be empty in this library");

@@ -8,6 +8,8 @@ import type { PageRegion } from "./pageTiles";
 /** CSS pixels per PDF point: a fifth of print size up to three times it. */
 export const MIN_SCALE = 0.25;
 export const MAX_SCALE = 4;
+/** A board zooms out until all of it fits a window. */
+export const BOARD_MIN_SCALE = 0.05;
 /** Print size: 96 CSS pixels to the inch, 72 points to the inch. */
 export const ACTUAL_SIZE_SCALE = 96 / 72;
 /**
@@ -40,9 +42,19 @@ export interface SettledView {
   regions: ReadonlyMap<number, PageRegion>;
 }
 
-function clampScale(scale: number): number {
-  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+function clampScale(scale: number, minScale = MIN_SCALE): number {
+  return Math.min(MAX_SCALE, Math.max(minScale, scale));
 }
+
+export interface ViewportOptions {
+  /** How far out the view zooms; MIN_SCALE unless given. */
+  minScale?: number;
+  /** A zoom to start at instead of fitting the window. */
+  initialScale?: number;
+}
+
+/** A region of a page, in points. */
+export interface PageRect { x: number; y: number; width: number; height: number; }
 
 /**
  * The scrolling page area: its height (the rest of the screen, above an
@@ -55,19 +67,22 @@ export function useAnnotatorViewport(
   pages: readonly AnnotatedPage[],
   viewportRef: RefObject<HTMLDivElement | null>,
   contentRef: RefObject<HTMLDivElement | null>,
+  { minScale = MIN_SCALE, initialScale }: ViewportOptions = {},
 ) {
   const capabilities = usePlatformCapabilities();
   const imeBottom = capabilities.androidInsets?.imeVisible ? Math.max(0, capabilities.androidInsets.imeBottom) : 0;
   const [height, setHeight] = useState(MIN_VIEWPORT_HEIGHT * 2);
   const [fitWidth, setFitWidth] = useState(0);
-  const [zoom, setZoom] = useState<Zoom>({ mode: "fit" });
+  const [zoom, setZoom] = useState<Zoom>(() => (
+    initialScale === undefined ? { mode: "fit" } : { mode: "manual", scale: clampScale(initialScale, minScale) }
+  ));
   const [near, setNear] = useState<ReadonlySet<number>>(() => new Set(pages.slice(0, 3).map((page) => page.pageNumber)));
   const [settled, setSettled] = useState<SettledView | null>(null);
   const pendingAnchor = useRef<{ anchor: ZoomAnchor; clientX: number; clientY: number } | null>(null);
   const fling = useRef<number | null>(null);
 
   const widest = useMemo(() => Math.max(1, ...pages.map((page) => page.width)), [pages]);
-  const fitScale = fitWidth > 0 ? clampScale(Math.min(MAX_FIT_SCALE, fitWidth / widest)) : 1;
+  const fitScale = fitWidth > 0 ? clampScale(Math.min(MAX_FIT_SCALE, fitWidth / widest), minScale) : 1;
   const scale = zoom.mode === "fit" ? fitScale : zoom.scale;
   const scaleRef = useRef(scale);
   scaleRef.current = scale;
@@ -211,7 +226,7 @@ export function useAnnotatorViewport(
   }, [pageElement, viewportRef]);
 
   const zoomTo = useCallback((next: number | "fit", anchor?: ZoomAnchor | null, clientX?: number, clientY?: number) => {
-    const target = next === "fit" ? fitScaleRef.current : clampScale(next);
+    const target = next === "fit" ? fitScaleRef.current : clampScale(next, minScale);
     setZoom(next === "fit" ? { mode: "fit" } : { mode: "manual", scale: target });
     const center = viewportCenter();
     const x = clientX ?? center?.x;
@@ -226,7 +241,42 @@ export function useAnnotatorViewport(
     // Applied once the pages have their new size.
     pendingAnchor.current = { anchor: kept, clientX: x, clientY: y };
     scaleRef.current = target;
-  }, [anchorAt, placeAnchor, viewportCenter]);
+  }, [anchorAt, minScale, placeAnchor, viewportCenter]);
+
+  /**
+   * Zooms so a region of a page fills the view, no closer than `maxScale`,
+   * with the region's middle at the view's middle.
+   */
+  const showRegion = useCallback((pageNumber: number, region: PageRect, maxScale = MAX_SCALE) => {
+    const viewport = viewportRef.current;
+    const center = viewportCenter();
+    if (!viewport || !center) return;
+    const fits = Math.min(viewport.clientWidth / Math.max(1, region.width), viewport.clientHeight / Math.max(1, region.height));
+    const anchor = { pageNumber, point: { x: region.x + region.width / 2, y: region.y + region.height / 2 } };
+    zoomTo(Math.min(maxScale, fits), anchor, center.x, center.y);
+  }, [viewportCenter, viewportRef, zoomTo]);
+
+  /** Scrolls a page spot to the middle of the view, keeping the zoom. */
+  const centerOn = useCallback((pageNumber: number, point: { x: number; y: number }) => {
+    const center = viewportCenter();
+    if (center) placeAnchor({ pageNumber, point }, center.x, center.y, scaleRef.current);
+  }, [placeAnchor, viewportCenter]);
+
+  /** The part of a page in view, in points; null when the page is not shown. */
+  const visibleRegion = useCallback((pageNumber: number): PageRect | null => {
+    const viewport = viewportRef.current;
+    const element = pageElement(pageNumber);
+    if (!viewport || !element) return null;
+    const view = viewport.getBoundingClientRect();
+    const page = element.getBoundingClientRect();
+    const current = scaleRef.current;
+    return {
+      x: (view.left - page.left) / current,
+      y: (view.top - page.top) / current,
+      width: viewport.clientWidth / current,
+      height: viewport.clientHeight / current,
+    };
+  }, [pageElement, viewportRef]);
 
   /**
    * Scrolls a page's top into view, or, given a spot `top` page points down
@@ -298,6 +348,7 @@ export function useAnnotatorViewport(
   return {
     height,
     scale,
+    minScale,
     fit: zoom.mode === "fit",
     /** The window has been measured, so pages have their fitted size. */
     measured: fitWidth > 0,
@@ -308,6 +359,9 @@ export function useAnnotatorViewport(
     zoomOut: () => zoomBy(1 / ZOOM_STEP),
     fitToWidth: () => zoomTo("fit"),
     showPage,
+    showRegion,
+    centerOn,
+    visibleRegion,
     startFling,
     stopFling,
   };

@@ -35,6 +35,7 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   ellipse: { label: "Ellipse", icon: "shape-ellipse", shortcut: "O" },
   eraser: { label: "Eraser", icon: "eraser", shortcut: "E" },
   clip: { label: "Clip to notes", icon: "crop", shortcut: "X" },
+  hand: { label: "Hand", icon: "pan", shortcut: "Space" },
 };
 
 const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "lasso", "pen", "highlighter"];
@@ -75,6 +76,10 @@ interface AnnotatorToolbarProps {
   onEditSelection: () => void;
   /** Offers the Clip tool, which copies part of a PDF page into a notebook. */
   canClip?: boolean;
+  /** Offers the Hand tool, which drags the view around a board. */
+  canPan?: boolean;
+  /** The fit button fits everything on a board in the window rather than the page width. */
+  fitAll?: boolean;
   /** How many annotations the lasso took. */
   groupSize: number;
   onDeleteGroup: () => void;
@@ -121,6 +126,9 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
     </ToolbarAction>
   );
   const shownShape = shapeActive ? tool : props.lastShape;
+  const mainTools = props.canPan ? [...MAIN_TOOLS.slice(0, 1), "hand" as const, ...MAIN_TOOLS.slice(1)] : MAIN_TOOLS;
+  const pickTools = props.canPan ? [...PICK_TOOLS, "hand" as const] : PICK_TOOLS;
+  const fitLabel = props.fitAll ? "Fit all" : "Automatic zoom";
   const noteActive = NOTE_TOOLS.includes(tool);
   const shownNote = noteActive ? tool : props.lastNote;
   const history = [
@@ -153,7 +161,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
         <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-1 tw:overflow-x-auto">
           <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-nowrap tw:gap-1">
             <ToolbarGroup label="Tools" className="tw:flex-nowrap">
-              {MAIN_TOOLS.map(toolButton)}
+              {mainTools.map(toolButton)}
               <OverflowMenu
                 label={noteActive ? `Notes: ${TOOLS[tool].label}` : "Notes"}
                 triggerIcon={TOOLS[shownNote].icon}
@@ -184,7 +192,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
             items={[
               { id: "zoom-in", label: "Zoom in", onSelect: props.onZoomIn, disabled: !props.canZoomIn },
               { id: "zoom-out", label: "Zoom out", onSelect: props.onZoomOut, disabled: !props.canZoomOut },
-              { id: "fit", label: "Automatic zoom", onSelect: props.onFit, disabled: props.fit },
+              { id: "fit", label: fitLabel, onSelect: props.onFit, disabled: props.fit && !props.fitAll },
             ]}
           />
         </div>
@@ -201,7 +209,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
     <div className="tw:grid tw:min-w-0 tw:border-0 tw:border-b tw:border-solid tw:border-border tw:bg-background">
       <div className="tw:flex tw:min-w-0 tw:items-center tw:gap-3 tw:px-3 tw:py-1">
         <Toolbar label="Annotation tools" disabled={props.disabled} className="tw:flex-1 tw:flex-wrap tw:gap-x-2 tw:gap-y-1">
-          <ToolbarGroup label="Pick" className="tw:flex-nowrap">{PICK_TOOLS.map(toolButton)}</ToolbarGroup>
+          <ToolbarGroup label="Pick" className="tw:flex-nowrap">{pickTools.map(toolButton)}</ToolbarGroup>
           <Divider />
           <ToolbarGroup label="Mark" className="tw:flex-nowrap">{MARK_TOOLS.map(toolButton)}</ToolbarGroup>
           <Divider />
@@ -233,7 +241,8 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
               <ToolbarAction label="Zoom out" title="Zoom out (Ctrl+-)" disabled={!props.canZoomOut} aria-keyshortcuts="Control+- Meta+-" onClick={props.onZoomOut}>
                 <Icon name="zoom-out" />
               </ToolbarAction>
-              <ToolbarAction label={`Automatic zoom (now ${props.zoomPercent}%)`} title="Fit to width (Ctrl+0)" pressed={props.fit}
+              <ToolbarAction label={`${fitLabel} (now ${props.zoomPercent}%)`} title={props.fitAll ? "Fit all (Ctrl+0)" : "Fit to width (Ctrl+0)"}
+                pressed={props.fit && !props.fitAll}
                 aria-keyshortcuts="Control+0 Meta+0" onClick={props.onFit} className="tw:min-w-14 tw:tabular-nums">
                 {props.zoomPercent}%
               </ToolbarAction>

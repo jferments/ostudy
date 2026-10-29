@@ -20,7 +20,7 @@ import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
 import { createPageTextCache, type PageTextCache } from "./textSelection";
 import type { DocumentAnnotatorController } from "./useDocumentAnnotator";
-import { MAX_SCALE, MIN_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
+import { MAX_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
 
 type Viewport = ReturnType<typeof useAnnotatorViewport>;
 
@@ -41,6 +41,7 @@ const CURSORS: Readonly<Record<AnnotatorTool, string>> = {
   ellipse: "tw:cursor-crosshair",
   eraser: "tw:cursor-cell",
   clip: "tw:cursor-crosshair",
+  hand: "tw:cursor-grab tw:active:cursor-grabbing",
 };
 
 interface AnnotatorCanvasProps {
@@ -191,7 +192,7 @@ export function AnnotatorCanvas({
       penOnly: current.penOnly,
       eraseMode: current.eraseMode,
       scale: currentScale,
-      minScale: MIN_SCALE,
+      minScale: latest.current.viewport.minScale,
       maxScale: MAX_SCALE,
       selected: current.selected,
       group: current.group,

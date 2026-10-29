@@ -34,7 +34,7 @@ function summary(
     notebook: { id, subjectId, title, paper: "lined", pageSize: "letter", revision: 1, createdAt: 1, updatedAt: 1 },
     pageCount: 3,
     linkCount: 1,
-    firstPage: { id: seed === "a" ? "1".repeat(32) : "2".repeat(32), position: 1, paper: "lined", width: 612, height: 792 },
+    firstPage: { id: seed === "a" ? "1".repeat(32) : "2".repeat(32), position: 1, paper: "lined", width: 612, height: 792, layout: "page" },
     preview: [],
     linkLabels: [],
     folderId: null,
@@ -104,6 +104,26 @@ describe("Library notes", () => {
       title: "Valves", subjectId: SUBJECT, paper: "grid", pageSize: "wide",
     }));
     expect(await screen.findByRole("toolbar", { name: "Annotation tools" })).toBeTruthy();
+  });
+
+  it("creates a notebook that starts with a board, offering no ruled paper or page size for it", async () => {
+    const created = summary("c", "Heart map", SUBJECT);
+    vi.mocked(notebooksIpc.createNotebook).mockResolvedValue(contentsOf(created));
+    vi.mocked(notebooksIpc.getNotebook).mockResolvedValue(contentsOf(created));
+    renderNotes({ kind: "subject", subjectId: SUBJECT });
+    fireEvent.click(await screen.findByRole("button", { name: "New notebook" }));
+    const dialog = await screen.findByRole("dialog", { name: "New notebook" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: /Name/ }), { target: { value: "Heart map" } });
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Board" }));
+    expect(within(dialog).queryByRole("radio", { name: "Lined" })).toBeNull();
+    expect(within(dialog).queryByRole("radio", { name: "Wide" })).toBeNull();
+    expect((within(dialog).getByRole("radio", { name: "Dots" }) as HTMLInputElement).getAttribute("aria-checked") ?? "")
+      .not.toBe("false");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create notebook" }));
+
+    await waitFor(() => expect(notebooksIpc.createNotebook).toHaveBeenCalledWith({
+      title: "Heart map", subjectId: SUBJECT, paper: "dots", pageSize: "letter", layout: "board",
+    }));
   });
 
   it("opens the notebook a document page was clipped into, whatever subject is chosen", async () => {

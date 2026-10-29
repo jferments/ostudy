@@ -47,6 +47,9 @@ mod tutor_turn_versions;
 #[path = "release/tutor_attachments.rs"]
 mod tutor_attachments;
 
+#[path = "release/notebook_boards.rs"]
+mod notebook_boards;
+
 #[path = "release/note_annotation_sources.rs"]
 mod note_annotation_sources;
 
@@ -90,7 +93,7 @@ pub(crate) mod subjects_fixture;
 
 pub(crate) const SCHEMA_LINEAGE: &str = "ostudy-release-v1";
 pub(crate) const BASELINE_VERSION: i64 = 1;
-pub(crate) const SCHEMA_VERSION: i64 = 25;
+pub(crate) const SCHEMA_VERSION: i64 = 26;
 pub(crate) const BASELINE_NAME: &str = "release_baseline";
 pub(crate) const BASELINE_CHECKSUM: &str =
     "64553c98070ad58a0aa73563cf7e9972e9dcb6a27666895a78d8a53882fc26e8";
@@ -248,6 +251,12 @@ const RELEASE_MIGRATIONS: &[ReleaseMigration] = &[
         name: "tutor_attachments",
         checksum: "4fd1bc0171cb23d4199cd253848848c599f902d57a2f7596e75a9924c832defd",
         sql: include_str!("../../schema/0025_tutor_attachments.sql"),
+    },
+    ReleaseMigration {
+        version: 26,
+        name: "notebook_boards",
+        checksum: "bbddee6d4db532b527b79a6d839b304e3a5b7c92ee3acceb03facd0391e2520a",
+        sql: include_str!("../../schema/0026_notebook_boards.sql"),
     },
 ];
 
@@ -475,6 +484,7 @@ pub(super) fn validate_supported_input(connection: &Connection) -> Result<i64, S
     note_folders::validate_schema(connection, user_version)?;
     tutor_turn_versions::validate_schema(connection, user_version)?;
     tutor_attachments::validate_schema(connection, user_version)?;
+    notebook_boards::validate_schema(connection, user_version)?;
     entry::validate_current_payload(connection)?;
     Ok(user_version)
 }
