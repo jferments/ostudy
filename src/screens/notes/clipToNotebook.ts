@@ -24,7 +24,8 @@ export interface PlacedClip { notebookId: string; pageId: string; itemId: string
 /**
  * Clips a region of a PDF page into a notebook: the region is drawn from the
  * PDF, then placed below what is already on the notebook's last page, on a
- * new page when it does not fit there. The picture names the page it came
+ * new page when it does not fit there. A notebook of boards only takes it on
+ * its last board, below its marks or at its middle. The picture names the page it came
  * from. A failure leaves nothing behind but an image draft that expires.
  */
 export async function clipToNotebook(notebookId: string, region: DocumentClipRegion): Promise<PlacedClip> {
@@ -32,11 +33,15 @@ export async function clipToNotebook(notebookId: string, region: DocumentClipReg
   try {
     const clip = await stageDocumentClip(draftId, region);
     let contents = await getNotebook(notebookId);
-    let page = contents.pages[contents.pages.length - 1];
+    // The last page of paper takes the clip; a notebook of boards only, its last board.
+    let page = [...contents.pages].reverse().find((candidate) => candidate.layout !== "board") ?? contents.pages[contents.pages.length - 1];
     if (!page) throw new Error("This notebook has no pages.");
     const size = fitPicture(clip, page);
     let top = nextFreeTop(contents, page);
-    if (top + size.height > page.height - PAGE_MARGIN && top > PAGE_MARGIN) {
+    if (page.layout === "board") {
+      // A board opens at its middle, so its first clip goes there.
+      if (!contents.items.some((item) => item.pageId === page?.id)) top = Math.round((page.height - size.height) / 2);
+    } else if (top + size.height > page.height - PAGE_MARGIN && top > PAGE_MARGIN) {
       contents = await addNotebookPage(notebookId, contents.pages.length + 1);
       page = contents.pages[contents.pages.length - 1]!;
       top = PAGE_MARGIN;

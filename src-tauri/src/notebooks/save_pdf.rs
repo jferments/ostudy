@@ -2,8 +2,9 @@
 //!
 //! The notebook's pages are written out with their paper, marks and
 //! pictures (see `document_annotations::notebook_pdf`); links to pages of
-//! the same notebook become PDF links. The file is a prepared export, which
-//! the learner then saves or shares like any other.
+//! the same notebook become PDF links. A board is cut to what is drawn on it,
+//! as one page or split across printable pages. The file is a prepared
+//! export, which the learner then saves or shares like any other.
 
 use std::collections::HashMap;
 
@@ -11,10 +12,12 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use super::{contents, NotebookContentsDto, Paper};
+use super::{contents, NotebookContentsDto, NotebookPageDto, PageLayout, PageSize, Paper};
 use crate::{
     database::Database,
-    document_annotations::{notebook_pdf, AnnotationShape, LinkTarget, NotebookPdfPage, Ruling},
+    document_annotations::{
+        notebook_pdf, shape_bounds, shifted, AnnotationShape, LinkTarget, NotebookPdfPage, Ruling,
+    },
     error::CommandError,
     external_files::{PreparedExportDto, RegisterPreparedExport},
     paths::AppPaths,
@@ -22,12 +25,28 @@ use crate::{
 };
 
 const EXPORT_PURPOSE: &str = "notebook_pdf";
+/// Space kept around what is drawn on a board, in points.
+const BOARD_MARGIN: f64 = 36.0;
+/// The largest page a PDF reader is sure to open, in points.
+const MAX_PDF_PAGE: f64 = 14_400.0;
+
+/// How a board goes on paper: one page cut to what is drawn on it, or that
+/// area split across pages of a paper size at full size, for printing.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum BoardPrint {
+    #[default]
+    OnePage,
+    Split(PageSize),
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrepareNotebookPdfInput {
     pub notebook_id: String,
     pub operation_id: String,
+    #[serde(default)]
+    pub boards: BoardPrint,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -84,7 +103,7 @@ pub(crate) async fn prepare_notebook_pdf(
     let destination = paths.resolve_relative(&relative);
     let title = notebook.notebook.title.clone();
     let (page_count, missing_picture_count) = tauri::async_runtime::spawn_blocking(move || {
-        write_notebook(&notebook, &files, &destination)
+        write_notebook(&notebook, &files, &destination, input.boards)
     })
     .await
     .map_err(|_| export_failed())??;
@@ -151,12 +170,96 @@ pub(super) fn picture_files(
     Ok(files)
 }
 
+/// One page of the PDF: its size, its paper, and the marks it draws, moved so
+/// the part of the notebook page it shows starts at its corner.
+struct SheetPlan {
+    width: f64,
+    height: f64,
+    ruling: Ruling,
+    shapes: Vec<AnnotationShape>,
+}
+
+/// The PDF pages one notebook page becomes: a page as it is; a board cut to
+/// what is drawn on it, whole or in pieces of a paper size.
+fn sheets(
+    page: &NotebookPageDto,
+    shapes: &[&AnnotationShape],
+    boards: BoardPrint,
+) -> Vec<SheetPlan> {
+    let ruling = ruling(page.paper);
+    if page.layout == PageLayout::Page {
+        return vec![SheetPlan {
+            width: page.width,
+            height: page.height,
+            ruling,
+            shapes: shapes.iter().map(|shape| (*shape).clone()).collect(),
+        }];
+    }
+    let drawn = shapes
+        .iter()
+        .map(|shape| shape_bounds(shape))
+        .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)));
+    let (piece_width, piece_height) = match boards {
+        BoardPrint::OnePage => (MAX_PDF_PAGE, MAX_PDF_PAGE),
+        BoardPrint::Split(size) => size.points(),
+    };
+    // An empty board saves as one blank page of the piece's size.
+    let Some((left, top, right, bottom)) = drawn else {
+        let (width, height) = match boards {
+            BoardPrint::OnePage => PageSize::Letter.points(),
+            BoardPrint::Split(size) => size.points(),
+        };
+        return vec![SheetPlan {
+            width,
+            height,
+            ruling,
+            shapes: Vec::new(),
+        }];
+    };
+    let left = (left - BOARD_MARGIN).max(0.0);
+    let top = (top - BOARD_MARGIN).max(0.0);
+    let right = (right + BOARD_MARGIN).min(page.width);
+    let bottom = (bottom + BOARD_MARGIN).min(page.height);
+    let (width, height) = ((right - left).max(1.0), (bottom - top).max(1.0));
+    let (columns, rows, piece_width, piece_height) = match boards {
+        BoardPrint::OnePage => (1, 1, width.min(piece_width), height.min(piece_height)),
+        BoardPrint::Split(_) => (
+            (width / piece_width).ceil().max(1.0) as usize,
+            (height / piece_height).ceil().max(1.0) as usize,
+            piece_width,
+            piece_height,
+        ),
+    };
+    let mut plans = Vec::with_capacity(columns * rows);
+    for row in 0..rows {
+        for column in 0..columns {
+            let x = left + column as f64 * piece_width;
+            let y = top + row as f64 * piece_height;
+            plans.push(SheetPlan {
+                width: piece_width,
+                height: piece_height,
+                ruling,
+                shapes: shapes
+                    .iter()
+                    .filter(|shape| {
+                        let (l, t, r, b) = shape_bounds(shape);
+                        r >= x && l <= x + piece_width && b >= y && t <= y + piece_height
+                    })
+                    .map(|shape| shifted(shape, -x, -y))
+                    .collect(),
+            });
+        }
+    }
+    plans
+}
+
 /// Writes the notebook's PDF and returns its page count and how many
 /// pictures were left out.
 pub(crate) fn write_notebook(
     notebook: &NotebookContentsDto,
     files: &[(String, std::path::PathBuf)],
     destination: &std::path::Path,
+    boards: BoardPrint,
 ) -> Result<(i64, i64), CommandError> {
     let mut pictures = HashMap::new();
     for (asset_id, path) in files {
@@ -164,49 +267,53 @@ pub(crate) fn write_notebook(
             pictures.insert(asset_id.clone(), image);
         }
     }
-    let index_of: HashMap<&str, usize> = notebook
-        .pages
-        .iter()
-        .enumerate()
-        .map(|(index, page)| (page.id.as_str(), index))
-        .collect();
     let mut missing = 0_i64;
-    let pages: Vec<NotebookPdfPage<'_>> = notebook
-        .pages
+    let mut plans: Vec<SheetPlan> = Vec::new();
+    // The first PDF page each notebook page became, for links to it.
+    let mut first_sheet: HashMap<&str, usize> = HashMap::new();
+    for page in &notebook.pages {
+        let shapes: Vec<&AnnotationShape> = notebook
+            .items
+            .iter()
+            .filter(|item| item.page_id == page.id)
+            .map(|item| &item.shape)
+            .collect();
+        missing += shapes
+            .iter()
+            .filter(|shape| {
+                matches!(shape, AnnotationShape::Image(picture) if !pictures.contains_key(&picture.asset_id))
+            })
+            .count() as i64;
+        first_sheet.insert(page.id.as_str(), plans.len());
+        plans.extend(sheets(page, &shapes, boards));
+    }
+    let pages: Vec<NotebookPdfPage<'_>> = plans
         .iter()
-        .map(|page| {
-            let shapes: Vec<&AnnotationShape> = notebook
-                .items
-                .iter()
-                .filter(|item| item.page_id == page.id)
-                .map(|item| &item.shape)
-                .collect();
-            let links = shapes
+        .map(|plan| {
+            let shapes: Vec<&AnnotationShape> = plan.shapes.iter().collect();
+            let links = plan
+                .shapes
                 .iter()
                 .enumerate()
-                .filter_map(|(index, shape)| match shape {
-                    AnnotationShape::Text(note) => match note.link.as_ref().map(|link| &link.target) {
-                        Some(LinkTarget::NotebookPage {
-                            notebook_id,
-                            page_id,
-                        }) if *notebook_id == notebook.notebook.id => {
-                            index_of.get(page_id.as_str()).map(|target| (index, *target))
+                .filter_map(|(drawn, shape)| match shape {
+                    AnnotationShape::Text(note) => {
+                        match note.link.as_ref().map(|link| &link.target) {
+                            Some(LinkTarget::NotebookPage {
+                                notebook_id,
+                                page_id,
+                            }) if *notebook_id == notebook.notebook.id => first_sheet
+                                .get(page_id.as_str())
+                                .map(|target| (drawn, *target)),
+                            _ => None,
                         }
-                        _ => None,
-                    },
+                    }
                     _ => None,
                 })
                 .collect();
-            missing += shapes
-                .iter()
-                .filter(|shape| {
-                    matches!(shape, AnnotationShape::Image(picture) if !pictures.contains_key(&picture.asset_id))
-                })
-                .count() as i64;
             NotebookPdfPage {
-                width: page.width,
-                height: page.height,
-                ruling: ruling(page.paper),
+                width: plan.width,
+                height: plan.height,
+                ruling: plan.ruling,
                 shapes,
                 links,
             }

@@ -16,6 +16,7 @@ import {
   renameNoteFolder,
   type NoteFolder,
   type NotebookSummary,
+  type PageLayout,
   type PageSize,
   type Paper,
 } from "../../ipc/notebooks";
@@ -57,6 +58,18 @@ const PAGE_SIZE_OPTIONS = [
   { value: "letter", label: "Letter" },
   { value: "a4", label: "A4" },
   { value: "wide", label: "Wide" },
+] as const;
+
+const LAYOUT_OPTIONS = [
+  { value: "page", label: "Pages" },
+  { value: "board", label: "Board" },
+] as const;
+
+/** A board spreads every way, so it has no ruled lines. */
+const BOARD_PAPER_OPTIONS = [
+  { value: "blank", label: PAPER_LABELS.blank },
+  { value: "grid", label: PAPER_LABELS.grid },
+  { value: "dots", label: PAPER_LABELS.dots },
 ] as const;
 
 const PAPER_OPTIONS = [
@@ -475,7 +488,8 @@ function NotebookGrid({ notebooks, subjects, folders, showToast, onOpen, onChang
                     <p className="tw:m-0 tw:text-caption tw:text-muted-foreground">
                       {[
                         changedLabel(notebook.updatedAt),
-                        `${item.pageCount} ${item.pageCount === 1 ? "page" : "pages"}`,
+                        item.pageCount > 0 || item.boardCount === 0 ? `${item.pageCount} ${item.pageCount === 1 ? "page" : "pages"}` : null,
+                        item.boardCount > 0 ? `${item.boardCount} ${item.boardCount === 1 ? "board" : "boards"}` : null,
                         item.linkCount > 0 ? `${item.linkCount} ${item.linkCount === 1 ? "link" : "links"}` : null,
                       ].filter(Boolean).join(" · ")}
                     </p>
@@ -658,6 +672,7 @@ function NewNotebookDialog({ subjects, defaultSubjectId, onClose, onCreated }: {
   const [subjectId, setSubjectId] = useState(defaultSubjectId);
   const [paper, setPaper] = useState<Paper>("lined");
   const [pageSize, setPageSize] = useState<PageSize>("letter");
+  const [layout, setLayout] = useState<PageLayout>("page");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const trimmed = title.trim();
@@ -667,7 +682,9 @@ function NewNotebookDialog({ subjects, defaultSubjectId, onClose, onCreated }: {
     setSaving(true);
     setError(null);
     try {
-      const created = await createNotebook({ title: trimmed, subjectId, paper, pageSize });
+      const created = await createNotebook({
+        title: trimmed, subjectId, paper, pageSize, ...(layout === "board" ? { layout } : {}),
+      });
       onCreated(created.notebook.id, created.notebook.title);
     } catch (failure) {
       setError(getErrorMessage(failure));
@@ -698,15 +715,30 @@ function NewNotebookDialog({ subjects, defaultSubjectId, onClose, onCreated }: {
       <FormField label="Subject">
         <SubjectSelect subjects={subjects} value={subjectId} onChange={setSubjectId} />
       </FormField>
+      <LabeledChoice label="Starts with">
+        <SegmentedControl label="Starts with" value={layout} options={LAYOUT_OPTIONS} onChange={(next) => {
+          setLayout(next);
+          if (next === "board" && paper === "lined") setPaper("dots");
+        }} />
+      </LabeledChoice>
       <LabeledChoice label="Paper">
-        <SegmentedControl label="Paper" value={paper} options={PAPER_OPTIONS} onChange={setPaper} />
+        <SegmentedControl label="Paper" value={paper} options={layout === "board" ? BOARD_PAPER_OPTIONS : PAPER_OPTIONS}
+          onChange={setPaper} />
       </LabeledChoice>
-      <LabeledChoice label="Page size">
-        <SegmentedControl label="Page size" value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={setPageSize} />
-      </LabeledChoice>
-      <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
-        Wide pages lie on their side, with room for mind maps and diagrams.
-      </p>
+      {layout === "board" ? (
+        <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
+          A board is one large sheet to pan and zoom around, with room for mind maps and diagrams.
+        </p>
+      ) : (
+        <>
+          <LabeledChoice label="Page size">
+            <SegmentedControl label="Page size" value={pageSize} options={PAGE_SIZE_OPTIONS} onChange={setPageSize} />
+          </LabeledChoice>
+          <p className="tw:m-0 tw:text-small tw:text-muted-foreground">
+            Wide pages lie on their side, with room for mind maps and diagrams.
+          </p>
+        </>
+      )}
     </Dialog>
   );
 }

@@ -212,6 +212,7 @@ pub(crate) const STUDY_GUIDE_TABLES: &[&str] = &[
 pub(crate) const NOTE_TABLES: &[&str] = &[
     "notebooks",
     "notebook_pages",
+    "notebook_boards",
     "notebook_items",
     "notebook_pictures",
     "notebook_item_assets",
@@ -549,6 +550,7 @@ pub(crate) fn sanitize_snapshot(
                 "CREATE TEMP TABLE sync_notebook_assets AS SELECT asset_id FROM notebook_item_assets;
                  DELETE FROM notebook_item_assets;
                  DELETE FROM notebook_items;
+                 DELETE FROM notebook_boards;
                  DELETE FROM notebook_pages;
                  DELETE FROM notebooks;
                  DELETE FROM assets WHERE id IN (SELECT asset_id FROM sync_notebook_assets)
@@ -914,6 +916,7 @@ mod tests {
                  VALUES ('{n}', NULL, 'Cardiac cycle', 'grid', 'letter', 1, 1, 1);
                  INSERT INTO notebook_pages(id, notebook_id, position, paper, width, height, created_at)
                  VALUES ('{p}', '{n}', 1, 'grid', 612, 792, 1);
+                 INSERT INTO notebook_boards(page_id, created_at) VALUES ('{p}', 1);
                  INSERT INTO notebook_items(id, page_id, kind, payload_json, revision, created_at, updated_at)
                  VALUES ('{i}', '{p}', 'line', '{{\"x1\":1,\"y1\":1,\"x2\":9,\"y2\":9,\"color\":\"#111111\",\"strokeWidth\":2}}', 1, 1, 1);
                  INSERT INTO notebook_items(id, page_id, kind, payload_json, revision, created_at, updated_at)
@@ -932,10 +935,11 @@ mod tests {
     fn notebooks_travel_with_notes_even_without_flashcards() {
         let count = "SELECT (SELECT COUNT(*) FROM notebooks)
                           + (SELECT COUNT(*) FROM notebook_pages)
+                          + (SELECT COUNT(*) FROM notebook_boards)
                           + (SELECT COUNT(*) FROM notebook_items)
                           + (SELECT COUNT(*) FROM notebook_item_assets)
                           + (SELECT COUNT(*) FROM assets)";
-        assert_eq!(left_after(SyncSelection::default(), seed_notebook, count), 6);
+        assert_eq!(left_after(SyncSelection::default(), seed_notebook, count), 7);
         let notes_only = SyncSelection {
             flashcards: false,
             documents: false,
@@ -947,7 +951,7 @@ mod tests {
         };
         assert!(notes_only.validate().is_ok());
         // The picture is kept though card images are not.
-        assert_eq!(left_after(notes_only, seed_notebook, count), 6);
+        assert_eq!(left_after(notes_only, seed_notebook, count), 7);
         let without_notes = without(|selection| selection.notes = false);
         assert_eq!(left_after(without_notes, seed_notebook, count), 0);
         for table in NOTE_TABLES {

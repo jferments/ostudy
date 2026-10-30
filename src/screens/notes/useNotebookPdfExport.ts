@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import type { ShowToast } from "../../components/Toast";
 import { getErrorMessage } from "../../ipc/common";
 import { publishPreparedExport, releasePreparedExport } from "../../ipc/externalFiles";
-import { prepareNotebookPdf } from "../../ipc/notebooks";
+import { prepareNotebookPdf, type BoardPrint } from "../../ipc/notebooks";
 
 function count(value: number, noun: string): string {
   return `${value} ${noun}${value === 1 ? "" : "s"}`;
@@ -11,17 +11,17 @@ function count(value: number, noun: string): string {
 
 /**
  * Saving a notebook as a PDF. What is pending is saved first, so the file
- * holds everything on screen.
+ * holds everything on screen. Boards go in as `boards` says.
  */
 export function useNotebookPdfExport(
   notebookId: string,
   flush: () => Promise<boolean>,
   showToast: ShowToast,
-): { exporting: boolean; exportPdf: () => Promise<void> } {
+): { exporting: boolean; exportPdf: (boards?: BoardPrint) => Promise<void> } {
   const [exporting, setExporting] = useState(false);
   const running = useRef(false);
 
-  const exportPdf = useCallback(async () => {
+  const exportPdf = useCallback(async (boards?: BoardPrint) => {
     if (running.current) return;
     running.current = true;
     setExporting(true);
@@ -31,7 +31,7 @@ export function useNotebookPdfExport(
         showToast("error", "Some notes are not saved yet, so the PDF would leave them out. Try again once they are saved.");
         return;
       }
-      const prepared = await prepareNotebookPdf(notebookId);
+      const prepared = boards ? await prepareNotebookPdf(notebookId, undefined, boards) : await prepareNotebookPdf(notebookId);
       preparedExportId = prepared.preparedExport.id;
       const receipt = await publishPreparedExport(preparedExportId);
       if (receipt) {

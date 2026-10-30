@@ -58,6 +58,7 @@ fn new_notebook(connection: &mut Connection, title: &str) -> NotebookContentsDto
             subject_id: Some(SUBJECT.into()),
             paper: Paper::Grid,
             page_size: PageSize::Wide,
+            layout: PageLayout::Page,
         },
         NOW,
     )
@@ -136,6 +137,7 @@ fn a_new_notebook_has_one_page_of_its_paper_and_size() {
                         subject_id: None,
                         paper: Paper::Blank,
                         page_size: PageSize::Letter,
+                        layout: PageLayout::Page,
                     },
                     NOW,
                 )
@@ -148,6 +150,7 @@ fn a_new_notebook_has_one_page_of_its_paper_and_size() {
                     subject_id: Some(id('9')),
                     paper: Paper::Blank,
                     page_size: PageSize::Letter,
+                    layout: PageLayout::Page,
                 },
                 NOW,
             )
@@ -399,6 +402,7 @@ fn pages_are_added_moved_and_deleted_in_order() {
                         position,
                         paper: Some(Paper::Lined),
                         page_size: None,
+                        layout: PageLayout::Page,
                     },
                     NOW,
                 )
@@ -684,6 +688,7 @@ fn a_notebook_is_saved_as_a_pdf_with_its_pictures() {
                     position: 2,
                     paper: Some(Paper::Dots),
                     page_size: Some(PageSize::Wide),
+                    layout: PageLayout::Page,
                 },
                 NOW + 20,
             )?;
@@ -702,7 +707,12 @@ fn a_notebook_is_saved_as_a_pdf_with_its_pictures() {
                 .unwrap();
             std::fs::write(&files[0].1, png).map_err(CommandError::io)?;
             assert_eq!(
-                save_pdf::write_notebook(&opened, &files, &destination)?,
+                save_pdf::write_notebook(
+                    &opened,
+                    &files,
+                    &destination,
+                    save_pdf::BoardPrint::OnePage
+                )?,
                 (2, 0)
             );
             let bytes = std::fs::read(&destination).map_err(CommandError::io)?;
@@ -719,7 +729,12 @@ fn a_notebook_is_saved_as_a_pdf_with_its_pictures() {
             // A picture whose image cannot be read is left out, and counted.
             std::fs::remove_file(&files[0].1).map_err(CommandError::io)?;
             assert_eq!(
-                save_pdf::write_notebook(&opened, &files, &destination)?,
+                save_pdf::write_notebook(
+                    &opened,
+                    &files,
+                    &destination,
+                    save_pdf::BoardPrint::OnePage
+                )?,
                 (2, 1)
             );
             Ok(())
@@ -912,5 +927,169 @@ fn a_drawn_clip_is_staged_in_the_notebooks_image_draft() {
         "x.png"
     )
     .is_err());
+    let _ = std::fs::remove_dir_all(paths.app_data_dir());
+}
+
+fn ink(item: &str, page: &str, points: &[(f64, f64)]) -> NotebookItemChange {
+    let flat: Vec<f64> = points.iter().flat_map(|(x, y)| [*x, *y, 0.5]).collect();
+    change(json!({
+        "op": "put", "id": item, "pageId": page,
+        "shape": {
+            "kind": "ink", "points": flat, "color": "#1f2328",
+            "strokeWidth": 2, "simulatePressure": true
+        }
+    }))
+}
+
+fn new_board(connection: &mut Connection) -> NotebookContentsDto {
+    create(
+        connection,
+        CreateNotebookInput {
+            title: "Cardiac cycle map".into(),
+            subject_id: None,
+            paper: Paper::Dots,
+            page_size: PageSize::Letter,
+            layout: PageLayout::Board,
+        },
+        NOW,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_board_is_a_page_of_the_largest_size_that_goes_with_its_page() {
+    let database = library();
+    database
+        .with_connection(|connection| {
+            let notebook = new_board(connection);
+            let board = &notebook.pages[0];
+            assert_eq!(board.layout, PageLayout::Board);
+            assert_eq!((board.width, board.height), (BOARD_SIZE, BOARD_SIZE));
+            // Later pages are pages of the notebook's size unless asked otherwise.
+            let added = add_page(
+                connection,
+                AddNotebookPageInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    position: 2,
+                    paper: None,
+                    page_size: None,
+                    layout: PageLayout::Page,
+                },
+                NOW + 1,
+            )?;
+            assert_eq!(added.pages[1].layout, PageLayout::Page);
+            assert_eq!(
+                (added.pages[1].width, added.pages[1].height),
+                (612.0, 792.0)
+            );
+            let added = add_page(
+                connection,
+                AddNotebookPageInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    position: 1,
+                    paper: Some(Paper::Grid),
+                    page_size: None,
+                    layout: PageLayout::Board,
+                },
+                NOW + 2,
+            )?;
+            let layouts: Vec<PageLayout> = added.pages.iter().map(|page| page.layout).collect();
+            assert_eq!(
+                layouts,
+                [PageLayout::Board, PageLayout::Board, PageLayout::Page]
+            );
+            assert_eq!(added.pages[0].paper, Paper::Grid);
+
+            // A board far from its corner keeps its marks like any page.
+            let first = added.pages[0].id.clone();
+            apply(
+                connection,
+                &notebook.notebook.id,
+                vec![ink(&id('1'), &first, &[(7000.0, 7000.0), (7400.0, 7300.0)])],
+            )?;
+            delete_page(
+                connection,
+                NotebookPageInput {
+                    notebook_id: notebook.notebook.id.clone(),
+                    page_id: first,
+                },
+                NOW + 3,
+            )?;
+            let boards: i64 = connection
+                .query_row("SELECT COUNT(*) FROM notebook_boards", [], |row| row.get(0))
+                .map_err(CommandError::database)?;
+            assert_eq!(boards, 1);
+            let listed = list(connection)?;
+            // The list counts pages of paper and boards apart.
+            assert_eq!((listed[0].page_count, listed[0].board_count), (1, 1));
+            assert_eq!(
+                listed[0].first_page.as_ref().unwrap().layout,
+                PageLayout::Board
+            );
+            Ok(())
+        })
+        .unwrap();
+}
+
+#[test]
+fn a_board_is_saved_cut_to_its_marks_whole_or_in_printable_pieces() {
+    let database = library();
+    let paths = test_paths();
+    let destination = paths.app_data_dir().join("board-test.pdf");
+    database
+        .with_connection(|connection| {
+            let notebook = new_board(connection);
+            let board = notebook.pages[0].id.clone();
+            // An empty board saves as one blank page.
+            let opened = contents(connection, &notebook.notebook.id)?;
+            assert_eq!(
+                save_pdf::write_notebook(
+                    &opened,
+                    &[],
+                    &destination,
+                    save_pdf::BoardPrint::OnePage
+                )?,
+                (1, 0)
+            );
+            // Marks reaching about 1000 by 700 points: one page of that size
+            // and a margin, or two Letter pages side by side.
+            apply(
+                connection,
+                &notebook.notebook.id,
+                vec![
+                    ink(&id('1'), &board, &[(6000.0, 7000.0), (6500.0, 7300.0)]),
+                    ink(&id('2'), &board, &[(6900.0, 6700.0), (7000.0, 7400.0)]),
+                ],
+            )?;
+            let opened = contents(connection, &notebook.notebook.id)?;
+            assert_eq!(
+                save_pdf::write_notebook(
+                    &opened,
+                    &[],
+                    &destination,
+                    save_pdf::BoardPrint::OnePage
+                )?,
+                (1, 0)
+            );
+            let bytes = std::fs::read(&destination).map_err(CommandError::io)?;
+            let reader =
+                oxidize_pdf::parser::PdfReader::new(std::io::Cursor::new(bytes.as_slice()))
+                    .unwrap();
+            let document = oxidize_pdf::parser::PdfDocument::new(reader);
+            let page = document.get_page(0).unwrap();
+            assert!((page.width() - 1074.0).abs() < 0.5, "{}", page.width());
+            assert!((page.height() - 774.0).abs() < 0.5, "{}", page.height());
+            assert_eq!(
+                save_pdf::write_notebook(
+                    &opened,
+                    &[],
+                    &destination,
+                    save_pdf::BoardPrint::Split(PageSize::Letter)
+                )?,
+                (2, 0)
+            );
+            Ok(())
+        })
+        .unwrap();
     let _ = std::fs::remove_dir_all(paths.app_data_dir());
 }

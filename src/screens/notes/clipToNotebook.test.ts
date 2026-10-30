@@ -22,7 +22,7 @@ const region: notebooksIpc.DocumentClipRegion = {
 };
 
 function page(seed: string, position: number): notebooksIpc.NotebookPage {
-  return { id: seed.repeat(32), position, paper: "blank", width: 612, height: 792 };
+  return { id: seed.repeat(32), position, paper: "blank", width: 612, height: 792, layout: "page" };
 }
 
 function contents(pages: notebooksIpc.NotebookPage[], items: notebooksIpc.NotebookItem[] = []): notebooksIpc.NotebookContents {

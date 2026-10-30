@@ -180,6 +180,7 @@ pub(crate) const SYNC_TABLES: &[TableSpec] = &[
     // Notebooks.
     TableSpec::new("notebooks", &["id"]),
     TableSpec::new("notebook_pages", &["id"]),
+    TableSpec::new("notebook_boards", &["page_id"]),
     TableSpec::new("notebook_items", &["id"]),
     TableSpec::assets(
         "notebook_pictures",
@@ -826,6 +827,7 @@ const PARENTS: &[(&str, &[&str], &str, OnParentDeleted)] = &[
     ("guide_ink", &["document_id"], "documents", OnParentDeleted::Delete),
     ("notebooks", &["subject_id"], "document_collections", OnParentDeleted::Forget),
     ("notebook_pages", &["notebook_id"], "notebooks", OnParentDeleted::Delete),
+    ("notebook_boards", &["page_id"], "notebook_pages", OnParentDeleted::Delete),
     ("notebook_items", &["page_id"], "notebook_pages", OnParentDeleted::Delete),
     ("notebook_item_assets", &["item_id"], "notebook_items", OnParentDeleted::Delete),
     ("lessons", &["subject_id"], "document_collections", OnParentDeleted::Delete),

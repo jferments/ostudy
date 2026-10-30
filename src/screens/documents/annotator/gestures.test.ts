@@ -353,6 +353,21 @@ describe("fingers, pens and palms", () => {
     expect(gestures.up(at(3, "mouse", 150, 150), surface, ctx)).toEqual([]);
   });
 
+  it("drags the view with the Hand tool, on a page or beside it, and flings it, drawing nothing", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "hand" });
+    expect(gestures.down(at(1, "mouse", 100, 100, { time: 0 }), surface, ctx)).toEqual([]);
+    expect(gestures.move(at(1, "mouse", 80, 70, { time: 16 }), surface, ctx)).toEqual([{ kind: "scroll-by", dx: 20, dy: 30 }]);
+    gestures.move(at(1, "mouse", 40, 70, { time: 32 }), surface, ctx);
+    const effects = gestures.up(at(1, "mouse", 40, 70, { time: 40 }), surface, ctx);
+    expect(effects).toEqual([{ kind: "fling", velocityX: 60 / 32, velocityY: 30 / 32 }]);
+    expect(created(effects)).toEqual([]);
+
+    gestures.down(at(2, "touch", 700, 100), surface, ctx);
+    expect(gestures.move(at(2, "touch", 690, 110), surface, ctx)).toEqual([{ kind: "scroll-by", dx: 10, dy: -10 }]);
+    expect(only(gestures.up(at(2, "touch", 690, 110), surface, ctx), "create")).toEqual([]);
+  });
+
   it("commits nothing when the browser cancels the pointer or the tool changes", () => {
     const gestures = new AnnotatorGestures();
     const ctx = context();
