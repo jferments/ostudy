@@ -23,7 +23,25 @@ const PDF_FONT_FILES: &[&str] = &[
 fn main() {
     require_lf_migrations();
     embed_pdf_fonts();
+    remove_stale_pdfium_file();
     tauri_build::build();
+}
+
+/// Earlier Windows builds copied pdfium.dll to a file named `native/pdfium`
+/// next to the executable. Copying resources now needs that path to be a
+/// directory, and fails with "File exists" while the old file remains.
+fn remove_stale_pdfium_file() {
+    let Some(out_dir) = env::var_os("OUT_DIR") else {
+        return;
+    };
+    // OUT_DIR is <profile>/build/<package>-<hash>/out.
+    let Some(profile_dir) = PathBuf::from(out_dir).ancestors().nth(3).map(PathBuf::from) else {
+        return;
+    };
+    let stale = profile_dir.join("native").join("pdfium");
+    if stale.is_file() {
+        fs::remove_file(&stale).expect("remove the stale native/pdfium file from an earlier build");
+    }
 }
 
 /// The release migrations are compiled in and checked by SHA-256 at startup,

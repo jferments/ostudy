@@ -5,14 +5,17 @@
 # It prints the report and saves it to %TEMP%\ostudy-startup-report.txt.
 # It closes running ostudy processes and moves the library aside (renamed,
 # never deleted) so the app starts on an empty library. -KeepLibrary starts
-# on the existing library instead.
+# on the existing library instead. -Exe starts that executable instead of the
+# first one found among the build and install locations.
 
 param(
+    [string]$Exe = "",
     [switch]$KeepLibrary,
     [int]$WaitSeconds = 25
 )
 
 $ErrorActionPreference = "Continue"
+$Verdict = $null
 $RootDir = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Report = Join-Path $env:TEMP "ostudy-startup-report.txt"
 $Lines = New-Object System.Collections.Generic.List[string]
@@ -76,6 +79,7 @@ $candidates = @(
     (Join-Path $env:ProgramFiles "ostudy\ostudy.exe")
 )
 $built = $null
+if ($Exe) { $candidates = @($Exe) + $candidates | Select-Object -Unique }
 foreach ($exe in $candidates) {
     if (-not (Test-Path $exe)) { Say "  $exe : not present"; continue }
     if ($null -eq $built) { $built = $exe }
@@ -133,9 +137,11 @@ if ($null -eq $built) {
     Say "  Running $built for up to $WaitSeconds s (click OK on any error dialog)"
     $process = Start-Process $built -PassThru -RedirectStandardError $stderr -RedirectStandardOutput $stdout
     if (-not $process.WaitForExit($WaitSeconds * 1000)) {
+        $Verdict = "STARTED: ostudy was still running after $WaitSeconds s."
         Say "  Still running after $WaitSeconds s: it started. Closing it."
         $process | Stop-Process -Force
     } else {
+        $Verdict = "FAILED: ostudy exited with code $($process.ExitCode); see stderr above."
         Say "  Exited with code $($process.ExitCode)"
     }
     Remove-Item Env:\OSTUDY_LOG -ErrorAction SilentlyContinue
@@ -151,6 +157,8 @@ if (Test-Path $log) {
     Say "  No log at $log"
 }
 
+Say ""
+if ($Verdict) { Say "Result: $Verdict" }
 $Lines | Set-Content -Encoding UTF8 $Report
 Say ""
 Say "Report saved to $Report"
