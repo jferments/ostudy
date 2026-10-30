@@ -2,15 +2,20 @@
 
 The annotator lets you write, highlight, draw arrows and boxes, and type notes on the pages of a PDF in your library. The PDF itself is never changed: annotations are saved in your library as you work, page by page, and drawn over the page images made when the PDF was imported.
 
+<p align="center">
+  <img src="../../assets/screenshots/annotate-desktop.webp" alt="A PDF page with handwriting, a sticky note, a dashed box, an arrow and a circled point, with Save PDF and Study marked cards in the header" width="72%">
+  <img src="../../assets/screenshots/annotate-phone.webp" alt="The annotator on a phone" width="24%">
+</p>
+
 ## Open a document
 
-Open **Library → Documents** and choose **Annotate** from a PDF's **…** menu. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
+Open a subject's **Documents** tab and choose **Annotate** from a PDF's **…** menu. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.
 
 The pages scroll in one column. **Back to documents** returns to the list, and so do Escape (when nothing is selected) and Android Back. The header shows **Saving…** and **Saved** as you work. If a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
 
 ### From a card's source
 
-A card made from a PDF names its source pages. In the card editor its **Source** panel has **Open page N**, and in Review the bar above the card shows **Source, page N** once the answer is showing (on a phone it is in **Card actions**). Either opens the PDF over the card at that page, outlined for a moment, with every annotation tool, so you can mark the passage while you read it again. A card you made from a mark opens at that mark instead, with the mark selected; if you have since erased the mark, it opens at the mark's page. Closing saves your marks and returns to the card; in Review the time spent reading is not counted as the card's answer time.
+A card made from a PDF names its source pages. In the card editor its **Source** panel has **Open page N**, and in practice the bar above the card shows **Source, page N** once the answer is showing (on a phone it is in **Card actions**). Either opens the PDF over the card at that page, outlined for a moment, with every annotation tool, so you can mark the passage while you read it again. A card you made from a mark opens at that mark instead, with the mark selected; if you have since erased the mark, it opens at the mark's page. Closing saves your marks and returns to the card; in practice the time spent reading is not counted as the card's answer time.
 
 A source opens only while its PDF is in your library. Once the document is deleted, or for cards from a shared deck (`.studydeck` files never carry the document or its citations), the source stays plain text.
 
@@ -80,7 +85,7 @@ Keyboard shortcuts need a hardware keyboard. Handwriting is stored as ink, not a
 
 ## Clips
 
-A clip is a picture of part of a PDF page, made with **Clip to notes**, that lives in a notebook. It remembers the page it came from: in the notebook, selecting it shows **From Lecture 7 · p. 4**, which opens that page (beside the notes, when a document is open there). The page in turn shows **In your notes: Cardiac cycle map** at its top corner, once for each notebook it was clipped into; choosing it saves your annotations and opens that notebook at the clip. After a clip, **Open notebook** in the message that confirms it goes there too. The clip is drawn at up to three pixels per point (216 dpi), and at most 1024 pixels on its longer side; it is an ordinary picture you can move, resize and delete, and deleting it removes the page's mention. If the document is deleted, the clip stays and its button says the document was removed. Clip to notes is offered in **Library → Documents**' annotator; a document open beside a notebook does not offer it yet.
+A clip is a picture of part of a PDF page, made with **Clip to notes**, that lives in a notebook. It remembers the page it came from: in the notebook, selecting it shows **From Lecture 7 · p. 4**, which opens that page (beside the notes, when a document is open there). The page in turn shows **In your notes: Cardiac cycle map** at its top corner, once for each notebook it was clipped into; choosing it saves your annotations and opens that notebook at the clip. After a clip, **Open notebook** in the message that confirms it goes there too. The clip is drawn at up to three pixels per point (216 dpi), and at most 1024 pixels on its longer side; it is an ordinary picture you can move, resize and delete, and deleting it removes the page's mention. If the document is deleted, the clip stays and its button says the document was removed. Clip to notes is offered in the annotator opened from a subject's **Documents** tab; a document open beside a notebook does not offer it yet.
 
 ## Keyboard and screen readers
 

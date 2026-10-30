@@ -1,6 +1,10 @@
 # Documents and AI-generated learning material
 
-Library's **Documents** page keeps a local copy of each source you add and turns it into flashcards and study guides. Both are made from the same saved reading of the source and can be made independently. Generated cards are ordinary editable cards; a generated guide keeps its text separate from your own notes and edits.
+A subject's **Documents** tab keeps a local copy of each source you add and turns it into flashcards and study guides. Both are made from the same saved reading of the source and can be made independently. Generated cards are ordinary editable cards; a generated guide keeps its text separate from your own notes and edits.
+
+<p align="center">
+  <img src="../../assets/screenshots/documents-desktop.webp" alt="A subject's Documents tab: Search documents, Make study materials and Upload, and a document row with Open and its menu" width="860">
+</p>
 
 ## Before you begin
 
@@ -46,7 +50,7 @@ You can keep adding images while processing runs. They wait for the current step
 
 ### Where the results go
 
-Generated cards appear in **Library → Flashcards**, in the document's own deck, and generated guides in **Library → Study guides**. There is no approval queue for generated cards; everything the model returns must pass ostudy's own checks before it becomes study content. A remade study guide replaces the old one only when the whole new guide is ready, so a failed remake keeps the last guide.
+Generated cards appear on the subject's **Flashcards** tab, in the document's own deck, and generated guides on its **Study guides** tab. There is no approval queue for generated cards; everything the model returns must pass ostudy's own checks before it becomes study content. A remade study guide replaces the old one only when the whole new guide is ready, so a failed remake keeps the last guide.
 
 ### Generated card formats
 
@@ -81,7 +85,7 @@ A subject's own study materials are made from its documents together. Nothing is
 - **Make**: **Study guide**, **Flashcards** and **Lessons**. Everything not yet made is ticked to start.
 - **Cards go into** and **Instructions (optional)**: these appear when **Flashcards** will write cards for a ticked document that has none yet. Its new cards go into the chosen deck of the subject, or into a new deck of its own, and the instructions guide what they cover. A document's later **Make more cards…** adds to the same deck.
 
-**Make** first writes those documents' cards, then writes the guide and the lessons side by side, with one **Stop** for both. Lessons appear in the subject's **Lessons** tab. A lesson's lecture opens at 80% zoom, with **Smaller slide** and **Larger slide** beside it. **Autoplay** goes on to the next slide when the teacher finishes one; turn it off to stay on each slide until you choose **Next**. What the teacher says is hidden until you turn on **Closed captions**. All three are remembered on the device; a subject's lessons are written once, so the sheet shows them as **Made** afterwards. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
+**Make** first writes those documents' cards, then writes the guide and the lessons side by side, with one **Stop** for both. Lessons appear in the subject's **Lessons** tab ([Lessons and podcasts](lessons-and-podcasts.md)); a subject's lessons are written once, so the sheet shows them as **Made** afterwards. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
 
 Making a subject's materials does not read or OCR an already-processed document again. The subject guide is written from what ostudy already extracted from each document, organized across documents, and each fact still points back to its own source.
 
@@ -100,6 +104,10 @@ The format is detected from the file's contents. The older Word, PowerPoint and 
 For a PDF imported with its images on, oStudy looks for its figures once the pages are read, beside card and guide writing, without contacting a provider. A figure is a picture or a drawing big enough to study. Logos and other marks that repeat in the same place on several pages, pictures in the header or footer band, ruled tables and boxed paragraphs are left out, and so is a page that is one scanned picture.
 
 **Figures** in a document's menu shows each figure drawn from the PDF, with its label and page ("Figure 3.2 · Page 14"), its caption, and the pages that explain it: passages anywhere in the document that name its label, quoted, and, for a figure that fills most of its page or a page with little other text, the pages on either side. **Show captions in the picture** draws each figure with or without its caption. **Hide** moves a figure that is not worth studying into **Hidden**; **Show** brings it back. Searching again keeps a hidden figure hidden while it is found in the same place.
+
+<p align="center">
+  <img src="../../assets/screenshots/figures-desktop.webp" alt="A document's Figures page: a pressure-volume loop figure with its label, page, title, description and importance" width="860">
+</p>
 
 When your AI model can see images, oStudy also reads each figure on its page, beside card and guide writing: a short title, what the figure shows, how the text uses it, and how much it matters (**Essential**, **Key figure**, **Helpful** or **Minor**). It also marks a figure that is not worth studying, such as a decorative photo. **Read figures with AI** in the page's **…** menu reads them for a document imported earlier, and **Read figures again** reads them anew. A model that cannot see images leaves figures with their captions and passages, and the page says so. Searching again keeps what was read of a figure found in the same place.
 

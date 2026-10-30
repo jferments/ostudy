@@ -2,62 +2,140 @@
 
 ![ostudy](assets/images/github_banner.png)
 
-**ostudy is a free, open-source, local-first study app.** Create flashcards, practice with spaced repetition, turn source documents into study material, and understand your progress without handing your library to a subscription platform.
+**ostudy is a free, open-source study app that keeps your library on your own device.** Write and review flashcards with spaced repetition, read and mark up your course documents, take handwritten notes and draw mind maps, and follow your progress, all without an account. When you want more, connect an AI service of your choice and ostudy turns your documents into flashcards, study guides, narrated lessons and podcasts, and gives you a tutor that knows your material.
 
-Your cards, documents, schedules, and review history live on your device. Ordinary studying works offline and does not require an account or an AI provider. Optional AI authoring connects to a model server you control or a supported cloud API that you choose explicitly. There is no silent switch from local processing to a cloud model.
+[**Download ostudy 0.1.0 for Linux**](https://ostudy.io/install/) · [Release notes and files](https://github.com/jferments/ostudy/releases/tag/v0.1.0) · [Build for Android](docs/installation/android.md) · [Documentation](docs/README.md)
 
-## Study your way
+<p align="center">
+  <img src="assets/screenshots/home-desktop.webp" alt="ostudy's Home: the question of the day, 27 cards due today with Start review, your subjects with how much of each you remember, and the lesson to pick up" width="860">
+</p>
 
-**Create and organize.** Write formatted Basic, Reverse, and Fill in the blank cards, use reusable templates, group decks and documents into subjects, and search or filter your library. Add cards individually or in bulk, apply tags, and move or copy material between decks.
+## What you can do with it
 
-**Practice and remember.** Start a session from your decks or another learning context. Reveal an answer and rate it Wrong, Hard, Medium, or Easy. Spaced repetition, interval previews, daily limits, and scheduling controls help you decide what to study next. Progress shows your activity, review outcomes, workload, and areas that need attention.
+### Flashcards that schedule themselves
 
-**Learn from documents.** Keep source documents in a managed local library, mark up PDF pages with ink, highlights, shapes and notes, generate flashcards and source-linked study guides, and return to retained material for further learning. Generated content remains editable study material, not an unquestionable answer: check it against the source, especially for consequential subjects.
+Write Basic, Reverse and Fill in the blank cards, or questions that ostudy checks for you: single best answer, select all that apply, true or false, matching, grouping, ordering and image occlusion. Cards hold formatted text, formulas, chemistry, images, audio and video. Practice rates each answer **Wrong**, **Hard**, **Medium** or **Easy**, shows the interval each rating would give, and schedules the card with [FSRS](https://github.com/open-spaced-repetition). Home shows what is due today and starts the review in one click.
 
-**Keep control of your data.** Share individual decks without sharing personal review history, import compatible **Anki `.apkg` decks** and structured generated-card files, make whole-library backups, and explicitly synchronize study data between trusted devices. Sharing a deck, converting an Anki deck, restoring a backup, and synchronizing devices are different operations with different privacy and recovery implications.
+<p align="center">
+  <img src="assets/screenshots/practice-image-desktop.webp" alt="A practice session checking a single-best-answer question about a labelled diagram of the eye, with the four ratings and their intervals" width="49%">
+  <img src="assets/screenshots/card-editor-desktop.webp" alt="The Library Workbench with a subject's decks, its cards and the card editor" width="49%">
+</p>
 
-**Choose a comfortable interface.** Home shows what is due today, lessons to pick up and your week at a glance across your subjects. Library brings together your decks (with Search/Filter), documents, and study guides; Tutor and Progress have their own destinations; card templates live in Settings. Themes, text sizing, optional guidance, and optional visual feedback let you adapt the interface without changing how your study data works.
+### Your courses, organized by subject
 
-## Optional AI, without a study-app subscription
+Library has a tile for every subject. A subject keeps one course together: its documents, flashcard decks, study guides, lessons and podcasts, each on its own tab. **New study set** starts a subject from your documents, from a short description of what you want to learn, or both, and makes the materials you tick.
 
-Current provider adapters support **llama.cpp / Unsloth GGUF servers**, **DeepSeek**, **OpenRouter**, and **Claude**. A local server may run on this computer or another trusted computer on your network. ostudy connects to an existing server; it does not install or host the model itself.
+<p align="center">
+  <img src="assets/screenshots/library-desktop.webp" alt="Library's page: a tile for each subject with a figure from its documents, what it holds and its due count, then No subject and New study set" width="860">
+</p>
 
-When you use a paid API, billing is between you and that provider. Cost and capability depend on the chosen model and workload. Provider credentials are handled separately from ordinary library content and are excluded from shared decks and library backups. Credential transfer during trusted-device synchronization requires explicit sender consent.
+### Read, annotate and learn from documents
 
-Dedicated Ollama, OpenAI, and Gemini adapters remain planned. A model available through OpenRouter is not the same as a dedicated integration with its original provider. See [AI providers](docs/user-guide/ai-providers.md) for configuration and current limitations.
+Add PDFs, Word and PowerPoint files, OpenDocument, EPUB, RTF, spreadsheets, CSV, or a set of screenshots and photos. ostudy keeps a copy and reads it on your device, with OCR for scanned pages. Write on PDF pages with a pen, highlighter, shapes, text and sticky notes, then make flashcards from what you marked and practice exactly those cards. Save a copy of the PDF with your marks drawn in.
 
-## Availability
+<p align="center">
+  <img src="assets/screenshots/annotate-desktop.webp" alt="A PDF page annotated with handwriting, a sticky note, a dashed box and an arrow" width="860">
+</p>
 
-ostudy is under active development. **Linux and Android are the maintained build-and-test paths.** Linux has desktop build/release tooling; Android has source-build, debug-install, and emulator-test tooling. These statements do not promise a public signed installer or app-store release for every platform.
+### Notes, boards and mind maps
 
-Windows and macOS need regular platform qualification and release packaging. iOS remains planned. See the [installation overview](docs/installation/README.md), [Linux guide](docs/installation/linux.md), and [Android guide](docs/installation/android.md) before choosing a build path.
+**Notes** holds notebooks you write and draw in with the same tools: lined, grid or dotted pages, pictures, clips from your PDFs, and links that open a document page, a study guide, a deck or another note. Boards give you an endless canvas, and the mind map tool builds a tidy map as you type (boards and mind maps arrive in the release after 0.1.0). A notebook saves as an ordinary PDF.
 
-## Build and run on Ubuntu or Debian
+<p align="center">
+  <img src="assets/screenshots/notebook-desktop.webp" alt="A notebook page with typed bullet points, a highlighted line, formulas in a dashed box and a labelled heart diagram" width="49%">
+  <img src="assets/screenshots/mindmap-desktop.webp" alt="A mind map of the cardiac cycle on a dotted board, with handwritten notes beside it" width="49%">
+</p>
 
-From an authenticated checkout of this repository, run the first-time setup from the repository root:
+### With AI: study guides, lessons, podcasts and a tutor
+
+With an AI service connected, ostudy can make from your documents:
+
+- **Flashcards** sized to the key ideas on each page, in the card formats you allow.
+- **Study guides** laid out as designed pages: key points with boxes and tables beside the text, the document's own figures, one Sources line per section, a one-page cram sheet, and PDF export. You can write on them like any page.
+- **Lessons**, shown as lecture slides that a teacher talks through aloud, stopping now and then to ask you a question. Slides can be saved as a PowerPoint deck.
+- **Podcasts**, where two hosts talk through a subject's lessons.
+
+**Tutor** is a chat that answers from the model's knowledge and grounds its answers in your documents, decks and guides when you add them. It can quiz you with question cards, read a picture you paste, show a figure from your documents, read its answers aloud, take your questions by voice (turned into text on your device), and turn an answer into flashcards.
+
+<p align="center">
+  <img src="assets/screenshots/guide-reader-desktop.webp" alt="A study guide page with key points, a numbered process, a key idea box and the source figure beside the text" width="860">
+</p>
+<p align="center">
+  <img src="assets/screenshots/lesson-kidney-desktop.webp" alt="A lesson's lecture: a slide about the kidney with its anatomy figure, the slide strip and Closed captions" width="49%">
+  <img src="assets/screenshots/tutor-image-desktop.webp" alt="A Tutor chat answering a question about a pasted heart diagram, with formulas" width="49%">
+</p>
+
+### Progress you can trust
+
+Progress is calculated from your own review history, not by a model: how much you remembered, study time, streaks, card strength, the tags that need attention, what is coming up, and an activity calendar. A study day starts at 4 a.m. by default, so a late session counts toward the day you started it.
+
+<p align="center">
+  <img src="assets/screenshots/progress-desktop.webp" alt="The Progress page with remembered, study time, days studied and solid cards, and a chart of reviews" width="860">
+</p>
+
+## Your data, your AI, your choice
+
+- **Local first.** Cards, documents, notes, schedules and review history live in a library on your device. Studying works offline, with no account, no telemetry and no AI. Until you set up an AI service, ostudy simply hides the features that need one.
+- **Bring your own AI.** ostudy works with **OpenRouter** (one key covers text, voice, pictures and search), **Claude**, **DeepSeek**, or a **llama.cpp / Unsloth GGUF** server on your own computer or network. A guided setup walks you through the first one. Lessons can be read aloud for free on your device with Kokoro. ostudy never quietly moves a task from a local server to the cloud, and what you pay a provider is between you and them.
+- **Bring your cards.** Import Anki `.apkg` decks, a Quizlet set's exported text, ostudy `.studydeck` files and generated `.ostudy.json` decks. Share a deck without your review history.
+- **Keep it safe.** Back up the whole library to one `.ostudybackup` file and restore it without restarting. Sync chosen parts of your library directly between your own devices over the local network or a USB cable, with no cloud in between.
+- **Comfortable to use.** Light, Dark, Console and Synthwave themes, adjustable fonts and sizes, reduced motion, keyboard shortcuts, and layouts for wide screens and phones.
+
+<p align="center">
+  <img src="assets/screenshots/guides-phone.webp" alt="Study guides on a phone" width="24%">
+  <img src="assets/screenshots/lesson-kidney-phone.webp" alt="A lesson slide on a phone" width="24%">
+  <img src="assets/screenshots/practice-image-phone.webp" alt="Practice on a phone" width="24%">
+  <img src="assets/screenshots/notebook-phone.webp" alt="A notebook on a phone" width="24%">
+</p>
+
+## Install
+
+ostudy 0.1.0 is out for Linux, and it runs on Android from source.
+
+| Platform | How to get it |
+| --- | --- |
+| Linux (x86-64) | `.deb`, `.rpm`, Flatpak, AppImage or a portable folder from [ostudy.io/install](https://ostudy.io/install/) or the [GitHub release](https://github.com/jferments/ostudy/releases/tag/v0.1.0). They are built on Ubuntu 22.04, so they run on it and on newer distributions. |
+| Android 9 or newer (64-bit ARM) | A signed download is on its way. Until then, [build it on Linux and install it over USB](docs/installation/android.md). |
+| Windows, macOS, iOS | Not released yet. Windows and macOS can be built from source for development; see the [installation overview](docs/installation/README.md). |
+
+To build from source on Ubuntu or Debian:
 
 ```bash
-./scripts/setup-ubuntu.sh
-./run-app.sh
+./scripts/setup-ubuntu.sh   # first time: system packages, toolchains and a first build
+./run-app.sh                # start the build
 ```
 
-For an already configured checkout after source changes:
+After changing the source, run `./scripts/build.sh` and then `./run-app.sh` again. A source build is a development copy with its own library, kept apart from the installed app. The [Linux guide](docs/installation/linux.md) covers OCR for scanned PDFs, packages and troubleshooting.
 
-```bash
-./scripts/build.sh
-./run-app.sh
-```
-
-`run-app.sh` launches a current standalone build; it does not rebuild the app. Setup, optional document-processing dependencies, troubleshooting, and platform-specific installation details belong in the [installation guides](docs/installation/README.md). Contributor validation commands belong in [Testing and CI](docs/development/testing-and-ci.md).
+ostudy is young and changing quickly. Back up your library before installing a newer build: a newer build upgrades the library when it first opens it, and an older build cannot open it afterwards.
 
 ## Learn more
 
-Start with [Getting started](docs/user-guide/getting-started.md) or the [documentation index](docs/README.md). The documentation includes [flashcard organization](docs/user-guide/flashcards-organization.md), [practice and scheduling](docs/user-guide/practice-and-analytics.md), [documents and AI generation](docs/user-guide/documents-and-ai-generation.md), [Anki import](docs/reference/anki-import.md), [backups and sharing](docs/user-guide/backups-imports-and-sharing.md), and [trusted-device synchronization](docs/user-guide/device-sync.md).
+New to ostudy? Start with **[Getting started](docs/user-guide/getting-started.md)**. Every guide is listed in the [documentation index](docs/README.md).
 
-For the project's design, read the [architecture overview](docs/architecture/overview.md). The [roadmap](docs/roadmap.md) separates implemented foundations from planned work, including additional study tools and platform support.
+| To learn about | Read |
+| --- | --- |
+| Home, Library, your first subject, deck and practice | [Getting started](docs/user-guide/getting-started.md) |
+| Writing, finding and editing cards in the Workbench | [Library Workbench and authoring](docs/user-guide/flashcards-workspace.md) |
+| Subjects, decks, archiving and deleting | [Subjects and deck organization](docs/user-guide/flashcards-organization.md) |
+| Practice, ratings, scheduling and the Progress page | [Practice, scheduling, and Progress](docs/user-guide/practice-and-analytics.md) |
+| Adding documents, New study set, and what AI makes from them | [Documents and AI generation](docs/user-guide/documents-and-ai-generation.md) |
+| Writing on PDF pages and making cards from your marks | [Annotating PDF pages](docs/user-guide/pdf-annotation.md) |
+| Notebooks, boards and mind maps | [Notes](docs/user-guide/notes.md) |
+| Reading, marking up and exporting study guides | [Study guides](docs/user-guide/study-guides.md) |
+| Lectures, the teacher's questions, voices and podcasts | [Lessons and podcasts](docs/user-guide/lessons-and-podcasts.md) |
+| Chatting with the Tutor, and what it keeps | [Tutor](docs/user-guide/tutor-memory-and-privacy.md) |
+| Setting up an AI service and choosing models | [AI providers](docs/user-guide/ai-providers.md) |
+| Bringing decks from Anki | [Anki import](docs/reference/anki-import.md) |
+| Sharing decks, Quizlet import, backup and restore | [Backups, imports, and sharing](docs/user-guide/backups-imports-and-sharing.md) |
+| Syncing your own devices | [Device synchronization](docs/user-guide/device-sync.md) |
+
+For how ostudy is built, read the [architecture overview](docs/architecture/overview.md). The [roadmap](docs/roadmap.md) says what is being worked on next.
 
 ## Contribute
 
-Bug reports, documentation improvements, tests, and code contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to report a useful issue and prepare a change. Automated maintainers start at [AGENTS.md](AGENTS.md); operational instructions are deliberately kept out of this introduction.
+Bug reports, documentation fixes, tests and code are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to report a useful issue and prepare a change; automated contributors start at [AGENTS.md](AGENTS.md).
 
 ostudy is licensed under the [MIT License](LICENSE).
+
+The diagrams in the screenshots are from Wikimedia Commons: the eye and kidney drawings by BruceBlaus (Blausen Medical), [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), and the heart by Wapcaplet, [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). The study material shown is demonstration data.

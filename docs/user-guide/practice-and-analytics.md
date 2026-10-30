@@ -8,6 +8,10 @@ Home's Today strip shows how many cards are due today and about how long they ta
 
 In the Workbench, a deck's **Practice with options…** or a subject's **Practice…** opens **Practice selected decks**. It lists the chosen decks, offers the decks' tags to narrow the session, and under **Cards** offers **Due** or **Extra**, each with how many cards it would study. **Shuffle** mixes cards with the same priority.
 
+<p align="center">
+  <img src="../../assets/screenshots/practice-setup-desktop.webp" alt="Practice selected decks: the deck, its tags, Due or Extra with counts, Shuffle and Start practice" width="860">
+</p>
+
 **Due** takes the cards due in the chosen decks and tags, within your daily new-card and review limits.
 
 **Extra** is an explicit choice to study cards beyond today's schedule. A deck's one-click **Practice** studies the whole deck this way. It shuffles cards with the same priority while keeping due and learning cards first, and a new session does not start with the same card as the last one when another is available. Extra never includes suspended, buried, or archived cards, and it is not cut short at an arbitrary number of cards: every studyable card in the scope can be part of the session.
@@ -21,6 +25,11 @@ Very large sessions work too: ostudy loads the session's cards a few at a time a
 ## Reveal, check, rate, and continue
 
 Basic and Fill in the blank cards use recall and reveal. Try recalling the answer before revealing it, then choose the rating that reflects what happened:
+
+<p align="center">
+  <img src="../../assets/screenshots/practice-image-desktop.webp" alt="A checked single best answer question with the four ratings and the interval each would give" width="72%">
+  <img src="../../assets/screenshots/practice-image-phone.webp" alt="The same question on a phone" width="24%">
+</p>
 
 | Choice | Meaning in this session | Keyboard |
 | --- | --- | --- |
@@ -53,13 +62,17 @@ The practice top bar names the deck and shows the studied and remaining counts, 
 
 When the last card is rated, **Session complete** shows how many cards you studied and how long it took, how many more are due today, and your study streak. Three tiles show the share you **remembered**, the cards **now solid**, and your **focused time**. If you missed cards, it names the topic most of them share and offers **Practice N** to study just those; otherwise it says you remembered every card. **Done** returns to where you started, **See your progress** opens Progress with this session highlighted, and **Keep going** starts the next cards due today when there are more. If the summary cannot load, your answers are still saved and **Try again** reloads it.
 
+<p align="center">
+  <img src="../../assets/screenshots/session-complete-desktop.webp" alt="Session complete: 80% remembered, 3 cards now solid, focused time, the streak, Practice 1 for the missed card, and Done" width="860">
+</p>
+
 Optional celebration effects do not decide whether reviews were saved. Turning them off or using reduced motion keeps the summary and its buttons.
 
 "Remembered" describes recorded outcomes, not a guarantee of mastery. History and current workload answer different questions: reviewing a card today changes its schedule, but a current due count does not rewrite a past session.
 
 ## Leave or resume a session
 
-**End session** in the top bar stops at once and returns to where you started the session, such as Review, Home, Library (on the deck that was open in the Workbench), or Study guides. On Android, Back does the same. Every rating you already gave stays saved: it updated that card's schedule and counts in Progress even though later cards were never reached. Viewing or revealing a card without rating it does not create a review. If a rating is still being saved, ostudy asks you to finish or retry it first.
+**End session** in the top bar stops at once and returns to where you started the session, such as Home, Library (on the deck that was open in the Workbench), or Study guides. On Android, Back does the same. Every rating you already gave stays saved: it updated that card's schedule and counts in Progress even though later cards were never reached. Viewing or revealing a card without rating it does not create a review. If a rating is still being saved, ostudy asks you to finish or retry it first.
 
 If ostudy closes during a session, reopening it can resume that session. A practice setup screen that never started a session is not restored as active practice. If the deck that launched the session has since been removed, ending the session returns safely to Library.
 
@@ -79,13 +92,18 @@ Set defaults in **Settings → Review**: **Desired retention**, **New cards per 
 
 ### When a new day starts
 
-A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Review count as due today, Progress's days, weeks, months, and streaks, the Workbench's **Due today** filter and due dates, burying, and rescheduling to tomorrow or a later date.
+A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Library count as due today, Progress's days, weeks, months, and streaks, the Workbench's **Due today** filter and due dates, burying, and rescheduling to tomorrow or a later date.
 
 Changing the hour re-groups all of your existing history by the new boundary; nothing stored is changed, so you can switch back at any time. Each review keeps the time-zone offset of the place where you made it, so travelling does not move your earlier reviews to different days.
 
 ## Read Progress
 
 **Progress** shows what you have studied and how well it is sticking. Choose a **Subject** (or **All subjects**), a time range (**7 days**, **30 days**, **90 days**, **Year**, **All time**, or **Custom dates**), and, under **Decks, tags and dates**, particular decks and tags. Chosen filters appear as removable chips with **Clear all**. Dates are study days, which start at the **New day starts at** hour. An empty view means no reviews match, not necessarily that the library is empty. Before anything has been studied, Progress explains what it will show, with a preview of the page after a few weeks, how spaced repetition and FSRS schedule each card, and **Start review**.
+
+<p align="center">
+  <img src="../../assets/screenshots/progress-desktop.webp" alt="The top of Progress: the four tiles and the chart of reviews" width="49%">
+  <img src="../../assets/screenshots/progress-details-desktop.webp" alt="Needs attention, Card strength and By subject further down Progress" width="49%">
+</p>
 
 From top to bottom:
 

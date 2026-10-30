@@ -4,7 +4,11 @@ Subjects are the tiles on Library's page. The [Library Workbench guide](flashcar
 
 ## Subjects hold decks and documents
 
-A subject keeps one course's decks, documents, guides and lessons together. Choosing a subject's tile shows its decks on the **Flashcards** tab and its documents on the **Documents** tab; there is no second grouping inside either tab. A deck or document belongs to at most one subject. Decks and documents that are not filed anywhere appear under **No subject**, whose tile shows only when it holds something. Subject membership does not alter card content, schedules, or review history.
+A subject keeps one course's decks, documents, notebooks, guides, lessons and podcasts together. Choosing a subject's tile shows its decks on the **Flashcards** tab and its documents on the **Documents** tab; there is no second grouping inside either tab. A deck or document belongs to at most one subject. Decks and documents that are not filed anywhere appear under **No subject**, whose tile shows only when it holds something. Subject membership does not alter card content, schedules, or review history.
+
+<p align="center">
+  <img src="../../assets/screenshots/library-desktop.webp" alt="Library's page with a tile for each subject, No subject and the New study set tile" width="860">
+</p>
 
 Choose **New study set +** on Library's page, or on Home, to create a subject. On the Flashcards tab, the first entry lists the cards of all the subject's decks and offers **Practice…** for those decks and **New deck** to start a deck in it; **New deck** also ends the subject's deck list.
 
@@ -12,9 +16,9 @@ When subjects arrived, or when a sync met two choices, some entries may have had
 
 ## Subject actions
 
-The **…** beside the chosen subject's name offers **Rename…**, **Move up**, **Move down**, and **Delete subject…**. Move up and Move down change the subject's place on Library's page and on Home. No subject has no menu.
+The **…** on a subject's tile, or beside its name on its pages, offers **Add materials…** (once an AI service is set up), **Rename…**, **Move up**, **Move down**, and **Delete subject…**. **Add materials…** opens the New study set sheet on that subject; see [New study set](documents-and-ai-generation.md#new-study-set). Move up and Move down change the subject's place on Library's page and on Home. No subject has no menu.
 
-**Delete subject…** asks for confirmation. The subject's decks and documents move to No subject with their cards and schedules; the subject's study guide and lessons are deleted. It never deletes a deck. Use deck deletion only when you intend to remove study material and its associated data.
+**Delete subject…** asks for confirmation. The subject's decks, documents and notebooks move to No subject, the decks with their cards and schedules; the subject's study guide, lessons and podcasts are deleted. It never deletes a deck. Use deck deletion only when you intend to remove study material and its associated data.
 
 ## Deck actions
 
