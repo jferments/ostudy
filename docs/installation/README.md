@@ -112,7 +112,7 @@ Android-affecting work also uses its compile/package and emulator gates. A succe
 
 ## Release artifacts
 
-A tagged release runs the full gate in CI, then the maintainer builds the Linux `.deb`, `.rpm`, AppImage, Flatpak bundle and portable tarball (on Ubuntu 22.04, in a container) with `scripts/release.sh --skip-gate` and drafts a public GitHub release for them; published releases are downloaded from <https://ostudy.io/download/>. The Debian release path verifies that the built package does not own or delete the user XDG learner-data directory; normal package removal is defined to preserve that data. Android workflows can produce unsigned QA APK/AAB artifacts, but the repository does not yet publish a signed public Android release. Windows, macOS, and iOS release artifacts remain future work.
+A tagged release runs the full gate in CI, then the maintainer builds the Linux `.deb`, `.rpm`, AppImage, Flatpak bundle and portable tarball (on Ubuntu 22.04, in a container) with `scripts/release.sh --skip-gate` and drafts a public GitHub release for them; published releases are downloaded from <https://ostudy.io/install/>. The Debian release path verifies that the built package does not own or delete the user XDG learner-data directory; normal package removal is defined to preserve that data. The same command builds the universal Android APK and signs it with the release key, whose certificate fingerprint is committed ([Android: the public APK](android.md#the-public-apk)); CI workflows produce only unsigned QA APK/AAB artifacts. Windows, macOS, and iOS release artifacts remain future work.
 
 ## After installation
 
