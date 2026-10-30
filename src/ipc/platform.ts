@@ -41,6 +41,7 @@ export interface NativeServiceCapabilities {
   localNetwork: ServiceCapability;
   backgroundExecution: ServiceCapability;
   browserSignIn: ServiceCapability;
+  onDeviceSpeech: ServiceCapability;
 }
 
 export interface NativePlatformSnapshot {

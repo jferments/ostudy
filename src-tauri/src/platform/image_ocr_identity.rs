@@ -64,13 +64,15 @@ mod desktop {
         fs::{self, File},
         io::Read,
         path::Path,
-        process::{Command, Stdio},
+        process::Stdio,
         thread,
         time::{Duration, Instant},
     };
 
     use super::*;
-    use crate::pdf_ocr_backend::{tesseract_language, OcrError, TempOcrWorkspace};
+    use crate::pdf_ocr_backend::{
+        tesseract_command, tesseract_language, OcrError, TempOcrWorkspace,
+    };
 
     pub(super) fn fingerprint(
         provider: &PlatformOcrProvider,
@@ -118,7 +120,7 @@ mod desktop {
     ) -> OcrResult<String> {
         let path = directory.join("identity.txt");
         let output = File::create(&path).map_err(|_| unavailable())?;
-        let mut child = Command::new(&provider.executable)
+        let mut child = tesseract_command(&provider.executable)
             .arg(argument)
             .stdout(Stdio::from(output.try_clone().map_err(|_| unavailable())?))
             .stderr(Stdio::from(output))
