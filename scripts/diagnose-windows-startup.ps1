@@ -91,6 +91,9 @@ foreach ($exe in $candidates) {
     Say "  $exe"
     Say "    modified $($item.LastWriteTime.ToString('s')), sha256 $((Sha256 $bytes).Substring(0, 16))"
     Say "    migration 2 compiled in with LF: $lfFound, with CRLF: $crlfFound"
+    # An import of the Visual C++ runtime DLL means PCs without the
+    # Redistributable cannot start this executable.
+    Say "    needs the Visual C++ runtime DLL: $($text.IndexOf('VCRUNTIME140.dll', [StringComparison]::OrdinalIgnoreCase) -ge 0)"
 }
 Say ("  Migration 2 file modified: " + (Get-Item $migration).LastWriteTime.ToString("s"))
 
