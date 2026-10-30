@@ -756,10 +756,13 @@ export function nextFreeColor(annotations: readonly Annotation[]): string {
  */
 export function detachEdits(tree: MapTree, topic: Topic): AnnotationEdit[] {
   if (topic.shape.topic.parent === undefined) return [];
+  // Its branches keep growing away from the old map, rather than back across it.
+  const root = tree.root;
+  const side = root && topic.shape.x + topic.shape.width / 2 < root.shape.x + root.shape.width / 2 ? "left" : "right";
   return subtree(tree, topic.id).map((under) => {
     const next: MapTopic = under.id === topic.id
       ? { map: topic.id, order: 0, free: true, ...(under.shape.topic.folded ? { folded: true } : {}) }
-      : { ...under.shape.topic, map: topic.id };
+      : { ...under.shape.topic, map: topic.id, ...(under.shape.topic.parent === topic.id ? { side } : {}) };
     return { id: under.id, before: under, after: withTopic(under, next) };
   });
 }

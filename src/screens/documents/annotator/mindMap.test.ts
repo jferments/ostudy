@@ -313,6 +313,15 @@ describe("mind maps", () => {
     expect(find(after, "a").shape.topic).toMatchObject({ map: "a", order: 0, free: true });
     expect(find(after, "a").shape.topic.parent).toBeUndefined();
     expect(find(after, "a1").shape.topic).toMatchObject({ map: "a", parent: "a" });
+
+    // A branch on the left keeps its own branches on the left, away from the old map.
+    const withLeft = build([...heart(), topic("c1", "Mitral", { parent: "c", order: 0 })]);
+    const left = find(withLeft, "c");
+    expect(left.shape.x).toBeLessThan(find(withLeft, "root").shape.x);
+    const tree = mapsOn(withLeft.get(1) ?? []).get("root");
+    if (!tree) throw new Error("no map");
+    const detached = applyEdits(withLeft, arrangeMaps(detachEdits(tree, left), withLeft, height, pageSize));
+    expect(find(detached, "c1").shape.x).toBeLessThan(find(detached, "c").shape.x);
     expect(mapsOn(after.get(1) ?? []).get("root")?.children.get("root")?.map((child) => child.id)).toEqual(["b", "c"]);
     expect(detachEdits(before, find(pages, "root"))).toEqual([]);
   });

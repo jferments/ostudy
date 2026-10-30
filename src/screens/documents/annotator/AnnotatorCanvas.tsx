@@ -347,6 +347,8 @@ export function AnnotatorCanvas({
   const contextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const { controller: current } = latest.current;
     if (!onMarkMenu || (event.target instanceof HTMLElement && event.target.closest("textarea, input, [contenteditable]"))) return;
+    // The toolbar above may have changed height since the pages were last measured.
+    rects.current = null;
     const pageNumber = surface.pageAt(event.clientX, event.clientY);
     if (pageNumber === null) return;
     const point = surface.toPage(pageNumber, event.clientX, event.clientY);
