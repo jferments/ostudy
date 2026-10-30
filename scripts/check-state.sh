@@ -67,6 +67,12 @@ ostudy_qualification_scope() {
 
 ostudy_qualification_neutral_path() {
   local path="$1"
+  # Documentation screenshots are only shown on GitHub; the app, its builds
+  # and its tests never read them.
+  if [[ "$path" == assets/screenshots/* && "$path" != assets/screenshots/*/* ]]; then
+    [[ "$path" == *.webp || "$path" == *.png || "$path" == *.jpg ]]
+    return
+  fi
   [[ "$path" == *.md ]] || return 1
   [[ "$path" != */* || "$path" == docs/* ]]
 }

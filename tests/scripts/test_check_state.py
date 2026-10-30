@@ -160,6 +160,36 @@ class WorktreeMutationGuardTests(unittest.TestCase):
             self.assertEqual(full_before, self.fingerprint(repo, fake_bin, "full"))
             self.assertEqual(android_before, self.fingerprint(repo, fake_bin, "android-compile"))
 
+    def test_product_fingerprint_ignores_documentation_screenshots(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            repo = Path(raw_directory) / "repo"
+            fake_bin = Path(raw_directory) / "bin"
+            repo.mkdir()
+            self.initialize_repo(repo)
+            self.prepare_fake_toolchain(fake_bin)
+            shots = repo / "assets" / "screenshots"
+            shots.mkdir(parents=True)
+            (shots / "home.webp").write_bytes(b"before")
+            (repo / "assets" / "logo.png").write_bytes(b"before")
+            (shots / "notes.txt").write_text("before\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(repo), "add", "assets/screenshots/home.webp", "assets/logo.png", "assets/screenshots/notes.txt"],
+                check=True,
+            )
+
+            static_before = self.fingerprint(repo, fake_bin, "static")
+            full_before = self.fingerprint(repo, fake_bin, "full")
+            (shots / "home.webp").write_bytes(b"after")
+            (shots / "library.png").write_bytes(b"new")
+            self.assertNotEqual(static_before, self.fingerprint(repo, fake_bin, "static"))
+            self.assertEqual(full_before, self.fingerprint(repo, fake_bin, "full"))
+
+            (repo / "assets" / "logo.png").write_bytes(b"after")
+            self.assertNotEqual(full_before, self.fingerprint(repo, fake_bin, "full"))
+            (repo / "assets" / "logo.png").write_bytes(b"before")
+            (shots / "notes.txt").write_text("after\n", encoding="utf-8")
+            self.assertNotEqual(full_before, self.fingerprint(repo, fake_bin, "full"))
+
     def test_product_fingerprint_changes_for_source_and_other_repository_files(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:
             repo = Path(raw_directory) / "repo"
