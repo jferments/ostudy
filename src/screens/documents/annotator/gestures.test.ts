@@ -557,6 +557,10 @@ describe("the Mind map tool", () => {
     const ctx = context({ tool: "mindmap" });
     gestures.down(at(1, "mouse", 50, 60), surface, ctx);
     expect(gestures.up(at(1, "mouse", 50, 60), surface, ctx)).toEqual([{ kind: "new-map", pageNumber: 1, point: { x: 50, y: 60 } }]);
+    // With Shift, the topic starts free rather than central.
+    gestures.down(at(2, "mouse", 50, 60, { shiftKey: true }), surface, ctx);
+    expect(gestures.up(at(2, "mouse", 50, 60, { shiftKey: true }), surface, ctx))
+      .toEqual([{ kind: "new-map", pageNumber: 1, point: { x: 50, y: 60 }, free: true }]);
   });
 
   it("picks up marks as Select does, and a tap away from the selection only lets it go", () => {

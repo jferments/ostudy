@@ -99,6 +99,7 @@ fn arrow(x2: f64) -> AnnotationShape {
         group: None,
         from: None,
         to: None,
+        label: None,
     })
 }
 
@@ -172,6 +173,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             group: None,
             from: None,
             to: None,
+            label: None,
         }),
         arrow(30.0),
         AnnotationShape::Rectangle(Frame {
@@ -211,6 +213,7 @@ fn every_kind() -> Vec<AnnotationShape> {
             group: Some("ab".repeat(16)),
             from: None,
             to: None,
+            label: None,
         }),
         AnnotationShape::Ellipse(Frame {
             x: 50.0,
@@ -902,6 +905,7 @@ fn line_styles_fills_and_double_heads_are_kept_only_where_they_mean_something() 
         group: None,
         from: None,
         to: None,
+        label: None,
     };
     AnnotationShape::Arrow(segment(Some(true)))
         .validate()
@@ -961,6 +965,7 @@ fn curves_have_two_control_points_and_groups_are_named_by_identifiers() {
             group,
             from: None,
             to: None,
+            label: None,
         })
     };
     curve(Some(vec![10.0, 30.0, 30.0, 30.0]), None)

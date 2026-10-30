@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactNode, type SVGProps } from "react";
 
-import type { AnnotatedPage, FrameShape } from "../../../ipc/documentAnnotations";
+import type { AnnotatedPage, FrameShape, SegmentShape } from "../../../ipc/documentAnnotations";
 import type { DocumentClip } from "../../../ipc/notebooks";
 import { managedAssetUrl } from "../../../platform/assets";
 import { Icon } from "../../../ui/icons/Icon";
@@ -31,7 +31,7 @@ import {
   type AnnotationShape,
   type TextShape,
 } from "./annotationModel";
-import { connectedPreview, snappedDraft } from "./connectors";
+import { connectedPreview, labelPoint, snappedDraft } from "./connectors";
 import { branchLines, foldBadges, visibleMarks } from "./mindMap";
 import { NoteBody } from "./NoteBody";
 import { continueList, toggleCheck } from "./noteText";
@@ -243,6 +243,9 @@ function PageContent({
             unavailable={paperPages?.unavailableLinks.has(annotation.id) ?? false}
             onChange={selectable ? onChangeText : undefined} />
         ))}
+        {graphics.map((annotation) => (annotation.shape.kind === "line" || annotation.shape.kind === "arrow") && annotation.shape.label ? (
+          <LineLabel key={`label-${annotation.id}`} shape={annotation.shape} opacity={faded(annotation)} />
+        ) : null)}
         {stickies.map((annotation) => (
           <StickyNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} />
         ))}
@@ -300,6 +303,31 @@ function PageContent({
         </ul>
       ) : null}
     </>
+  );
+}
+
+/** The words on a line, at its middle, on a small white tag in the line's color. */
+function LineLabel({ shape, opacity }: { shape: SegmentShape; opacity: number | undefined }) {
+  const point = labelPoint(shape);
+  return (
+    <div
+      data-line-label=""
+      className="tw:absolute tw:max-w-[220px] tw:-translate-x-1/2 tw:-translate-y-1/2 tw:truncate tw:rounded-full"
+      style={{
+        left: point.x,
+        top: point.y,
+        opacity,
+        padding: "1px 8px",
+        border: `1.5px solid ${shape.color}`,
+        background: "#ffffff",
+        color: TOPIC_INK,
+        fontSize: 12,
+        lineHeight: 1.4,
+        fontWeight: 500,
+      }}
+    >
+      {shape.label}
+    </div>
   );
 }
 
@@ -384,8 +412,8 @@ function textStyle(shape: TextShape): CSSProperties {
     lineHeight: TEXT_LINE_HEIGHT,
   };
   if (!shape.topic) return base;
-  // A topic is a box outlined in its branch's color; the central topic is filled with it.
-  const central = shape.topic.parent === undefined;
+  // A topic is a box outlined in its branch's color; the central topic (not a free one) is filled with it.
+  const central = shape.topic.parent === undefined && !shape.topic.free;
   return {
     ...base,
     padding: `${TOPIC_PADDING_Y}px ${TOPIC_PADDING_X}px`,

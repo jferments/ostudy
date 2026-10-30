@@ -212,6 +212,52 @@ export function connectMarks(
   return result;
 }
 
+/** The middle of a line or curve, where its label is written. */
+export function labelPoint(shape: SegmentShape): Point {
+  if (!shape.curve) return { x: (shape.x1 + shape.x2) / 2, y: (shape.y1 + shape.y2) / 2 };
+  const [c1x, c1y, c2x, c2y] = shape.curve;
+  return { x: (shape.x1 + 3 * c1x + 3 * c2x + shape.x2) / 8, y: (shape.y1 + 3 * c1y + 3 * c2y + shape.y2) / 8 };
+}
+
+/** The most characters a line's label holds. */
+export const MAX_LABEL_CHARS = 120;
+
+/**
+ * A curved line linking two marks, from the middle of one to the middle of
+ * the other, bowed a little to one side so that it reads as a link rather
+ * than as a branch. Its ends are put on the marks' edges when it is added.
+ */
+export function linkBetween(from: Annotation, to: Annotation, height: Height, color: string, createdAt: number, id: string): Connector {
+  const a = centre(extentOf(from, height));
+  const b = centre(extentOf(to, height));
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  // A quarter of the way along, pushed out sideways by a fifth of the length.
+  const bow = 0.2;
+  const c1 = { x: a.x + dx / 4 - dy * bow, y: a.y + dy / 4 + dx * bow };
+  const c2 = { x: a.x + dx * 3 / 4 - dy * bow, y: a.y + dy * 3 / 4 + dx * bow };
+  return {
+    id,
+    pageNumber: from.pageNumber,
+    createdAt,
+    shape: {
+      kind: "arrow",
+      x1: round(a.x), y1: round(a.y), x2: round(b.x), y2: round(b.y),
+      color,
+      strokeWidth: 2,
+      dash: "dashed",
+      curve: [round(c1.x), round(c1.y), round(c2.x), round(c2.y)],
+      from: from.id,
+      to: to.id,
+    },
+  };
+}
+
+/** Whether a mark can be linked to, as an attached line's end. */
+export function isLinkable(annotation: Annotation): boolean {
+  return canAttach(annotation);
+}
+
 /** A page as it looks mid-gesture: the marks being moved or drawn, and the lines attached to them following. */
 export function connectedPreview(
   page: readonly Annotation[],

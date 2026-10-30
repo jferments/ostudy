@@ -21,6 +21,7 @@ import { AnnotatorGestures, type GestureContext, type GestureEffect, type Gestur
 import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
 import { createPageTextCache, type PageTextCache } from "./textSelection";
+import { attachableAt, isSegment } from "./connectors";
 import { isTopic, parseList, visibleMarks } from "./mindMap";
 import type { DocumentAnnotatorController } from "./useDocumentAnnotator";
 import { MAX_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
@@ -67,7 +68,8 @@ interface AnnotatorCanvasProps {
   clipsByPage?: ReadonlyMap<number, readonly DocumentClip[]>;
   onOpenClip?: (clip: DocumentClip) => void;
   /** A right-click or long press on a mind-map topic, which is selected first; `client` is where it was. */
-  onTopicMenu?: (topic: Annotation, client: { x: number; y: number }) => void;
+  /** A right-click or long press on a mind-map topic or a line, with where it was. */
+  onMarkMenu?: (mark: Annotation, client: { x: number; y: number }) => void;
 }
 
 function pointerKind(type: string): PointerSample["kind"] {
@@ -95,7 +97,7 @@ function sampleOf(event: PointerEvent, button = 0): PointerSample {
  */
 export function AnnotatorCanvas({
   documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null, paperPages,
-  onClip, clipsByPage, onOpenClip, onTopicMenu,
+  onClip, clipsByPage, onOpenClip, onMarkMenu,
 }: AnnotatorCanvasProps) {
   const helpId = useId();
   const gestures = useMemo(() => new AnnotatorGestures(), []);
@@ -313,7 +315,8 @@ export function AnnotatorCanvas({
         }
         case "new-map": {
           const size = pageSizes.get(effect.pageNumber);
-          if (size) current.newMap(effect.pageNumber, effect.point, size);
+          if (size && effect.free) current.newFree(effect.pageNumber, effect.point, size);
+          else if (size) current.newMap(effect.pageNumber, effect.point, size);
           break;
         }
         case "scroll-by": {
@@ -340,22 +343,24 @@ export function AnnotatorCanvas({
   // A new tool starts clean: nothing half drawn or half moved carries over.
   useEffect(() => { run(gestures.reset()); }, [controller.tool, gestures, run]);
 
-  // A right-click (or a long press) on a topic opens what can be done with it.
+  // A right-click (or a long press) on a topic or a line opens what can be done with it.
   const contextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const { controller: current } = latest.current;
-    if (!onTopicMenu || (event.target instanceof HTMLElement && event.target.closest("textarea, input, [contenteditable]"))) return;
+    if (!onMarkMenu || (event.target instanceof HTMLElement && event.target.closest("textarea, input, [contenteditable]"))) return;
+    // The toolbar above may have changed height since the pages were last measured.
+    rects.current = null;
     const pageNumber = surface.pageAt(event.clientX, event.clientY);
     if (pageNumber === null) return;
     const point = surface.toPage(pageNumber, event.clientX, event.clientY);
     const marks = visibleMarks(current.annotationsRef.current.get(pageNumber) ?? EMPTY);
-    const topic = topmostAt(marks, point, 2, current.textHeight, isTopic);
-    if (!topic) return;
+    const mark = topmostAt(marks, point, 4, current.textHeight, (annotation) => isTopic(annotation) || isSegment(annotation));
+    if (!mark) return;
     event.preventDefault();
     run(gestures.reset());
     current.finishEditing();
-    current.select(topic.id, pageNumber);
-    onTopicMenu(topic, { x: event.clientX, y: event.clientY });
-  }, [gestures, onTopicMenu, run, surface]);
+    current.select(mark.id, pageNumber);
+    onMarkMenu(mark, { x: event.clientX, y: event.clientY });
+  }, [gestures, onMarkMenu, run, surface]);
 
   function pointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("textarea")) return;
@@ -363,6 +368,17 @@ export function AnnotatorCanvas({
     rects.current = null;
     // Focus moves here, which also closes an open text note.
     event.currentTarget.focus({ preventScroll: true });
+    if (controller.linking) {
+      // Linking: the mark pressed is the other end; pressing anything else stops.
+      const pageNumber = surface.pageAt(event.clientX, event.clientY);
+      const target = pageNumber === null ? null : attachableAt(
+        visibleMarks(controller.annotationsRef.current.get(pageNumber) ?? EMPTY),
+        surface.toPage(pageNumber, event.clientX, event.clientY),
+        controller.textHeight,
+      );
+      if (!target || !controller.linkTo(target)) controller.cancelLink();
+      return;
+    }
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -388,6 +404,13 @@ export function AnnotatorCanvas({
   }
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (controller.linking && event.key === "Escape") {
+      // Stops linking, and nothing else.
+      event.preventDefault();
+      event.stopPropagation();
+      controller.cancelLink();
+      return;
+    }
     const selected = controller.selected;
     const lassoed = controller.group[0];
     if (lassoed && !selected && !event.altKey && !event.ctrlKey && !event.metaKey) {
@@ -500,7 +523,7 @@ export function AnnotatorCanvas({
         data-annotator-viewport="true"
         className={cn(
           "tw:relative tw:min-w-0 tw:touch-none tw:overflow-auto tw:overscroll-contain tw:bg-muted tw:outline-none tw:focus-visible:ring-2 tw:focus-visible:ring-ring tw:focus-visible:ring-inset",
-          CURSORS[controller.tool],
+          controller.linking ? "tw:cursor-crosshair" : CURSORS[controller.tool],
         )}
         style={{ height: viewport.height }}
         onPointerDown={pointerDown}

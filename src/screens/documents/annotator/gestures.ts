@@ -112,7 +112,8 @@ export type GestureEffect =
   | { kind: "edit-text"; annotation: Annotation }
   | { kind: "new-text"; pageNumber: number; point: Point; sticky: boolean }
   /** The Mind map tool tapped empty paper: a map starts there. */
-  | { kind: "new-map"; pageNumber: number; point: Point }
+  /** With `free`, a free topic rather than a map's central topic. */
+  | { kind: "new-map"; pageNumber: number; point: Point; free?: true }
   | { kind: "scroll-by"; dx: number; dy: number }
   /** Pixels per millisecond the view keeps moving after a flick. */
   | { kind: "fling"; velocityX: number; velocityY: number }
@@ -412,7 +413,7 @@ export class AnnotatorGestures {
         ];
       }
       case "press":
-        return this.tap(active, surface, context);
+        return this.tap(active, surface, context, sample.shiftKey);
       case "lasso":
         return [
           { kind: "lasso", loop: null },
@@ -692,7 +693,7 @@ export class AnnotatorGestures {
     return [{ kind: "erasing", annotations: [...active.erased.values()], ...(cuts.length > 0 ? { cuts } : {}) }];
   }
 
-  private tap(active: Extract<Gesture, { kind: "press" }>, surface: GestureSurface, context: GestureContext): GestureEffect[] {
+  private tap(active: Extract<Gesture, { kind: "press" }>, surface: GestureSurface, context: GestureContext, shift = false): GestureEffect[] {
     if (!picksUp(active.purpose)) {
       if (active.hit) return [{ kind: "edit-text", annotation: active.hit }];
       if (active.pageNumber === null) return [];
@@ -704,11 +705,12 @@ export class AnnotatorGestures {
     if (!active.hit) {
       if (context.selected) return [{ kind: "select", id: null }];
       if (context.group.length > 0 && active.pageNumber !== null) return [{ kind: "select-group", pageNumber: active.pageNumber, ids: [] }];
-      // With nothing selected, the Mind map tool starts a map on empty paper.
+      // With nothing selected, the Mind map tool starts a map on empty paper, or with Shift a free topic.
       if (active.purpose !== "mindmap" || active.pageNumber === null) return [];
       const size = surface.pageSize(active.pageNumber);
       if (!size) return [];
-      return [{ kind: "new-map", pageNumber: active.pageNumber, point: clampToPage(surface.toPage(active.pageNumber, active.start.x, active.start.y), size) }];
+      const point = clampToPage(surface.toPage(active.pageNumber, active.start.x, active.start.y), size);
+      return [{ kind: "new-map", pageNumber: active.pageNumber, point, ...(shift ? { free: true as const } : {}) }];
     }
     // A tap on the selected text note opens it, so a double tap edits.
     if (active.hit.shape.kind === "text" && context.selected?.id === active.hit.id) {
