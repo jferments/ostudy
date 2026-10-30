@@ -455,7 +455,8 @@ impl Canvas<'_> {
             }
         }
         self.end();
-        Ok(())
+        // Only a notebook's lines have labels.
+        self.line_label(segment)
     }
 
     fn frame(&mut self, frame: &Frame, ellipse: bool) -> Result<(), ExportError> {

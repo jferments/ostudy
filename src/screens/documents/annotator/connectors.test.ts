@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SegmentShape } from "../../../ipc/documentAnnotations";
 import { applyEdits, groupByPage, type AnnotationEdit, type PageAnnotations } from "./annotationHistory";
 import { estimateTextHeight, type Annotation } from "./annotationModel";
-import { connectedPreview, connectMarks, snappedDraft } from "./connectors";
+import { connectedPreview, connectMarks, labelPoint, linkBetween, snappedDraft } from "./connectors";
 import { retopic, visibleMarks, type Topic } from "./mindMap";
 
 const PAGE = { width: 1000, height: 1000 };
@@ -137,6 +137,25 @@ describe("lines and arrows that stay attached", () => {
     const shown = connectedPreview(page, [moveBy(pages, "a", 0, 200)], height, PAGE);
     const link = shown.find((annotation) => annotation.id === "link");
     expect(link?.shape.kind === "arrow" && link.shape.y1).toBeGreaterThan(130);
+  });
+
+  it("links two marks with a bowed, dashed arrow attached at both ends", () => {
+    const pages = add([box("a", 100, 100), box("b", 500, 100)]);
+    const [a, b] = pages.get(1) ?? [];
+    if (!a || !b) throw new Error("no boxes");
+    const after = add([linkBetween(a, b, height, "#dc2626", 9, "link")], pages);
+    const shape = segment(after, "link");
+    expect(shape).toMatchObject({ kind: "arrow", from: "a", to: "b", dash: "dashed", color: "#dc2626" });
+    expect(shape.x1).toBe(204);
+    expect(shape.x2).toBe(496);
+    // Bowed to one side, so it is not read as a straight branch.
+    expect(labelPoint(shape).y).not.toBe(130);
+  });
+
+  it("puts a line's label at its middle, along its curve", () => {
+    const straight: SegmentShape = { kind: "line", x1: 0, y1: 0, x2: 100, y2: 40, color: "#1f2328", strokeWidth: 2 };
+    expect(labelPoint(straight)).toEqual({ x: 50, y: 20 });
+    expect(labelPoint({ ...straight, x2: 100, y2: 0, curve: [0, 80, 100, 80] })).toEqual({ x: 50, y: 60 });
   });
 
   it("passes edits on pages without lines through as they are", () => {

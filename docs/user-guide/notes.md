@@ -30,7 +30,7 @@ The **Mind map** tool (**M**) starts a map on any notebook page or board: tap em
 
 The arrow beside the **Mind map** button opens the map's actions: **Start a new map**, **Add a branch**, **Add the next topic**, **Move up a level**, **Fold branches** (and **Show branches**, which the folded topic's count also tells you about), the map's layout (both sides, to the right, or downward like an outline turned on its side), **Put this topic back in place**, **Tidy the map** and **Copy the map as a list**, which copies it as an indented list. Actions for a topic work on the selected one.
 
-Right-click a topic (or press and hold it on a touch screen) for its own menu: **Edit topic**, the same actions, its **Colour** and **Text size**, the map's layout, **Add link…** and **Delete topic**.
+Right-click a topic (or press and hold it on a touch screen) for its own menu: **Edit topic**, the same actions, **Connect to another topic…**, **Detach as a free topic**, its **Colour** and **Text size**, the map's layout, **Add link…** and **Delete topic**.
 
 - Drag a topic onto another topic to make it that topic's branch; its own branches come with it. Drag it anywhere else and it stays where you let it go, with its branches, and takes its place among its neighbours (or moves to the other side of the central topic); branches in its way move aside so nothing overlaps. **Put this topic back in place** returns one topic to the map's own layout, and **Tidy the map** returns them all. Dragging the central topic moves the whole map.
 - The arrow keys go from topic to topic as the map is drawn, **Shift+Tab** moves a topic up a level, **F2** types in it and **/** folds or shows its branches.
@@ -38,6 +38,16 @@ Right-click a topic (or press and hold it on a touch screen) for its own menu: *
 - A topic takes the color and text size you choose like any text note. A new color is passed to the topic's branches that had its old color, so a branch keeps one color.
 - **Add link** (**K**) with a topic selected turns the topic into a link with its words as the label.
 - Paste an outline (Markdown bullets, numbered lines, headings, or lines indented with spaces or tabs) onto a page or board to make a map of it in the middle of the view. An outline with one top line makes that line the central topic; one with several top lines branches them from a new central topic, which opens for you to name.
+
+### Webs of ideas
+
+A map does not have to be a tree. Ideas that relate across branches, or in a loop, can be linked, and a map can start without a central topic at all.
+
+- **Connect to another topic…** in a topic's menu, then click the topic (or box, ellipse or note) to link it to. The link is a curved, dashed arrow that stays attached at both ends, like any attached line. **Esc** or **Cancel** stops choosing.
+- Right-click a line for its menu: **Add label…** writes a few words on it, such as *causes* or *is part of*, at its middle; **Edit label…**, **Remove label**, its **Colour** and **Delete line** are there too. Any attached line on a page or board can be labelled.
+- A free topic is a topic of its own, drawn like a branch rather than a central topic. **Shift+click** with the Mind map tool, or **Add a free topic** in the map's actions, starts one; a web can be free topics and their links alone. Free topics take turns through the branch colors.
+- **Detach as a free topic** makes a branch, with its own branches, a map of its own beside the others. Dragging a free topic onto a topic of another map makes it that topic's branch again.
+- **Show as a free topic** and **Show as a central topic** change how a map's first topic is drawn.
 
 ## Lines that stay attached
 
@@ -47,7 +57,7 @@ On a notebook page or board, a line, arrow or curve drawn from one box, ellipse,
 - Deleting a mark lets go of the lines attached to it; they stay where they were. **Undo** puts the mark and its lines back together.
 - A line attached to a topic that is folded away is hidden with the topic.
 
-Save PDF draws each map as it is shown: its topics in their boxes, the curved branches between them, and nothing that is folded away.
+Save PDF draws each map as it is shown: its topics in their boxes, the curved branches between them, the labels on lines, and nothing that is folded away.
 
 ## A document beside your notes
 

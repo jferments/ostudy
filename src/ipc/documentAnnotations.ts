@@ -54,6 +54,8 @@ export interface SegmentShape {
    */
   from?: string;
   to?: string;
+  /** Only on a notebook page: a few words written on the line, at its middle. */
+  label?: string;
 }
 
 /** The outline of a rectangle, or of the ellipse inside it, filled with `fill` if it has one. */
@@ -116,6 +118,8 @@ export interface MapTopic {
   folded?: true;
   /** Not on the central topic: where the learner dragged it, with its branches, from where the layout puts it. */
   offset?: [number, number];
+  /** Only on a map's first topic: it is drawn as a topic of its own rather than as a central topic. */
+  free?: true;
 }
 
 /** What a link on a notebook page opens. Targets are looked up when the notebook opens. */

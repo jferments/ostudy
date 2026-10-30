@@ -12,6 +12,7 @@ import * as files from "../../platform/files";
 import { LayoutModeProvider } from "../../ui/layout/LayoutModeProvider";
 import { OverlayProvider } from "../../ui/overlays/OverlayProvider";
 import { openMenu } from "../../test/menus";
+import { labelPoint } from "../documents/annotator/connectors";
 import { NotebookEditor } from "./NotebookEditor";
 import * as pictures from "./pictures";
 
@@ -480,6 +481,44 @@ describe("notebook editor", () => {
     fireEvent.change(branch, { target: { value: "Aortic valve opens" } });
     fireEvent.keyDown(branch, { key: "Escape" });
     await waitFor(() => expect(saved().find((shape) => shape.text === "Aortic valve opens")?.topic?.parent).toBeDefined());
+  });
+
+  it("links two topics across the map from a topic's menu and labels the link", async () => {
+    const { canvas } = await openNotebook();
+    fireEvent.paste(canvas, { clipboardData: { getData: () => "# Heart\n- Systole\n  - Ejection\n- Diastole" } });
+    await waitFor(() => expect(document.querySelectorAll("[data-map-branch]")).toHaveLength(3));
+    const changes = () => vi.mocked(notebooksIpc.applyNotebookItemChanges).mock.calls.flatMap((call) => call[1]);
+    const topics = () => new Map(changes()
+      .flatMap((change) => (change.op === "put" && change.shape.kind === "text" ? [[change.shape.text, { id: change.id, shape: change.shape }] as const] : [])));
+    await waitFor(() => expect(topics().size).toBe(4));
+    const middle = (text: string) => {
+      const shape = topics().get(text)?.shape;
+      return shape ? { x: shape.x + shape.width / 2, y: shape.y + 12 } : { x: 0, y: 0 };
+    };
+
+    const from = middle("Ejection");
+    fireEvent.contextMenu(canvas, onPage(from.x, from.y));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Topic" })).getByRole("menuitem", { name: "Connect to another topic…" }));
+    expect(screen.getByText("Choose the topic or shape to connect to.").getAttribute("role")).toBe("status");
+    const to = middle("Diastole");
+    fireEvent.pointerDown(canvas, onPage(to.x, to.y));
+    fireEvent.pointerUp(canvas, onPage(to.x, to.y));
+    expect(screen.queryByText("Choose the topic or shape to connect to.")).toBeNull();
+    const link = () => changes().flatMap((change) => (change.op === "put" && change.shape.kind === "arrow" ? [change.shape] : [])).at(-1);
+    await waitFor(() => expect(link() ? [link()?.from, link()?.to] : null).toEqual([topics().get("Ejection")?.id, topics().get("Diastole")?.id]));
+    expect(link()?.curve).toBeDefined();
+
+    // Its own menu, opened on the line, writes a few words on it.
+    const line = link();
+    if (!line) throw new Error("no link");
+    const at = labelPoint(line);
+    fireEvent.contextMenu(canvas, onPage(at.x, at.y));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Line" })).getByRole("menuitem", { name: "Add label…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add label" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Label" }), { target: { value: "  follows   " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(link()?.label).toBe("follows"));
+    expect(await screen.findByText("follows")).toBeTruthy();
   });
 
   it("makes a map of a pasted outline, copies it back as a list, and keeps an arrow on its topics", async () => {

@@ -19,7 +19,7 @@ use oxidize_pdf::{Document, Page};
 
 use super::{
     sticky_notes, unreadable, wrap, write_failed, AnnotationShape, Canvas, ExportError,
-    PageAnnotations, PageFrame, PageLink, TextNote, Update, FONT_NAME, STICKY_HEIGHT,
+    PageAnnotations, PageFrame, PageLink, Segment, TextNote, Update, FONT_NAME, STICKY_HEIGHT,
     STICKY_ICON_SIZE, TEXT_LINE_HEIGHT, TEXT_PADDING,
 };
 
@@ -296,14 +296,63 @@ fn topic_height(note: &TextNote) -> f64 {
         + 2.0 * (TOPIC_PADDING_Y + TOPIC_BORDER)
 }
 
+/// A line's label: its words in the app's size, on a white tag in the line's color.
+const LABEL_FONT_SIZE: f64 = 12.0;
+const LABEL_PADDING_X: f64 = 8.0;
+const LABEL_BORDER: f64 = 1.5;
+
+/// The middle of a line or curve, where its label is written.
+fn label_point(segment: &Segment) -> (f64, f64) {
+    match segment.curve.as_deref() {
+        Some(&[c1x, c1y, c2x, c2y]) => (
+            (segment.x1 + 3.0 * c1x + 3.0 * c2x + segment.x2) / 8.0,
+            (segment.y1 + 3.0 * c1y + 3.0 * c2y + segment.y2) / 8.0,
+        ),
+        _ => (
+            (segment.x1 + segment.x2) / 2.0,
+            (segment.y1 + segment.y2) / 2.0,
+        ),
+    }
+}
+
 impl Canvas<'_> {
+    /// A line's label, at its middle: a small white tag outlined in the
+    /// line's color with the words on it.
+    pub(super) fn line_label(&mut self, segment: &Segment) -> Result<(), ExportError> {
+        let Some(label) = segment.label.as_deref() else {
+            return Ok(());
+        };
+        let (middle_x, middle_y) = label_point(segment);
+        let width = label.chars().count() as f64 * LABEL_FONT_SIZE * super::CHARACTER_WIDTH
+            + 2.0 * LABEL_PADDING_X;
+        let height = LABEL_FONT_SIZE * TEXT_LINE_HEIGHT + 2.0 * LABEL_BORDER;
+        let (left, top) = (middle_x - width / 2.0, middle_y - height / 2.0);
+        let bottom = self.y(top + height);
+        self.page
+            .graphics()
+            .save_state()
+            .set_fill_color(paper_white())
+            .set_stroke_color(super::parse_color(&segment.color))
+            .set_line_width(LABEL_BORDER)
+            .rect(left, bottom, width, height)
+            .fill_stroke()
+            .restore_state();
+        self.write_lines(
+            &[label.to_string()],
+            left + LABEL_PADDING_X,
+            top + LABEL_BORDER,
+            LABEL_FONT_SIZE,
+            super::parse_color(TOPIC_INK),
+        )
+    }
+
     /// A mind-map topic: a box outlined in its branch's color (the central
     /// topic filled with it) and its words centered in it.
     pub(super) fn topic(&mut self, note: &TextNote) -> Result<(), ExportError> {
         let central = note
             .topic
             .as_ref()
-            .is_some_and(|topic| topic.parent.is_none());
+            .is_some_and(|topic| topic.parent.is_none() && topic.free != Some(true));
         let color = super::parse_color(&note.color);
         let height = topic_height(note);
         let inset = TOPIC_BORDER / 2.0;
@@ -440,7 +489,7 @@ pub fn mind_map_marks(items: &[(&str, &AnnotationShape)]) -> Vec<AnnotationShape
         let from_root = parent
             .topic
             .as_ref()
-            .is_some_and(|topic| topic.parent.is_none());
+            .is_some_and(|topic| topic.parent.is_none() && topic.free != Some(true));
         branches.push((
             *id,
             AnnotationShape::Line(super::Segment {
@@ -456,6 +505,7 @@ pub fn mind_map_marks(items: &[(&str, &AnnotationShape)]) -> Vec<AnnotationShape
                 group: None,
                 from: None,
                 to: None,
+                label: None,
             }),
         ));
     }
@@ -498,7 +548,13 @@ fn draw_pages(
     let has_text = pages
         .iter()
         .flat_map(|page| page.shapes.iter())
-        .any(|shape| matches!(shape, AnnotationShape::Text(_)));
+        .any(|shape| match shape {
+            AnnotationShape::Text(_) => true,
+            AnnotationShape::Line(segment) | AnnotationShape::Arrow(segment) => {
+                segment.label.is_some()
+            }
+            _ => false,
+        });
     let text_font = match font {
         Some(bytes) if has_text => {
             document

@@ -6,13 +6,19 @@ import { estimateTextHeight, type Annotation } from "./annotationModel";
 import {
   arrangeMaps,
   branchLines,
+  detachEdits,
   foldBadges,
+  freeEdits,
+  isCentral,
   isTopic,
+  lookDepth,
   mapAsList,
   mapFromList,
   mapsOn,
   newCentralTopic,
+  newFreeTopic,
   newTopic,
+  nextFreeColor,
   parseList,
   promote,
   retopic,
@@ -280,6 +286,62 @@ describe("mind maps", () => {
     expect(central.shape.topic).toEqual({ map: central.id, order: 0 });
     expect(central.shape.x).toBe(0);
     expect(central.shape.y).toBe(0);
+  });
+
+  it("starts a free topic, drawn as a branch rather than a central topic", () => {
+    const free = newFreeTopic(1, { x: 7000, y: 7000 }, BOARD, 1, "#dc2626");
+    const central = newCentralTopic(1, { x: 7000, y: 7000 }, BOARD, 1);
+    expect(free.shape.topic).toEqual({ map: free.id, order: 0, free: true });
+    expect(isCentral(free)).toBe(false);
+    expect(free.shape.color).toBe("#dc2626");
+    expect(free.shape.fontSize).toBeLessThan(central.shape.fontSize ?? 0);
+    const tree = mapsOn([free]).get(free.id);
+    if (!tree) throw new Error("no map");
+    expect(lookDepth(tree, free)).toBe(1);
+  });
+
+  it("gives each new free topic a color the others use least", () => {
+    const first = newFreeTopic(1, { x: 7000, y: 7000 }, BOARD, 1, nextFreeColor([]));
+    expect(nextFreeColor([first])).not.toBe(first.shape.color);
+  });
+
+  it("detaches a branch with its own as a free map of their own", () => {
+    const pages = build(heart());
+    const before = mapsOn(pages.get(1) ?? []).get("root");
+    if (!before) throw new Error("no map");
+    const after = applyEdits(pages, arrangeMaps(detachEdits(before, find(pages, "a")), pages, height, pageSize));
+    expect(find(after, "a").shape.topic).toMatchObject({ map: "a", order: 0, free: true });
+    expect(find(after, "a").shape.topic.parent).toBeUndefined();
+    expect(find(after, "a1").shape.topic).toMatchObject({ map: "a", parent: "a" });
+    expect(mapsOn(after.get(1) ?? []).get("root")?.children.get("root")?.map((child) => child.id)).toEqual(["b", "c"]);
+    expect(detachEdits(before, find(pages, "root"))).toEqual([]);
+  });
+
+  it("shows a map's first topic as free or central, sized to match", () => {
+    const pages = build(heart());
+    const root = find(pages, "root");
+    const freed = applyEdits(pages, freeEdits(root, true));
+    expect(find(freed, "root").shape.topic.free).toBe(true);
+    expect(find(freed, "root").shape.fontSize).toBeLessThan(root.shape.fontSize ?? 0);
+    const back = applyEdits(freed, freeEdits(find(freed, "root"), false));
+    expect(find(back, "root").shape.topic.free).toBeUndefined();
+    expect(find(back, "root").shape.fontSize).toBe(root.shape.fontSize);
+    expect(freeEdits(find(pages, "a"), true)).toEqual([]);
+  });
+
+  it("joins a free topic dropped on another map's topic to it, with its branches", () => {
+    const pages = build([
+      ...heart(),
+      topic("f", "Blood pressure", { map: "f", order: 0, free: true }),
+      topic("f1", "Systolic", { map: "f", parent: "f", order: 0 }),
+    ]);
+    const f = find(pages, "f");
+    const c = find(pages, "c");
+    const dropped: Topic = { ...f, shape: { ...f.shape, x: c.shape.x + 4, y: c.shape.y } };
+    const after = applyEdits(pages, arrangeMaps([{ id: "f", before: f, after: dropped }], pages, height, pageSize));
+    expect(find(after, "f").shape.topic).toMatchObject({ map: "root", parent: "c" });
+    expect(find(after, "f").shape.topic.free).toBeUndefined();
+    expect(find(after, "f1").shape.topic).toMatchObject({ map: "root", parent: "f" });
   });
 
   it("passes other marks through untouched", () => {
