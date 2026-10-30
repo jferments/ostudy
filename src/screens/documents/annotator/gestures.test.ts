@@ -550,3 +550,39 @@ describe("clipping", () => {
     expect(only(gestures.up(at(2, "mouse", 400, 103), surface, ctx), "clip")).toEqual([]);
   });
 });
+
+describe("the Mind map tool", () => {
+  it("starts a map where it taps empty paper", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "mindmap" });
+    gestures.down(at(1, "mouse", 50, 60), surface, ctx);
+    expect(gestures.up(at(1, "mouse", 50, 60), surface, ctx)).toEqual([{ kind: "new-map", pageNumber: 1, point: { x: 50, y: 60 } }]);
+  });
+
+  it("picks up marks as Select does, and a tap away from the selection only lets it go", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "mindmap" }, [note]);
+    gestures.down(at(1, "mouse", 310, 308), surface, ctx);
+    expect(gestures.up(at(1, "mouse", 310, 308), surface, ctx)).toEqual([{ kind: "select", id: "note" }]);
+
+    const selected = context({ tool: "mindmap", selected: note }, [note]);
+    gestures.down(at(2, "mouse", 50, 60), surface, selected);
+    expect(gestures.up(at(2, "mouse", 50, 60), surface, selected)).toEqual([{ kind: "select", id: null }]);
+  });
+
+  it("drags a topic as Select drags a mark", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "mindmap", selected: note }, [note]);
+    gestures.down(at(1, "mouse", 310, 308), surface, ctx);
+    gestures.move(at(1, "mouse", 330, 328), surface, ctx);
+    const effects = gestures.up(at(1, "mouse", 330, 328), surface, ctx);
+    expect(only(effects, "change")[0]?.after.shape).toMatchObject({ x: 320, y: 320 });
+  });
+
+  it("leaves a finger free to scroll with pen-only drawing", () => {
+    const gestures = new AnnotatorGestures();
+    const ctx = context({ tool: "mindmap", penOnly: true });
+    gestures.down(at(1, "touch", 50, 60), surface, ctx);
+    expect(gestures.up(at(1, "touch", 50, 60), surface, ctx)).toEqual([{ kind: "new-map", pageNumber: 1, point: { x: 50, y: 60 } }]);
+  });
+});

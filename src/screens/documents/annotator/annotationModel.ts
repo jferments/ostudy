@@ -26,7 +26,9 @@ export type AnnotatorTool =
   /** Drags out a part of a PDF page to copy into a notebook. */
   | "clip"
   /** Drags the view around a board; holding Space picks it for a moment. */
-  | "hand";
+  | "hand"
+  /** Starts a mind map where it taps, and picks up topics like Select. */
+  | "mindmap";
 export type ShapeTool = "line" | "arrow" | "curve" | "rectangle" | "ellipse";
 /** What the eraser takes: whole annotations, or only the parts of pen and highlighter strokes it passes over. */
 export type EraseMode = "whole" | "part";
@@ -50,6 +52,10 @@ export const TEXT_LINE_HEIGHT = 1.3;
 export const TEXT_PADDING = 2;
 export const DEFAULT_TEXT_WIDTH = 200;
 export const MIN_TEXT_WIDTH = 24;
+/** A mind-map topic's box: padding inside its outline, and the outline's width, in points. */
+export const TOPIC_PADDING_X = 10;
+export const TOPIC_PADDING_Y = 6;
+export const TOPIC_BORDER = 2;
 /** A sticky note's size on the page, in points; its text opens in full when tapped. */
 export const STICKY_WIDTH = 120;
 export const STICKY_HEIGHT = 72;
@@ -281,10 +287,12 @@ export function createAnnotationId(): string {
 /** A text note's height from its text, for pages whose notes have not been laid out yet. */
 export function estimateTextHeight(shape: TextShape): number {
   if (shape.sticky) return stickyHeight(shape);
-  const perLine = Math.max(1, Math.floor((shape.width - 2 * TEXT_PADDING) / (shape.fontSize * 0.55)));
+  const inset = shape.topic ? TOPIC_PADDING_X + TOPIC_BORDER : TEXT_PADDING;
+  const perLine = Math.max(1, Math.floor((shape.width - 2 * inset) / (shape.fontSize * 0.55)));
   const lines = shape.text.split("\n")
     .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / perLine)), 0);
-  return lines * shape.fontSize * TEXT_LINE_HEIGHT + 2 * TEXT_PADDING;
+  const padding = shape.topic ? TOPIC_PADDING_Y + TOPIC_BORDER : TEXT_PADDING;
+  return lines * shape.fontSize * TEXT_LINE_HEIGHT + 2 * padding;
 }
 
 function pointBounds(points: readonly number[], stride: number): Bounds {
@@ -759,8 +767,8 @@ export function handlesFor(shape: AnnotationShape, textHeight: number): Array<{ 
         { handle: "se", point: { x: shape.x + shape.width, y: shape.y + shape.height } },
       ];
     case "text":
-      // A sticky note keeps its size: only its text grows.
-      return shape.sticky ? [] : [{ handle: "width", point: { x: shape.x + shape.width, y: shape.y + textHeight / 2 } }];
+      // A sticky note keeps its size, and a mind map sizes its topics: only their text grows.
+      return shape.sticky || shape.topic ? [] : [{ handle: "width", point: { x: shape.x + shape.width, y: shape.y + textHeight / 2 } }];
     default:
       return [];
   }

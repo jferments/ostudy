@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
@@ -13,12 +14,13 @@ import {
 import type { AnnotatedPage } from "../../../ipc/documentAnnotations";
 import type { DocumentClip } from "../../../ipc/notebooks";
 import { cn } from "../../../ui/internal/cn";
-import { createAnnotationId, isStickyNote, type Annotation, type AnnotatorTool } from "./annotationModel";
+import { createAnnotationId, isStickyNote, topmostAt, type Annotation, type AnnotatorTool } from "./annotationModel";
 import { AnnotatorPage, StickyNoteEditor, type PageDraft, type PaperPages } from "./AnnotatorPage";
 import { AnnotatorGestures, type GestureContext, type GestureEffect, type GestureSurface, type PointerSample } from "./gestures";
 import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
 import { createPageTextCache, type PageTextCache } from "./textSelection";
+import { isTopic, visibleMarks } from "./mindMap";
 import type { DocumentAnnotatorController } from "./useDocumentAnnotator";
 import { MAX_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
 
@@ -42,6 +44,7 @@ const CURSORS: Readonly<Record<AnnotatorTool, string>> = {
   eraser: "tw:cursor-cell",
   clip: "tw:cursor-crosshair",
   hand: "tw:cursor-grab tw:active:cursor-grabbing",
+  mindmap: "tw:cursor-cell",
 };
 
 interface AnnotatorCanvasProps {
@@ -62,6 +65,8 @@ interface AnnotatorCanvasProps {
   /** The notebooks each page was clipped into, and how to open one. */
   clipsByPage?: ReadonlyMap<number, readonly DocumentClip[]>;
   onOpenClip?: (clip: DocumentClip) => void;
+  /** A right-click or long press on a mind-map topic, which is selected first; `client` is where it was. */
+  onTopicMenu?: (topic: Annotation, client: { x: number; y: number }) => void;
 }
 
 function pointerKind(type: string): PointerSample["kind"] {
@@ -89,7 +94,7 @@ function sampleOf(event: PointerEvent, button = 0): PointerSample {
  */
 export function AnnotatorCanvas({
   documentId, title, pages, controller, viewport, viewportRef, contentRef, coarse, markedPage = null, paperPages,
-  onClip, clipsByPage, onOpenClip,
+  onClip, clipsByPage, onOpenClip, onTopicMenu,
 }: AnnotatorCanvasProps) {
   const helpId = useId();
   const gestures = useMemo(() => new AnnotatorGestures(), []);
@@ -196,7 +201,8 @@ export function AnnotatorCanvas({
       maxScale: MAX_SCALE,
       selected: current.selected,
       group: current.group,
-      annotationsOn: (pageNumber) => current.annotationsRef.current.get(pageNumber) ?? EMPTY,
+      // Topics folded away can be neither seen nor picked.
+      annotationsOn: (pageNumber) => visibleMarks(current.annotationsRef.current.get(pageNumber) ?? EMPTY),
       textHeight: current.textHeight,
       pageText: (pageNumber) => pageText.current?.get(pageNumber) ?? null,
       newId: createAnnotationId,
@@ -288,6 +294,11 @@ export function AnnotatorCanvas({
           if (size) current.newText(effect.pageNumber, effect.point, size, effect.sticky);
           break;
         }
+        case "new-map": {
+          const size = pageSizes.get(effect.pageNumber);
+          if (size) current.newMap(effect.pageNumber, effect.point, size);
+          break;
+        }
         case "scroll-by": {
           const element = viewportRef.current;
           if (element) {
@@ -311,6 +322,23 @@ export function AnnotatorCanvas({
 
   // A new tool starts clean: nothing half drawn or half moved carries over.
   useEffect(() => { run(gestures.reset()); }, [controller.tool, gestures, run]);
+
+  // A right-click (or a long press) on a topic opens what can be done with it.
+  const contextMenu = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const { controller: current } = latest.current;
+    if (!onTopicMenu || (event.target instanceof HTMLElement && event.target.closest("textarea, input, [contenteditable]"))) return;
+    const pageNumber = surface.pageAt(event.clientX, event.clientY);
+    if (pageNumber === null) return;
+    const point = surface.toPage(pageNumber, event.clientX, event.clientY);
+    const marks = visibleMarks(current.annotationsRef.current.get(pageNumber) ?? EMPTY);
+    const topic = topmostAt(marks, point, 2, current.textHeight, isTopic);
+    if (!topic) return;
+    event.preventDefault();
+    run(gestures.reset());
+    current.finishEditing();
+    current.select(topic.id, pageNumber);
+    onTopicMenu(topic, { x: event.clientX, y: event.clientY });
+  }, [gestures, onTopicMenu, run, surface]);
 
   function pointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("textarea")) return;
@@ -355,6 +383,10 @@ export function AnnotatorCanvas({
       return;
     }
     if (!selected || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (isTopic(selected) && event.target === event.currentTarget && topicKey(event)) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Enter" && selected.shape.kind === "text" && event.target === event.currentTarget) {
       event.preventDefault();
       controller.editText(selected);
@@ -366,6 +398,37 @@ export function AnnotatorCanvas({
     event.preventDefault();
     const step = event.shiftKey ? 10 : 1;
     controller.nudgeSelected(direction[0] * step, direction[1] * step, size);
+  }
+
+  /**
+   * A mind map's keys on a selected topic: Tab adds a branch, Enter the next
+   * topic, Shift+Tab moves it up a level, the arrows go from topic to topic,
+   * F2 types in it and / folds it.
+   */
+  function topicKey(event: KeyboardEvent<HTMLDivElement>): boolean {
+    switch (event.key) {
+      case "Tab":
+        if (event.shiftKey) controller.promoteTopic();
+        else controller.addTopic("child");
+        return true;
+      case "Enter":
+        if (event.shiftKey) return false;
+        controller.addTopic("sibling");
+        return true;
+      case "F2":
+        if (controller.selected) controller.editText(controller.selected);
+        return true;
+      case "/":
+        controller.toggleFolded();
+        return true;
+      case "ArrowLeft":
+      case "ArrowRight":
+      case "ArrowUp":
+      case "ArrowDown":
+        return !event.shiftKey && controller.goToTopic(event.key);
+      default:
+        return false;
+    }
   }
 
   const focusAnnotation = useCallback((annotation: Annotation) => {
@@ -389,13 +452,26 @@ export function AnnotatorCanvas({
     viewportRef.current?.querySelector("textarea")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [viewport.height, viewportRef]);
 
-  const selectable = controller.tool === "select";
+  // A topic closed with Escape leaves the keys with the map, for its next topic.
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (wasEditing.current && !controller.editing && element
+      && (document.activeElement === null || document.activeElement === document.body)) {
+      element.focus({ preventScroll: true });
+    }
+    wasEditing.current = controller.editing !== null;
+  }, [controller.editing, viewportRef]);
+
+  const selectable = controller.tool === "select" || controller.tool === "mindmap";
   return (
     <>
       <p id={helpId} className="tw:sr-only">
         Choose a tool in the toolbar, then draw on a page. Two fingers scroll and zoom. With the Select tool, Tab
         moves through the annotations on the pages in view, arrow keys move the selected one, Delete removes it and
-        Enter opens a text or sticky note. Ctrl+Z undoes.
+        Enter opens a text or sticky note. On a mind map's selected topic, Tab adds a branch, Enter adds the next
+        topic, Shift+Tab moves it up a level, arrow keys go from topic to topic, F2 types in it and / folds it.
+        Ctrl+Z undoes.
       </p>
       <div
         ref={viewportRef}
@@ -417,6 +493,7 @@ export function AnnotatorCanvas({
         onLostPointerCapture={pointerCancel}
         onScroll={() => { rects.current = null; }}
         onKeyDown={keyDown}
+        onContextMenu={contextMenu}
       >
         <div ref={contentRef} className="tw:relative tw:w-max tw:min-w-full tw:p-4 tw:compact:p-2">
           {pages.map((page) => {
@@ -448,6 +525,7 @@ export function AnnotatorCanvas({
                 onMeasureText={controller.measureText}
                 onTypeText={controller.typeText}
                 onFinishText={controller.finishEditing}
+                onAddTopic={controller.addTopic}
                 onFocusAnnotation={focusAnnotation}
                 onOpenAnnotation={openAnnotation}
                 onChangeText={changeText}

@@ -145,8 +145,11 @@ fn upright(page: &NotebookPdfPage<'_>) -> PageFrame {
     }
 }
 
-/// Where a link's label sits, as `(x, top, width, height)` in shown points.
+/// Where a link's label (or a topic's box) sits, as `(x, top, width, height)` in shown points.
 pub(super) fn link_box(note: &TextNote) -> (f64, f64, f64, f64) {
+    if note.topic.is_some() {
+        return (note.x, note.y, note.width, topic_height(note));
+    }
     let lines = wrap(&note.text, note.width - 2.0 * TEXT_PADDING, note.font_size).len();
     let height = lines.max(1) as f64 * note.font_size * TEXT_LINE_HEIGHT + 2.0 * TEXT_PADDING;
     (note.x, note.y, note.width, height)
@@ -271,6 +274,201 @@ pub fn shifted(shape: &AnnotationShape, dx: f64, dy: f64) -> AnnotationShape {
         }
     }
     moved
+}
+
+/// A mind-map topic's box, as the app draws it: padding inside an outline, in points.
+const TOPIC_PADDING_X: f64 = 10.0;
+const TOPIC_PADDING_Y: f64 = 6.0;
+const TOPIC_BORDER: f64 = 2.0;
+/// A topic's words, dark on its white box; a central topic's are white on its color.
+const TOPIC_INK: &str = "#1f2328";
+
+fn topic_lines(note: &TextNote) -> Vec<String> {
+    wrap(
+        &note.text,
+        note.width - 2.0 * (TOPIC_PADDING_X + TOPIC_BORDER),
+        note.font_size,
+    )
+}
+
+fn topic_height(note: &TextNote) -> f64 {
+    topic_lines(note).len().max(1) as f64 * note.font_size * TEXT_LINE_HEIGHT
+        + 2.0 * (TOPIC_PADDING_Y + TOPIC_BORDER)
+}
+
+impl Canvas<'_> {
+    /// A mind-map topic: a box outlined in its branch's color (the central
+    /// topic filled with it) and its words centered in it.
+    pub(super) fn topic(&mut self, note: &TextNote) -> Result<(), ExportError> {
+        let central = note
+            .topic
+            .as_ref()
+            .is_some_and(|topic| topic.parent.is_none());
+        let color = super::parse_color(&note.color);
+        let height = topic_height(note);
+        let inset = TOPIC_BORDER / 2.0;
+        let bottom = self.y(note.y + height);
+        self.page
+            .graphics()
+            .save_state()
+            .set_fill_color(if central { color } else { paper_white() })
+            .set_stroke_color(color)
+            .set_line_width(TOPIC_BORDER)
+            .rect(
+                note.x + inset,
+                bottom + inset,
+                note.width - TOPIC_BORDER,
+                height - TOPIC_BORDER,
+            )
+            .fill_stroke()
+            .restore_state();
+        let ink = if central {
+            paper_white()
+        } else {
+            super::parse_color(TOPIC_INK)
+        };
+        let top = note.y + TOPIC_BORDER + TOPIC_PADDING_Y;
+        let line_height = note.font_size * TEXT_LINE_HEIGHT;
+        for (index, line) in topic_lines(note).into_iter().enumerate() {
+            // Centered by the same rough glyph width the lines were wrapped with.
+            let width = line.chars().count() as f64 * note.font_size * super::CHARACTER_WIDTH;
+            let x = note.x + ((note.width - width) / 2.0).max(TOPIC_BORDER + TOPIC_PADDING_X);
+            self.write_lines(
+                &[line],
+                x,
+                top + index as f64 * line_height,
+                note.font_size,
+                ink,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+/// A notebook page's marks as they are drawn on paper, from `(id, mark)`
+/// pairs in drawing order: topics folded away are left out, and each shown
+/// branch of a mind map is drawn as a curve from its topic, under the marks.
+pub fn mind_map_marks(items: &[(&str, &AnnotationShape)]) -> Vec<AnnotationShape> {
+    let topics: HashMap<&str, &TextNote> = items
+        .iter()
+        .filter_map(|(id, shape)| match shape {
+            AnnotationShape::Text(note) if note.topic.is_some() => Some((*id, note)),
+            _ => None,
+        })
+        .collect();
+    if topics.is_empty() {
+        return items.iter().map(|(_, shape)| (*shape).clone()).collect();
+    }
+    let parent_of = |id: &str| -> Option<&str> {
+        let topic = topics.get(id)?.topic.as_ref()?;
+        let parent = topic.parent.as_deref()?;
+        let parent_topic = topics.get(parent)?.topic.as_ref()?;
+        (parent_topic.map == topic.map).then_some(parent)
+    };
+    // A topic is hidden when a topic above it is folded; a loop of parents hides nothing.
+    let hidden = |id: &str| -> bool {
+        let mut current = id;
+        for _ in 0..topics.len() {
+            let Some(parent) = parent_of(current) else {
+                return false;
+            };
+            if topics
+                .get(parent)
+                .and_then(|note| note.topic.as_ref())
+                .is_some_and(|topic| topic.folded == Some(true))
+            {
+                return true;
+            }
+            current = parent;
+        }
+        false
+    };
+    let mut branches = Vec::new();
+    for (id, note) in &topics {
+        if hidden(id) {
+            continue;
+        }
+        let Some(parent_id) = parent_of(id) else {
+            continue;
+        };
+        let Some(parent) = topics.get(parent_id) else {
+            continue;
+        };
+        if parent
+            .topic
+            .as_ref()
+            .is_some_and(|topic| topic.folded == Some(true))
+        {
+            continue;
+        }
+        let root = note
+            .topic
+            .as_ref()
+            .and_then(|topic| topics.get(topic.map.as_str()));
+        let down = root
+            .and_then(|root| root.topic.as_ref())
+            .is_some_and(|topic| {
+                topic.layout == Some(crate::document_annotations::MapLayout::Down)
+            });
+        let (parent_height, child_height) = (topic_height(parent), topic_height(note));
+        let (from, to, controls) = if down {
+            let from = (parent.x + parent.width / 2.0, parent.y + parent_height);
+            let to = (note.x + note.width / 2.0, note.y);
+            let middle = (from.1 + to.1) / 2.0;
+            (from, to, [from.0, middle, to.0, middle])
+        } else {
+            let leftward = note.x + note.width / 2.0 < parent.x + parent.width / 2.0;
+            let from = (
+                if leftward {
+                    parent.x
+                } else {
+                    parent.x + parent.width
+                },
+                parent.y + parent_height / 2.0,
+            );
+            let to = (
+                if leftward {
+                    note.x + note.width
+                } else {
+                    note.x
+                },
+                note.y + child_height / 2.0,
+            );
+            let middle = (from.0 + to.0) / 2.0;
+            (from, to, [middle, from.1, middle, to.1])
+        };
+        let from_root = parent
+            .topic
+            .as_ref()
+            .is_some_and(|topic| topic.parent.is_none());
+        branches.push((
+            *id,
+            AnnotationShape::Line(super::Segment {
+                x1: from.0,
+                y1: from.1,
+                x2: to.0,
+                y2: to.1,
+                color: note.color.clone(),
+                stroke_width: if from_root { 3.0 } else { 2.0 },
+                dash: None,
+                both_ends: None,
+                curve: Some(controls.to_vec()),
+                group: None,
+            }),
+        ));
+    }
+    // The same order every time, whatever the map's order of lookup.
+    branches.sort_by(|a, b| a.0.cmp(b.0));
+    branches
+        .into_iter()
+        .map(|(_, line)| line)
+        .chain(
+            items
+                .iter()
+                .filter(|(id, _)| !topics.contains_key(id) || !hidden(id))
+                .map(|(_, shape)| (*shape).clone()),
+        )
+        .collect()
 }
 
 fn draw_pages(

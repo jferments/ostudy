@@ -111,6 +111,8 @@ export type GestureEffect =
   | { kind: "group-change"; before: readonly Annotation[]; after: readonly Annotation[] }
   | { kind: "edit-text"; annotation: Annotation }
   | { kind: "new-text"; pageNumber: number; point: Point; sticky: boolean }
+  /** The Mind map tool tapped empty paper: a map starts there. */
+  | { kind: "new-map"; pageNumber: number; point: Point }
   | { kind: "scroll-by"; dx: number; dy: number }
   /** Pixels per millisecond the view keeps moving after a flick. */
   | { kind: "fling"; velocityX: number; velocityY: number }
@@ -133,7 +135,7 @@ type Gesture =
     /** Strokes the eraser has cut so far, and the strokes left of each. */
     cuts: Map<string, { original: Annotation; shapes: ReadonlyArray<InkShape | HighlightShape> }>;
   }
-  | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" | "sticky" }
+  | { kind: "press"; pointerId: number; pointer: PointerKind; start: Client; pageNumber: number | null; hit: Annotation | null; purpose: "select" | "text" | "sticky" | "mindmap" }
   | { kind: "move"; pointerId: number; pageNumber: number; original: Annotation; start: Point; current: Annotation }
   | { kind: "lasso"; pointerId: number; pageNumber: number; points: number[] }
   /**
@@ -171,7 +173,12 @@ const clientDistance = (a: Client, b: Client) => Math.hypot(a.x - b.x, a.y - b.y
 const clientMidpoint = (a: Client, b: Client): Client => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 function isDrawingTool(tool: AnnotatorTool): boolean {
-  return tool !== "select";
+  return tool !== "select" && tool !== "mindmap";
+}
+
+/** Select, and the Mind map tool, which picks up marks as Select does. */
+function picksUp(purpose: AnnotatorTool): purpose is "select" | "mindmap" {
+  return purpose === "select" || purpose === "mindmap";
 }
 
 /**
@@ -267,7 +274,7 @@ export class AnnotatorGestures {
       case "press": {
         if (clientDistance(client, active.start) < TAP_SLOP[active.pointer]) return [];
         // Select moves what it pressed; the note tools drag their notes.
-        if (active.hit && active.pageNumber !== null && active.purpose === "select" && active.hit.shape.group) {
+        if (active.hit && active.pageNumber !== null && picksUp(active.purpose) && active.hit.shape.group) {
           // A grouped mark moves with the rest of its group.
           const members = withTheirGroups(context.annotationsOn(active.pageNumber), [active.hit]);
           const start = surface.toPage(active.pageNumber, active.start.x, active.start.y);
@@ -279,7 +286,7 @@ export class AnnotatorGestures {
         }
         if (active.hit && active.pageNumber !== null) {
           const effects: GestureEffect[] = [];
-          if (active.purpose === "select" && context.selected?.id !== active.hit.id) effects.push({ kind: "select", id: active.hit.id });
+          if (picksUp(active.purpose) && context.selected?.id !== active.hit.id) effects.push({ kind: "select", id: active.hit.id });
           const start = surface.toPage(active.pageNumber, active.start.x, active.start.y);
           this.active = { kind: "move", pointerId: active.pointerId, pageNumber: active.pageNumber, original: active.hit, start, current: active.hit };
           return [...effects, ...this.move(sample, surface, context)];
@@ -289,7 +296,7 @@ export class AnnotatorGestures {
           return this.move(sample, surface, context);
         }
         const size = active.pageNumber === null ? null : surface.pageSize(active.pageNumber);
-        if (active.purpose === "select" && active.pageNumber !== null && size) {
+        if (picksUp(active.purpose) && active.pageNumber !== null && size) {
           // A mouse or pen drag across empty page selects what the rectangle takes.
           const from = clampToPage(surface.toPage(active.pageNumber, active.start.x, active.start.y), size);
           this.active = { kind: "marquee", pointerId: active.pointerId, pageNumber: active.pageNumber, from, to: from };
@@ -522,25 +529,25 @@ export class AnnotatorGestures {
     const size = pageNumber === null ? null : surface.pageSize(pageNumber);
     const point = pageNumber === null ? null : surface.toPage(pageNumber, client.x, client.y);
 
-    if (tool === "select" || placesNotes) {
+    if (picksUp(tool) || placesNotes) {
       let hit: Annotation | null = null;
       if (pageNumber !== null && point && size) {
         const slop = HIT_SLOP[sample.kind] / context.scale;
-        const selected = tool === "select" && context.selected?.pageNumber === pageNumber ? context.selected : null;
+        const selected = picksUp(tool) && context.selected?.pageNumber === pageNumber ? context.selected : null;
         const handle = selected ? handleAt(selected, point, slop, context) : null;
         if (selected && handle) {
           this.active = { kind: "resize", ...base, pageNumber, original: selected, handle, current: selected };
           return [];
         }
         const annotations = context.annotationsOn(pageNumber);
-        hit = tool === "select"
+        hit = picksUp(tool)
           // A box or an ellipse can be picked up anywhere inside it.
           ? topmostAt(annotations, point, slop, context.textHeight) ?? frameAround(annotations, point)
           : topmostAt(
             annotations, point, slop, context.textHeight,
             (annotation) => annotation.shape.kind === "text" && (tool === "text" || isStickyNote(annotation.shape)),
           );
-        if (tool === "select" && insideGroup(context.group, pageNumber, point, slop, context)) {
+        if (picksUp(tool) && insideGroup(context.group, pageNumber, point, slop, context)) {
           // Dragging a selected group moves it; tapping in it selects one annotation.
           this.active = {
             kind: "group-move", ...base, pageNumber, originals: context.group, start: point, current: context.group,
@@ -686,7 +693,7 @@ export class AnnotatorGestures {
   }
 
   private tap(active: Extract<Gesture, { kind: "press" }>, surface: GestureSurface, context: GestureContext): GestureEffect[] {
-    if (active.purpose !== "select") {
+    if (!picksUp(active.purpose)) {
       if (active.hit) return [{ kind: "edit-text", annotation: active.hit }];
       if (active.pageNumber === null) return [];
       const size = surface.pageSize(active.pageNumber);
@@ -696,9 +703,12 @@ export class AnnotatorGestures {
     }
     if (!active.hit) {
       if (context.selected) return [{ kind: "select", id: null }];
-      return context.group.length > 0 && active.pageNumber !== null
-        ? [{ kind: "select-group", pageNumber: active.pageNumber, ids: [] }]
-        : [];
+      if (context.group.length > 0 && active.pageNumber !== null) return [{ kind: "select-group", pageNumber: active.pageNumber, ids: [] }];
+      // With nothing selected, the Mind map tool starts a map on empty paper.
+      if (active.purpose !== "mindmap" || active.pageNumber === null) return [];
+      const size = surface.pageSize(active.pageNumber);
+      if (!size) return [];
+      return [{ kind: "new-map", pageNumber: active.pageNumber, point: clampToPage(surface.toPage(active.pageNumber, active.start.x, active.start.y), size) }];
     }
     // A tap on the selected text note opens it, so a double tap edits.
     if (active.hit.shape.kind === "text" && context.selected?.id === active.hit.id) {

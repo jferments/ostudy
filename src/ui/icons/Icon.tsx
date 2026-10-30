@@ -58,6 +58,7 @@ export const ICON_NAMES = [
   "media",
   "menu",
   "mic",
+  "mind-map",
   "minimize",
   "minus",
   "monitor",
@@ -629,6 +630,16 @@ function iconPath(name: IconName): ReactNode {
           <circle cx="12" cy="12" r="1" />
           <circle cx="19" cy="12" r="1" />
           <circle cx="5" cy="12" r="1" />
+        </>
+      );
+    case "mind-map": // Lucide: network
+      return (
+        <>
+          <rect x="16" y="16" width="6" height="6" rx="1" />
+          <rect x="2" y="16" width="6" height="6" rx="1" />
+          <rect x="9" y="2" width="6" height="6" rx="1" />
+          <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" />
+          <path d="M12 12V8" />
         </>
       );
     case "pan": // Lucide: hand

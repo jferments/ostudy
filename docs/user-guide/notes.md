@@ -24,6 +24,22 @@ On a board, the **Hand** tool drags the view, and holding **Space** picks it unt
 
 Text notes can hold bulleted and numbered lists, checklists and formulas, as described in [Text notes](pdf-annotation.md#text-notes). A formula on its own in a note is a movable formula: drag the note to place it.
 
+## Mind maps
+
+The **Mind map** tool (**M**) starts a map on any notebook page or board: tap empty paper and type the central idea. With a topic selected or being typed, **Tab** adds a branch to it and **Enter** adds the next topic beside it (**Shift+Enter** starts a new line instead). The map keeps itself tidy: branches spread to both sides of the central topic, and each topic is as wide as its words. The Mind map tool otherwise works like Select, so it picks up and drags topics and other marks.
+
+The arrow beside the **Mind map** button opens the map's actions: **Start a new map**, **Add a branch**, **Add the next topic**, **Move up a level**, **Fold branches** (and **Show branches**, which the folded topic's count also tells you about), the map's layout (both sides, to the right, or downward like an outline turned on its side), **Put this topic back in place** and **Tidy the map**. Actions for a topic work on the selected one.
+
+Right-click a topic (or press and hold it on a touch screen) for its own menu: **Edit topic**, the same actions, its **Colour** and **Text size**, the map's layout, **Add link…** and **Delete topic**.
+
+- Drag a topic onto another topic to make it that topic's branch; its own branches come with it. Drag it anywhere else and it stays where you let it go, with its branches, and takes its place among its neighbours (or moves to the other side of the central topic); branches in its way move aside so nothing overlaps. **Put this topic back in place** returns one topic to the map's own layout, and **Tidy the map** returns them all. Dragging the central topic moves the whole map.
+- The arrow keys go from topic to topic as the map is drawn, **Shift+Tab** moves a topic up a level, **F2** types in it and **/** folds or shows its branches.
+- Deleting a topic deletes its branches with it; **Undo** brings them back.
+- A topic takes the color and text size you choose like any text note. A new color is passed to the topic's branches that had its old color, so a branch keeps one color.
+- **Add link** (**K**) with a topic selected turns the topic into a link with its words as the label.
+
+Save PDF draws each map as it is shown: its topics in their boxes, the curved branches between them, and nothing that is folded away.
+
 ## A document beside your notes
 
 On a wide screen, **Document beside** opens a PDF from your library next to the notebook, so you can read and write at once. The document has every annotation tool, and its marks are saved with the document as you work; the notebook keeps its own tools on the other side. While a document is open beside the notes, a link to a document page opens there instead of over the notebook. **Change document** picks another, and **Close document** closes it. Leaving the notebook saves both. On a phone, a document page link opens over the notebook instead.

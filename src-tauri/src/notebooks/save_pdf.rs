@@ -16,7 +16,8 @@ use super::{contents, NotebookContentsDto, NotebookPageDto, PageLayout, PageSize
 use crate::{
     database::Database,
     document_annotations::{
-        notebook_pdf, shape_bounds, shifted, AnnotationShape, LinkTarget, NotebookPdfPage, Ruling,
+        mind_map_marks, notebook_pdf, shape_bounds, shifted, AnnotationShape, LinkTarget,
+        NotebookPdfPage, Ruling,
     },
     error::CommandError,
     external_files::{PreparedExportDto, RegisterPreparedExport},
@@ -272,12 +273,15 @@ pub(crate) fn write_notebook(
     // The first PDF page each notebook page became, for links to it.
     let mut first_sheet: HashMap<&str, usize> = HashMap::new();
     for page in &notebook.pages {
-        let shapes: Vec<&AnnotationShape> = notebook
+        let items: Vec<(&str, &AnnotationShape)> = notebook
             .items
             .iter()
             .filter(|item| item.page_id == page.id)
-            .map(|item| &item.shape)
+            .map(|item| (item.id.as_str(), &item.shape))
             .collect();
+        // Mind maps are drawn with their branches, without what is folded away.
+        let marks = mind_map_marks(&items);
+        let shapes: Vec<&AnnotationShape> = marks.iter().collect();
         missing += shapes
             .iter()
             .filter(|shape| {

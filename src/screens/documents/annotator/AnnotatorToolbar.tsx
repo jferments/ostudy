@@ -3,7 +3,7 @@ import { useState, type MouseEvent, type ReactNode } from "react";
 import { Icon, type IconName } from "../../../ui/icons/Icon";
 import { cn } from "../../../ui/internal/cn";
 import { Sheet } from "../../../ui/overlays/Dialog";
-import { OverflowMenu } from "../../../ui/overlays/OverflowMenu";
+import { OverflowMenu, type OverflowMenuItem } from "../../../ui/overlays/OverflowMenu";
 import { Toolbar, ToolbarAction, ToolbarGroup } from "../../../ui/primitives/Toolbar";
 import {
   isShapeTool,
@@ -36,6 +36,7 @@ export const TOOLS: Readonly<Record<AnnotatorTool, ToolDescription>> = {
   eraser: { label: "Eraser", icon: "eraser", shortcut: "E" },
   clip: { label: "Clip to notes", icon: "crop", shortcut: "X" },
   hand: { label: "Hand", icon: "pan", shortcut: "Space" },
+  mindmap: { label: "Mind map", icon: "mind-map", shortcut: "M" },
 };
 
 const MAIN_TOOLS: readonly AnnotatorTool[] = ["select", "lasso", "pen", "highlighter"];
@@ -78,6 +79,10 @@ interface AnnotatorToolbarProps {
   canClip?: boolean;
   /** Offers the Hand tool, which drags the view around a board. */
   canPan?: boolean;
+  /** Offers the Mind map tool, on a notebook's pages and boards. */
+  canMap?: boolean;
+  /** The Mind map tool's dropdown: what can be done with maps and the selected topic. */
+  mapMenu?: ReadonlyArray<OverflowMenuItem>;
   /** The fit button fits everything on a board in the window rather than the page width. */
   fitAll?: boolean;
   /** How many annotations the lasso took. */
@@ -150,6 +155,21 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
       <Icon name="link" />
     </ToolbarAction>
   ) : null;
+  // One Mind map button; the map's actions open from the arrow beside it.
+  const mapTool = props.canMap ? (
+    <span className="tw:flex tw:items-center">
+      {toolButton("mindmap")}
+      {props.mapMenu ? (
+        <OverflowMenu
+          label="Mind map actions"
+          triggerIcon="chevron-down"
+          className="tw:w-5 tw:min-w-5 tw:px-0"
+          disabled={props.disabled}
+          items={props.mapMenu}
+        />
+      ) : null}
+    </span>
+  ) : null;
   const status = props.status ? (
     <div className="tw:flex tw:shrink-0 tw:items-center tw:gap-2 tw:text-label tw:whitespace-nowrap tw:text-muted-foreground">
       {props.status}
@@ -181,6 +201,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
                 }))}
               />
               {toolButton("eraser")}
+              {mapTool}
               {addLink}
               {props.canClip ? toolButton("clip") : null}
             </ToolbarGroup>
@@ -230,6 +251,7 @@ export function AnnotatorToolbar(props: AnnotatorToolbarProps) {
                 }))}
               />
             </span>
+            {mapTool}
             {addLink}
             {props.canClip ? toolButton("clip") : null}
           </ToolbarGroup>
@@ -288,7 +310,7 @@ const sizeGroupLabel = (style: ActiveStyle) => isLetterFamily(style.family) ? "T
 function StyleRow(props: AnnotatorToolbarProps) {
   const { compact, tool, style, onStyle, selection, onDeleteSelection, onEditSelection, onMakeCard, disabled } = props;
   const choices = style ? STYLE_CHOICES[style.family] : null;
-  if ((tool === "lasso" || tool === "select") && props.groupSize > 0 && !selection) {
+  if ((tool === "lasso" || tool === "select" || tool === "mindmap") && props.groupSize > 0 && !selection) {
     return (
       <div className="tw:flex tw:min-h-7 tw:min-w-0 tw:items-center tw:gap-2 tw:coarse:min-h-touch">
         <Toolbar label="Selected annotations" disabled={disabled} className="tw:flex-nowrap tw:gap-1">

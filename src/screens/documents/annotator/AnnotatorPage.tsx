@@ -24,10 +24,14 @@ import {
   STICKY_ICON_SIZE,
   TEXT_LINE_HEIGHT,
   TEXT_PADDING,
+  TOPIC_BORDER,
+  TOPIC_PADDING_X,
+  TOPIC_PADDING_Y,
   type Annotation,
   type AnnotationShape,
   type TextShape,
 } from "./annotationModel";
+import { branchLines, foldBadges, visibleMarks } from "./mindMap";
 import { NoteBody } from "./NoteBody";
 import { continueList, toggleCheck } from "./noteText";
 import { usePageImage, type PageImageCache } from "./pageImages";
@@ -91,6 +95,8 @@ interface AnnotatorPageProps {
   onMeasureText: (annotation: Annotation, height: number) => void;
   onTypeText: (text: string) => void;
   onFinishText: () => void;
+  /** From a topic being typed: Tab opens a branch of it, Enter the topic after it. */
+  onAddTopic?: (relation: "child" | "sibling") => void;
   onFocusAnnotation: (annotation: Annotation) => void;
   onOpenAnnotation: (annotation: Annotation) => void;
   /** Ticks or clears a text note's checkbox; checkboxes can be pressed only with the Select tool. */
@@ -153,13 +159,16 @@ function ClipBadges({ clips, onOpen }: { clips: readonly DocumentClip[]; onOpen:
 
 function PageContent({
   page, paperPages, scale, annotations, draft, preview, group, loop, erasing, selected, editing, selectable, coarse,
-  textHeight, onMeasureText, onTypeText, onFinishText, onFocusAnnotation, onOpenAnnotation, onChangeText, imageUrl, imageFailed, sharpTiles,
+  textHeight, onMeasureText, onTypeText, onFinishText, onAddTopic, onFocusAnnotation, onOpenAnnotation, onChangeText, imageUrl, imageFailed, sharpTiles,
 }: AnnotatorPageProps & { imageUrl: string | null; imageFailed: boolean; sharpTiles: readonly ShownTile[] }) {
   const moving = new Map(group.map((annotation) => [annotation.id, annotation]));
-  const shown = annotations.map((annotation) => preview?.id === annotation.id ? preview : moving.get(annotation.id) ?? annotation);
+  // Topics folded away are not drawn; their folded topic shows how many there are.
+  const shown = useMemo(() => visibleMarks(annotations), [annotations]).map((annotation) => preview?.id === annotation.id ? preview : moving.get(annotation.id) ?? annotation);
   const viewBox = `0 0 ${page.width} ${page.height}`;
   const faded = (annotation: Annotation) => erasing?.has(annotation.id) ? 0.25 : undefined;
   const highlights = shown.filter((annotation) => annotation.shape.kind === "highlight");
+  const branches = branchLines(shown, textHeight);
+  const badges = foldBadges(annotations, textHeight);
   const graphics = shown.filter((annotation) => annotation.shape.kind !== "highlight" && annotation.shape.kind !== "text");
   const notes = shown.filter((annotation) => annotation.shape.kind === "text" && !isStickyNote(annotation.shape)
     && annotation.id !== editing?.annotation.id);
@@ -202,6 +211,10 @@ function PageContent({
         {draft?.shape.kind === "highlight" ? <ShapeGraphic shape={draft.shape} complete={draft.complete} /> : null}
       </svg>
       <svg viewBox={viewBox} aria-hidden="true" className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full">
+        {branches.map((line) => (
+          <path key={line.id} data-map-branch="" d={line.d} fill="none" stroke={line.color} strokeWidth={line.width}
+            strokeLinecap="round" opacity={erasing?.has(line.id) ? 0.25 : undefined} />
+        ))}
         {graphics.map((annotation) => (
           <g key={annotation.id} opacity={faded(annotation)}><ShapeGraphic shape={annotation.shape} /></g>
         ))}
@@ -220,8 +233,19 @@ function PageContent({
           <StickyNote key={annotation.id} annotation={annotation} opacity={faded(annotation)} />
         ))}
         {openSticky ? <StickyNote annotation={openSticky} opacity={undefined} open /> : null}
-        {editing && !openSticky ? <TextNoteEditor editing={editing} onType={onTypeText} onFinish={onFinishText} /> : null}
+        {editing && !openSticky ? <TextNoteEditor editing={editing} onType={onTypeText} onFinish={onFinishText} onAddTopic={onAddTopic} /> : null}
       </div>
+      {badges.length > 0 ? (
+        <svg viewBox={viewBox} aria-hidden="true" className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full tw:overflow-visible">
+          {badges.map((badge) => (
+            <g key={badge.id} data-fold-badge={badge.count}>
+              <circle cx={badge.x} cy={badge.y} r={9} fill="#ffffff" stroke={badge.color} strokeWidth={1.5} />
+              <text x={badge.x} y={badge.y} textAnchor="middle" dominantBaseline="central" fontSize={badge.count > 99 ? 7 : 9}
+                fontWeight={600} fill={badge.color}>{badge.count > 999 ? "999+" : badge.count}</text>
+            </g>
+          ))}
+        </svg>
+      ) : null}
       {group.length > 0 || loop ? (
         <svg viewBox={viewBox} aria-hidden="true" className="tw:pointer-events-none tw:absolute tw:inset-0 tw:size-full tw:overflow-visible">
           {group.map((annotation) => {
@@ -332,8 +356,11 @@ function frameLook(shape: FrameShape): Pick<SVGProps<SVGRectElement>, "fill" | "
   };
 }
 
+/** The ink of a topic's words, dark on paper whatever the theme, as the page itself is. */
+const TOPIC_INK = "#1f2328";
+
 function textStyle(shape: TextShape): CSSProperties {
-  return {
+  const base = {
     left: shape.x,
     top: shape.y,
     width: shape.width,
@@ -341,6 +368,19 @@ function textStyle(shape: TextShape): CSSProperties {
     color: shape.color,
     fontSize: shape.fontSize,
     lineHeight: TEXT_LINE_HEIGHT,
+  };
+  if (!shape.topic) return base;
+  // A topic is a box outlined in its branch's color; the central topic is filled with it.
+  const central = shape.topic.parent === undefined;
+  return {
+    ...base,
+    padding: `${TOPIC_PADDING_Y}px ${TOPIC_PADDING_X}px`,
+    border: `${TOPIC_BORDER}px solid ${shape.color}`,
+    borderRadius: central ? 12 : 8,
+    background: central ? shape.color : "#ffffff",
+    color: central ? "#ffffff" : TOPIC_INK,
+    fontWeight: central ? 600 : 500,
+    textAlign: "center",
   };
 }
 
@@ -509,10 +549,11 @@ export function StickyNoteEditor({ editing, onType, onFinish }: {
 }
 
 /** The open text note: a field in the note's place, at the note's size, growing with its text. */
-function TextNoteEditor({ editing, onType, onFinish }: {
+function TextNoteEditor({ editing, onType, onFinish, onAddTopic }: {
   editing: TextEditing;
   onType: (text: string) => void;
   onFinish: () => void;
+  onAddTopic?: (relation: "child" | "sibling") => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const caret = useRef<number | null>(null);
@@ -548,7 +589,7 @@ function TextNoteEditor({ editing, onType, onFinish }: {
     <Textarea
       ref={ref}
       value={editing.text}
-      aria-label={editing.isNew ? "New text note" : "Edit text note"}
+      aria-label={shape.topic ? (editing.isNew ? "New topic" : "Edit topic") : editing.isNew ? "New text note" : "Edit text note"}
       maxLength={MAX_TEXT_CHARS}
       rows={1}
       spellCheck
@@ -560,6 +601,15 @@ function TextNoteEditor({ editing, onType, onFinish }: {
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
         const field = event.currentTarget;
+        if (shape.topic && !event.ctrlKey && !event.metaKey && !event.altKey
+          && ((event.key === "Enter" && !event.shiftKey) || (event.key === "Tab" && !event.shiftKey))) {
+          // A topic is one idea: Enter goes on to the next topic and Tab to a branch, as in mind-map apps.
+          event.preventDefault();
+          event.stopPropagation();
+          if (onAddTopic) onAddTopic(event.key === "Tab" ? "child" : "sibling");
+          else onFinish();
+          return;
+        }
         if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey
           && field.selectionStart === field.selectionEnd) {
           // Enter on a list item starts the next one, or ends the list on an empty item.

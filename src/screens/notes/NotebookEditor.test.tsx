@@ -425,4 +425,60 @@ describe("notebook editor", () => {
     fireEvent.click(await within(await openMenu(save)).findByRole("menuitem", { name: "Boards across Letter pages" }));
     await waitFor(() => expect(notebooksIpc.prepareNotebookPdf).toHaveBeenCalledWith(notebookId, undefined, { split: "letter" }));
   });
+
+  it("builds a mind map with the keyboard, folds a branch and saves each topic's place", async () => {
+    const { canvas } = await openNotebook();
+    fireEvent.keyDown(canvas, { key: "m" });
+    expect(screen.getByRole("button", { name: "Mind map" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.pointerDown(canvas, onPage(300, 200));
+    fireEvent.pointerUp(canvas, onPage(300, 200));
+
+    // Enter goes on to the next topic and Tab to a branch, as typing goes.
+    let field = await screen.findByRole("textbox", { name: "New topic" });
+    fireEvent.change(field, { target: { value: "Heart" } });
+    fireEvent.keyDown(field, { key: "Tab" });
+    field = await screen.findByRole("textbox", { name: "New topic" });
+    fireEvent.change(field, { target: { value: "Systole" } });
+    fireEvent.keyDown(field, { key: "Tab" });
+    field = await screen.findByRole("textbox", { name: "New topic" });
+    fireEvent.change(field, { target: { value: "Ejection" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    field = await screen.findByRole("textbox", { name: "New topic" });
+    fireEvent.change(field, { target: { value: "Contraction" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+
+    await waitFor(() => expect(document.querySelectorAll("[data-map-branch]")).toHaveLength(3));
+    const saved = () => vi.mocked(notebooksIpc.applyNotebookItemChanges).mock.calls
+      .flatMap((call) => call[1])
+      .flatMap((change) => (change.op === "put" && change.shape.kind === "text" ? [change.shape] : []))
+      .reverse();
+    await waitFor(() => expect(new Set(saved().map((shape) => shape.text))).toEqual(new Set(["Heart", "Systole", "Ejection", "Contraction"])));
+    const heart = saved().find((shape) => shape.text === "Heart");
+    const systole = saved().find((shape) => shape.text === "Systole");
+    expect(heart?.topic).toMatchObject({ order: 0 });
+    expect(heart?.topic?.parent).toBeUndefined();
+    expect(systole?.topic).toMatchObject({ map: heart?.topic?.map, order: 0 });
+
+    // Up to the branch with the arrow key, then fold it from the toolbar.
+    fireEvent.keyDown(canvas, { key: "ArrowLeft" });
+    // One Mind map button: the map's actions open from the arrow beside it.
+    expect(screen.getAllByRole("button", { name: /Mind map/ })).toHaveLength(2);
+    await openMenu(screen.getByRole("button", { name: "Mind map actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Fold branches (/)" }));
+    expect(document.querySelectorAll("[data-map-branch]")).toHaveLength(1);
+    expect(document.querySelector("[data-fold-badge]")?.getAttribute("data-fold-badge")).toBe("2");
+    fireEvent.keyDown(canvas, { key: "/" });
+    expect(document.querySelectorAll("[data-map-branch]")).toHaveLength(3);
+
+    // A right-click on a topic opens its own menu, which adds a branch to it.
+    const contraction = saved().find((shape) => shape.text === "Contraction");
+    if (!contraction) throw new Error("no topic");
+    fireEvent.contextMenu(canvas, onPage(contraction.x + 10, contraction.y + 10));
+    const menu = await screen.findByRole("menu", { name: "Topic" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Add a branch (Tab)" }));
+    const branch = await screen.findByRole("textbox", { name: "New topic" });
+    fireEvent.change(branch, { target: { value: "Aortic valve opens" } });
+    fireEvent.keyDown(branch, { key: "Escape" });
+    await waitFor(() => expect(saved().find((shape) => shape.text === "Aortic valve opens")?.topic?.parent).toBeDefined());
+  });
 });
