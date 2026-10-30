@@ -1,6 +1,6 @@
 # ostudy documentation
 
-Start with the [project introduction](../README.md) for what ostudy is and why it exists. These guides are organized around what you want to do. Current behavior is described by the maintained guides and source, not by an older implementation-stage checklist.
+Start with the [project introduction](../README.md) for what ostudy is, with screenshots of each part of the app. These guides are organized around what you want to do. Current behavior is described by the maintained guides and source, not by an older implementation-stage checklist.
 
 ## Use the application
 
@@ -16,12 +16,15 @@ Start with the [project introduction](../README.md) for what ostudy is and why i
 | Write, highlight, draw and type notes on a PDF's pages | [Annotating PDF pages](user-guide/pdf-annotation.md) |
 | Write and draw your own notes on pages of paper, with links to your study materials | [Notes](user-guide/notes.md) |
 | Read, annotate, export, delete, and practice from generated guides | [Study guides](user-guide/study-guides.md) |
-| Use optional source-grounded chat, projects and learner-controlled memory | [Tutor memory and privacy](user-guide/tutor-memory-and-privacy.md) |
+| Watch a lesson's lecture, answer the teacher's questions, choose voices, and make podcasts | [Lessons and podcasts](user-guide/lessons-and-podcasts.md) |
+| Chat with Tutor: sources, quizzes, pictures, voice, projects and learner-controlled memory | [Tutor](user-guide/tutor-memory-and-privacy.md) |
 | Adjust themes, fonts, motion, help, and explicitly started tutorials | [Appearance and guidance](user-guide/appearance-and-guidance.md) |
-| Share a deck, import generated JSON, back up, or restore | [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) |
+| Share a deck, import from Quizlet or generated JSON, back up, or restore | [Backups, imports, and sharing](user-guide/backups-imports-and-sharing.md) |
 | Send supported study data directly between trusted devices | [Device synchronization](user-guide/device-sync.md) |
+| Bring Anki decks: what converts and what is skipped | [Anki import](reference/anki-import.md) |
+| Understand what changes when a newer build upgrades your library | [Library upgrades](user-guide/library-upgrades.md) |
 
-Home opens first, with today's review and Start review, lessons to pick up, suggestions, the week at a glance and your subjects. Library holds every material by subject, with tabs for a subject's Overview, Lessons, Study guides, Documents, Notes and Flashcards; Flashcards is the Workbench, which lists the subject's decks and tags beside the chosen cards. Tutor and Progress are destinations of their own, and Settings is the fifth. Card templates live in Settings; transfer actions are contextual. Tutor can also open contextually from supported study workflows. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
+Home opens first, with the question of the day, today's review and **Start review**, the slide your current lesson is on, lessons to pick up, suggestions, the week at a glance and your subjects. Library opens on a page of subject tiles; a subject's pages are its **Lessons**, **Flashcards** (the Workbench), **Study guides**, **Podcasts** and **Documents** tabs. **Notes**, **Tutor** and **Progress** are destinations of their own; Search and Settings sit at the foot of the side rail, or in a phone's top bar. Card templates live in Settings; transfer actions are contextual. Until an AI service is set up, the parts that need one (Tutor, Lessons, Study guides, Podcasts and the make actions) are hidden. A complete library backup and a device sync offer have different scopes. The guides explain these distinctions without exposing internal implementation details in ordinary instructions.
 
 ## Install, build, and test locally
 
@@ -78,7 +81,7 @@ The [generated JSON reference](reference/generated-json-import.md) and [generato
 
 ## Roadmap and historical material
 
-The [shared knowledge, collections, and lessons development plan](development/shared-knowledge-lessons/README.md) records the staged delivery program. PR #103 delivered the shared-knowledge/image foundation (LK-00–LK-04), and merged PR #104 delivered collections/ranges, collection synthesis, coherent study bundles, rich guide/PDF behavior, and Tutor organization (LK-05–LK-09). PR #105 is intentionally deferred as the preserved plan for future responsive lessons, retained narration, and PowerPoint work (LK-10–LK-12). Main now stores lessons and can write a subject's course with AI (schema 9), but no screen shows lessons yet; see the [roadmap](roadmap.md).
+The [shared knowledge, collections, and lessons development plan](development/shared-knowledge-lessons/README.md) records the staged delivery program. PR #103 delivered the shared-knowledge/image foundation (LK-00–LK-04), and merged PR #104 delivered collections/ranges, collection synthesis, coherent study bundles, rich guide/PDF behavior, and Tutor organization (LK-05–LK-09). PR #105 is intentionally deferred as the preserved plan for future responsive lessons, retained narration, and PowerPoint work (LK-10–LK-12). Lessons, lectures and podcasts have since shipped on main; see [Lessons and podcasts](user-guide/lessons-and-podcasts.md) and the [roadmap](roadmap.md).
 
 PR #106 is merged. Its [completion record](development/lk-followups/consolidation-qualification.md) identifies the release-v1 baseline, conversion and same-process restore owners, final source/merge identities, Linux/Android evidence and recorded disposable installed-copy acceptance. Its [original plan](history/pr-106-implementation-plan.md) is historical. Documentation cleanup does not authorize a protected-library cutover or make the proposed hardening changes current behavior.
 

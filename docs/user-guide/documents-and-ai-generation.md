@@ -46,7 +46,7 @@ You can keep adding images while processing runs. They wait for the current step
 
 ### Where the results go
 
-Generated cards appear in **Library → Flashcards**, in the document's own deck, and generated guides in **Library → Study guides**. There is no approval queue for generated cards; everything the model returns must pass ostudy's own checks before it becomes study content. A remade study guide replaces the old one only when the whole new guide is ready, so a failed remake keeps the last guide.
+Generated cards appear on the subject's **Flashcards** tab, in the document's own deck, and generated guides on its **Study guides** tab. There is no approval queue for generated cards; everything the model returns must pass ostudy's own checks before it becomes study content. A remade study guide replaces the old one only when the whole new guide is ready, so a failed remake keeps the last guide.
 
 ### Generated card formats
 
@@ -81,7 +81,7 @@ A subject's own study materials are made from its documents together. Nothing is
 - **Make**: **Study guide**, **Flashcards** and **Lessons**. Everything not yet made is ticked to start.
 - **Cards go into** and **Instructions (optional)**: these appear when **Flashcards** will write cards for a ticked document that has none yet. Its new cards go into the chosen deck of the subject, or into a new deck of its own, and the instructions guide what they cover. A document's later **Make more cards…** adds to the same deck.
 
-**Make** first writes those documents' cards, then writes the guide and the lessons side by side, with one **Stop** for both. Lessons appear in the subject's **Lessons** tab. A lesson's lecture opens at 80% zoom, with **Smaller slide** and **Larger slide** beside it. **Autoplay** goes on to the next slide when the teacher finishes one; turn it off to stay on each slide until you choose **Next**. What the teacher says is hidden until you turn on **Closed captions**. All three are remembered on the device; a subject's lessons are written once, so the sheet shows them as **Made** afterwards. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
+**Make** first writes those documents' cards, then writes the guide and the lessons side by side, with one **Stop** for both. Lessons appear in the subject's **Lessons** tab ([Lessons and podcasts](lessons-and-podcasts.md)); a subject's lessons are written once, so the sheet shows them as **Made** afterwards. Afterwards the subject offers **Study** and **Read guide**, and **Update study materials** when its documents or ranges change (it reads **Retry study materials** after a failure and **Recreate study materials** after you deleted its guide). The subject's flashcards are the cards in its decks: **Study** practices those decks as they are when the session starts, and each card keeps its one schedule and history wherever you study it. Nothing is copied.
 
 Making a subject's materials does not read or OCR an already-processed document again. The subject guide is written from what ostudy already extracted from each document, organized across documents, and each fact still points back to its own source.
 
