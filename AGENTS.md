@@ -71,7 +71,7 @@ pnpm android:smoke           # Android emulator smoke (needs KVM)
 
 `check-changed` is an aid, not merge qualification, and static checks are not native runtime testing. [Testing and CI](docs/development/testing-and-ci.md) describes each tier, the `Check` workflow, and focused test commands; [the command runbook](docs/development/command-runbook.md) covers setup, builds, and installs.
 
-Expensive Linux and Android tiers may reuse an earlier runner-local pass when only root-level Markdown or Markdown under `docs/` changed; any other path invalidates reuse, and `OSTUDY_FORCE_CHECK=1` forces fresh execution. A green run qualifies only the commit it tested. Performance measurements are advisory, not a substitute for correctness gates.
+Expensive Linux and Android tiers may reuse an earlier runner-local pass when only root-level Markdown, Markdown under `docs/`, or `.webp`/`.png`/`.jpg` screenshots directly in `assets/screenshots/` changed; any other path invalidates reuse, and `OSTUDY_FORCE_CHECK=1` forces fresh execution. A green run qualifies only the commit it tested. Performance measurements are advisory, not a substitute for correctness gates.
 
 Fix the cause of a failure. Do not skip, disable, or weaken tests, add sleeps or longer timeouts, push empty commits, or toggle PR state to get a green result. Re-run an unchanged commit at most once, and only with evidence of a transient cause. Do not claim live-provider, physical-device, screenshot, accessibility, or manual acceptance that was not actually exercised.
 
