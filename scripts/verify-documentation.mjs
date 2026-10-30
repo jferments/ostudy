@@ -20,6 +20,7 @@ const tracked = new Set(trackedFiles);
 const allowedRootEntries = new Set([
   ".cargo",
   ".editorconfig",
+  ".gitattributes",
   ".github",
   ".gitignore",
   ".node-version",
@@ -199,6 +200,7 @@ const textExtensions = new Set([
 ]);
 const textBasenames = new Set([
   ".editorconfig",
+  ".gitattributes",
   ".gitignore",
   ".node-version",
   ".nvmrc",
