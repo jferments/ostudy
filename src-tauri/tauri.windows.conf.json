@@ -3,7 +3,7 @@
   "bundle": {
     "targets": ["nsis"],
     "resources": {
-      "resources/native/pdfium/pdfium.dll": "native/pdfium/"
+      "resources/native/pdfium/pdfium.dll": "native/pdfium/pdfium.dll"
     }
   }
 }

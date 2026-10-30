@@ -90,6 +90,20 @@ foreach ($exe in $candidates) {
 }
 Say ("  Migration 2 file modified: " + (Get-Item $migration).LastWriteTime.ToString("s"))
 
+Section "Bundled PDFium"
+foreach ($exe in $candidates) {
+    if (-not (Test-Path $exe)) { continue }
+    $native = Join-Path (Split-Path -Parent $exe) "native"
+    $dll = Join-Path $native "pdfium\pdfium.dll"
+    Say "  $dll : $(if (Test-Path $dll -PathType Leaf) { 'present' } else { 'MISSING' })"
+    if (Test-Path $native) {
+        Get-ChildItem $native -Recurse -Force | ForEach-Object {
+            $kind = if ($_.PSIsContainer) { "dir " } else { "file" }
+            Say "    $kind $($_.FullName.Substring($native.Length)) $(if (-not $_.PSIsContainer) { $_.Length })"
+        }
+    }
+}
+
 Section "Library"
 $appData = Join-Path $env:APPDATA "io.github.jferments.ostudy"
 Get-Process ostudy -ErrorAction SilentlyContinue | ForEach-Object {
