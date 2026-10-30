@@ -1,10 +1,10 @@
 # Appearance, accessibility, help, and tutorials
 
-Open **Settings → Appearance**. Presentation preferences change how ostudy looks and responds, not where your study data is stored or how reviews are scheduled. Theme and typography changes preview immediately; use **Save preferences** when shown to keep them. Provider profiles and card-template edits have their own save paths.
+Open **Settings → Appearance**. Presentation preferences change how ostudy looks and responds, not where your study data is stored or how reviews are scheduled. Theme and typography changes preview immediately; choose **Save** on the **Unsaved changes** bar to keep them, or **Discard**. Provider profiles and card-template edits have their own save paths.
 
 ## Navigation and available space
 
-The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show Home, Library, Tutor, and Progress with labels in a rail down the left side, with Search and Settings at its bottom. Compact layouts put Home, Library, Tutor, Progress, and Settings in a bottom bar and keep Search in the top bar, which also names the current destination.
+The same application resolves compact, medium, and wide layouts from its available viewport. Wide and medium layouts show Home, Library, Notes, Tutor, and Progress with labels in a rail down the left side, with Search and Settings at its bottom. Compact layouts put the same five in a bottom bar and keep Search and Settings in the top bar, which also names the current destination. Without an AI service, Tutor is not shown.
 
 An open Study Guide stays inside the application shell, with its own contents/article layout and close action. Smaller screens stack content rather than adding a modal that hides main navigation. On desktop the window uses your operating system's own title bar and controls; use them, or your window manager's shortcuts, to maximize or go full screen.
 

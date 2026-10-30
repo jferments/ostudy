@@ -45,7 +45,7 @@ Drama 3 has no fixed voices: on its own it picks a new speaker for every request
 
 Once a voice is chosen, **Make lecture audio with new lessons** appears under the Voice row. It is on unless you turn it off (save with **Save**): when a subject's lessons are written, oStudy writes each lesson's teacher's lecture with the document model, then has every part of it read aloud and keeps the audio: each slide's talk, the questions the teacher asks, and the reply to every answer. The subject shows **Making lecture audio** until it is done, and **Play lecture** then plays at once. This uses the document model once per lesson and the voice model once per part. Anything that could not be made is read aloud the first time it plays; while a lecture plays, the next slide's audio is fetched ahead.
 
-A podcast has two hosts, Ada and Ben, and **Make a podcast** on a subject's Lessons page sets each host's voice from the same list (with Kokoro, from its own voices). Ada speaks in **Calm older woman** and Ben in **Relaxed man** unless you pick others. Each host keeps that voice for the whole podcast. The conversation is written by the model chosen for documents in one request; the voice reads each part the first time it plays, about a cent or less a part, and keeps it.
+A podcast has two hosts, Ada and Ben, and **Make a podcast** on a subject's Podcasts page sets each host's voice from the same list (with Kokoro, from its own voices). Ada speaks in **Calm older woman** and Ben in **Relaxed man** unless you pick others. Each host keeps that voice for the whole podcast. The conversation is written by the model chosen for documents in one request; the voice reads each part the first time it plays, about a cent or less a part, and keeps it.
 
 ## Reasoning
 

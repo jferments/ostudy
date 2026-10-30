@@ -4,32 +4,30 @@ ostudy is being developed in layers, but the roadmap is not a list of promises o
 
 ## Current foundation
 
-The active codebase already includes:
+ostudy 0.1.0 (tag `v0.1.0`) is released for Linux as `.deb`, `.rpm`, Flatpak, AppImage and a portable folder. `main` has moved on since then; this list describes `main`.
 
-- a local SQLite library for subjects, decks, notes, studyable card presentations, schedules, review history, sessions, a study activity ledger, settings, and documents;
-- a five-destination shell (Home, Library, Tutor, Progress, Settings) with Search in the header: Home's Today strip, lessons to pick up, suggestions, week at a glance, subjects, Library organized by subject with its Overview, Lessons, Study guides, Documents, Notes and Flashcards (the Workbench) tabs, Session complete, and the Progress page;
-- rich Basic, Reverse, and Fill in the blank authoring plus native single-choice, select-all, true/false, matching, grouping, ordering, and image-occlusion questions; validated math, managed image/audio/video content, reusable templates, durable drafts, tags, full-text card search and filters, duplicate detection, and bounded bulk work;
-- FSRS-backed scheduling with recorded scheduler context and active study time, exact/deck/subject/scheduled/extra study scopes, suspend/bury/reset/reschedule controls, daily limits, a configurable study-day start, resumable practice sessions, and deterministic Progress statistics built from one set of learning-metric definitions;
-- contextual `.studydeck` exchange, strict generated `.ostudy.json` import, format-4 complete `.ostudybackup` recovery, and explicit encrypted private-LAN/direct-USB trusted-device synchronization with three-way merge/conflict records;
-- the release-v1 schema-1 baseline advanced by reviewed release migrations (currently schema 9) with a per-version upgrade preservation contract and pre-upgrade checkpoints, preserved historical readers/conversion, production/development isolation, and journaled same-process complete-library restoration;
-- retained PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, Excel/ODS, and CSV sources normalized into one canonical document model;
-- native PDF extraction/rendering with ruled-table rebuilding, page images for table/figure/OCR pages, and OCR on Linux and Android, with Xberg as the current non-PDF parser boundary;
-- a PDF annotator (ink, highlighter, shapes and text notes over the page renders, with sharp zoomed tiles) whose marks stay out of the source file and can be saved into an annotated copy;
-- source-grounded AI-assisted flashcard generation and durable interactive Study Guides with stable learning topics, learner notes/section overrides, conflicts, linked-card Practice, cancellation/checkpoints, and local PDF export;
-- a native lesson store, AI course writing for a subject (one lesson per top-level document topic), a step-by-step lesson player with native check grading, narration spoken by an OpenRouter voice and kept in the library, a lecture view that shows a lesson as slides typeset natively in one of the study guide themes (a step's process, comparison, table or callout drawn on its slide, and its check answered beside it) with the narration as speaker notes and saves it as an editable PowerPoint deck, and a teacher's lecture written once by the AI that talks over each slide in the teacher's own words, asks the class a few questions of varied kinds, some before a slide's talk and some after it, graded natively, and is spoken by the lesson voice;
-- implemented AI profiles for llama.cpp-compatible/Unsloth GGUF servers, DeepSeek, OpenRouter, and Claude, with native credential isolation/capability probing and no silent local-to-cloud fallback;
-- a first-class conversational Tutor with source-optional chats, multi-source document/deck/guide/subject grounding, conversation history/projects, saved-knowledge retrieval, private-answer safeguards, and no authority to rewrite FSRS schedules or review evidence;
-- one React/Rust application across desktop and Android, with wide/medium/compact navigation, shared accessible overlays/patterns, themes, local typography, reduced motion, safe areas, and keyboard/touch behavior;
-- a qualified Ubuntu/Debian Linux path and a qualified Android source-build/debug-install path with API 36 emulator qualification;
-- tiered exact-SHA qualification on an isolated self-hosted Linux/Android runner.
+- **Study shell.** Five destinations (Home, Library, Notes, Tutor, Progress) with Search and Settings at the foot of the side rail or in a phone's top bar. Home holds the question of the day, the Today strip and Start review, the current lesson's slide, lessons to pick up, suggestions, the week at a glance and the subjects. Library opens on subject tiles; a subject's pages are its Lessons, Flashcards (the Workbench), Study guides, Podcasts and Documents tabs. New study set is the one place a subject starts.
+- **Library and scheduling.** A local SQLite library (release schema 26, migrated forward from the immutable release-v1 baseline with pre-upgrade checkpoints) for subjects, decks, notes, card presentations, FSRS schedules, review history, a study activity ledger, documents, guides, lessons, notebooks and settings. Exact, deck, subject, scheduled and extra study scopes; suspend, bury, reset and reschedule; daily limits; a configurable study-day start; resumable sessions; deterministic Progress statistics from one set of metric definitions.
+- **Cards.** Rich Basic, Reverse and Fill in the blank authoring; native single best answer, select all, true/false, matching, grouping, ordering and image-occlusion questions checked in Rust; math and chemistry notation; managed images, audio and video; templates, drafts, tags, search, filters, duplicate checks and bulk work.
+- **Documents.** PDF, Word, PowerPoint, OpenDocument, EPUB, RTF, spreadsheets, CSV and image sets kept as managed copies and read into one canonical model on the device, with ruled-table rebuilding, OCR on desktop and Android, and figure finding in PDFs.
+- **Annotation and notes.** A PDF annotator (pen, highlighter that snaps to text, shapes, curves, text and sticky notes, lasso, partial erase, clips) whose marks stay out of the source and can be saved into an annotated copy; flashcards from marks and Study marked cards. Notes: notebooks of pages and endless boards written with the same tools, pictures, links to study materials, folders and pins, mind maps, lines that stay attached, a document beside the notebook, and PDF export.
+- **AI-made study material** (optional). Flashcards sized to each page's key ideas; designed study guides with boxes and tables beside the text, source figures, one Sources line per section, a cram sheet, cited key points, self-test and Typst PDF export, read as an annotatable canvas; lessons shown as natively typeset lecture slides with a teacher's lecture and questions, PowerPoint export and slide cards; two-host podcasts. A New study set can start from documents, a prompt, or both.
+- **Tutor** (optional). Source-optional chats grounded in documents, decks, guides and subjects; projects and history; quiz question cards graded in Rust where possible; picture and text attachments; figures from documents; read aloud; on-device speech input; flashcards from an answer; no authority over schedules or review evidence.
+- **AI services.** llama.cpp / Unsloth GGUF servers, DeepSeek, OpenRouter and Claude, with a first-run setup wizard, per-task models, model tests, native credential isolation and no silent local-to-cloud fallback. Voices through OpenRouter (Drama 3 with saved voices, Kokoro) or free on the device (Kokoro). Builds made with `VITE_OSTUDY_AI=off` show no AI features, and every build hides them until a service is set up.
+- **Your data.** Contextual `.studydeck` exchange, Anki `.apkg` and Quizlet text import, strict `.ostudy.json` import, complete `.ostudybackup` backup with same-process restore, and encrypted one-way device sync over the local network or a USB cable, with selectable Flashcards, Documents, Study guides, Notes, Lessons, AI services and saved-key scopes and three-way merge.
+- **Platforms and qualification.** One React/Rust application on Linux and Android with wide, medium and compact layouts, four themes, reduced motion, safe areas and keyboard/touch support. Tiered exact-SHA checks on an isolated self-hosted Linux/Android runner, with Android emulator coverage.
 
 Historical stage plans under [`history/`](history/) explain how this foundation was built; they are not the current roadmap. Platform qualification always belongs to a named source/run and does not imply signed public distribution or untested physical-device behavior.
 
 ## In progress
 
-The PR #106 foundation and the H-01–H-10 hardening scopes in the [post-#106 hardening register](development/post-106-hardening.md) are merged; the PR #106 [completion record](development/lk-followups/consolidation-qualification.md) separates automated qualification, recorded disposable installed-copy acceptance and the still-separate protected-library cutover.
+Draft pull requests, not on `main` and not current behavior until they merge:
 
-Work under way in open pull requests, not on `main`, includes the OpenAI and Gemini provider adapters. None of it is current behavior until it merges. Local voices remain planned; the [preserved lesson plan](development/lk-followups/lessons-narration.md) records an earlier design. Such work should consume the shared source/knowledge/guide boundaries rather than duplicate them.
+- mind-map webs: cross-links between topics and floating topics (#285);
+- OpenAI (#158) and Gemini (#159) provider adapters;
+- a second runner lane for draft checks (#185).
+
+Release work continues outside the code: a signed Android download, then Windows and macOS packages.
 
 ## Current priorities
 
@@ -48,7 +46,7 @@ Assisted authoring should surface uncertainty rather than turn imperfect extract
 
 ### 2. Refine everyday Flashcards and Study Guide ergonomics
 
-Recent UI work replaced the old Flashcards, Documents and Analytics destinations with Home, the Library Workbench, Review and Progress, quieted empty states, made transfer/actions contextual, and moved templates into Settings. Preserve that hierarchy while improving:
+Recent UI work replaced the old Flashcards, Documents and Analytics destinations with Home, Library's subject pages, Notes and Progress, folded Review into Home, quieted empty states, made transfer/actions contextual, and moved templates into Settings. Preserve that hierarchy while improving:
 
 - large-library subject/deck organization and selection;
 - narrow/tablet/keyboard/touch/assistive-technology behavior;
@@ -59,19 +57,19 @@ Recent UI work replaced the old Flashcards, Documents and Analytics destinations
 
 ### 3. Qualify synchronization on more real devices and libraries
 
-The protocol, encrypted transport, package validation, merge engine, baselines, and conflicts are implemented. Package v3 already has explicit Documents and Study Guides scopes. Continue with:
+The protocol, encrypted transport, package validation, merge engine, baselines, and conflicts are implemented, with explicit Documents, Study guides, Notes and Lessons scopes that carry annotations, figures, notebooks and lessons. Continue with:
 
 - broader physical-device/network/USB combinations;
 - clearer conflict review/resolution;
 - large libraries, long histories, many assets, interruption/expiry/low-storage conditions;
 - transfer efficiency without weakening explicit one-way offers;
-- separately reviewed, versioned extensions for additional graph entities beyond the current allowlist, such as PDF page annotations and lessons, without including private Tutor state or derived caches by default.
+- separately reviewed, versioned extensions for additional graph entities beyond the current allowlist, such as Notes folders and pins, without including private Tutor state or derived caches by default.
 
 Synchronization remains user initiated: pairing must not become a permanent background subscription and credential transfer must require fresh sender opt-in for each offer.
 
 ### 4. Broaden desktop qualification and release packaging
 
-Ubuntu/Debian Linux remains the primary qualified desktop path. Windows and macOS need repeatable setup, native-dependency packaging, automated checks, signed artifacts, upgrade testing, and target-specific acceptance before they are presented as equally supported releases.
+Linux packages for every maintained distribution ship from one release script (built in an Ubuntu 22.04 container) and are published on ostudy.io and GitHub Releases. Windows and macOS need repeatable setup, native-dependency packaging, automated checks, signed artifacts, upgrade testing, and target-specific acceptance before they are presented as equally supported releases.
 
 ### 5. Continue Android product and distribution work
 
@@ -81,7 +79,7 @@ Android already builds, installs, and runs the shared study/document/sync applic
 - accessibility, camera, storage-provider, background-processing, thermal, memory, and battery testing;
 - permanent release-key policy and signing custody;
 - Play App Signing, store metadata, privacy declarations, and signed-release qualification;
-- upgrade testing once public distribution exists.
+- F-Droid and upgrade testing once public distribution exists.
 
 ### 6. Maintain architecture and development reliability
 
@@ -104,7 +102,7 @@ Generate configurable question sets, including multiple choice/application/scena
 
 ### Lessons
 
-A subject's course can be written, played step by step, listened to, viewed as a lecture, taught as a teacher's lecture with questions for the class, and saved as a PowerPoint deck, and a subject's lessons can be made into a two-host podcast. A lesson whose source changed can be written again on its own, and a whole course can be rewritten, each lesson as a new version in its place. Local voices (a local Kokoro server and the phone's own speech engine) and sync of lessons remain planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
+Lessons, lectures, the teacher's questions, PowerPoint export, podcasts, on-device Kokoro voices and lesson sync are implemented. The phone's own speech engine as a voice remains planned. Lesson progress must stay a resume point that never writes reviews or changes schedules.
 
 ### Tutor refinement and guided study
 
@@ -114,9 +112,13 @@ Tutor already provides conversational study with optional source grounding, proj
 
 Use deterministic Progress statistics plus optional model interpretation to identify weak areas, overloaded schedules, neglected topics, and useful next actions. Stored review evidence remains authoritative; model advice is explanatory rather than a hidden scoring system.
 
+### Notes and mind maps
+
+Mind-map webs are in review (#285). AI-made mind maps from documents are deferred until the maintainer asks for them. Handwriting recognition and sync of Notes folders remain later work.
+
 ### Additional provider adapters
 
-Dedicated Ollama, OpenAI, and Gemini integrations remain planned; llama.cpp, DeepSeek, OpenRouter, and Claude are implemented. A provider is not supported merely because its API resembles an existing endpoint. Each adapter needs fixed trust rules, credential handling, discovery, structured-output evidence, diagnostics redaction, fixtures, and opt-in live testing.
+Dedicated OpenAI and Gemini adapters are in draft pull requests and Ollama remains planned; llama.cpp, DeepSeek, OpenRouter, and Claude are implemented. A provider is not supported merely because its API resembles an existing endpoint. Each adapter needs fixed trust rules, credential handling, discovery, structured-output evidence, diagnostics redaction, fixtures, and opt-in live testing.
 
 ## Platform direction
 
@@ -137,7 +139,7 @@ Future sync work can improve peer ergonomics, discovery, efficiency, conflict re
 
 ## Later possibilities
 
-Potential later work includes recording and speech-grading workflows, narration/TTS-assisted study, richer collaborative sharing, additional imports, and optional local feedback effects. These future additions require their own acceptance criteria, durable ownership, privacy analysis, accessibility review, and compatibility plan. Mathematical/scientific notation and managed audio/video card content are already part of the current foundation.
+Potential later work includes recording and speech-grading workflows, richer collaborative sharing, additional imports, and optional local feedback effects. These future additions require their own acceptance criteria, durable ownership, privacy analysis, accessibility review, and compatibility plan. Mathematical/scientific notation and managed audio/video card content are already part of the current foundation.
 
 ## Principles that constrain future work
 

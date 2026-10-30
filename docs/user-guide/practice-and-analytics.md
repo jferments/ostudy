@@ -59,7 +59,7 @@ Optional celebration effects do not decide whether reviews were saved. Turning t
 
 ## Leave or resume a session
 
-**End session** in the top bar stops at once and returns to where you started the session, such as Review, Home, Library (on the deck that was open in the Workbench), or Study guides. On Android, Back does the same. Every rating you already gave stays saved: it updated that card's schedule and counts in Progress even though later cards were never reached. Viewing or revealing a card without rating it does not create a review. If a rating is still being saved, ostudy asks you to finish or retry it first.
+**End session** in the top bar stops at once and returns to where you started the session, such as Home, Library (on the deck that was open in the Workbench), or Study guides. On Android, Back does the same. Every rating you already gave stays saved: it updated that card's schedule and counts in Progress even though later cards were never reached. Viewing or revealing a card without rating it does not create a review. If a rating is still being saved, ostudy asks you to finish or retry it first.
 
 If ostudy closes during a session, reopening it can resume that session. A practice setup screen that never started a session is not restored as active practice. If the deck that launched the session has since been removed, ending the session returns safely to Library.
 
@@ -79,7 +79,7 @@ Set defaults in **Settings → Review**: **Desired retention**, **New cards per 
 
 ### When a new day starts
 
-A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Review count as due today, Progress's days, weeks, months, and streaks, the Workbench's **Due today** filter and due dates, burying, and rescheduling to tomorrow or a later date.
+A study day starts at 4 a.m. by default, not at midnight, so a late-night session still counts toward the day you started it. Change the hour with **New day starts at** in **Settings → Review**; choose 12 a.m. for days that start at midnight. Reviews before that time count toward the previous day. The same boundary applies to the daily new and review limits, what Home and Library count as due today, Progress's days, weeks, months, and streaks, the Workbench's **Due today** filter and due dates, burying, and rescheduling to tomorrow or a later date.
 
 Changing the hour re-groups all of your existing history by the new boundary; nothing stored is changed, so you can switch back at any time. Each review keeps the time-zone offset of the place where you made it, so travelling does not move your earlier reviews to different days.
 
