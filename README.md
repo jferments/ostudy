@@ -56,12 +56,11 @@ With an AI service connected, ostudy can make from your documents:
 
 <p align="center">
   <img src="assets/screenshots/lesson-kidney-desktop.webp" alt="A lesson's lecture: a slide about the kidney with its anatomy figure, the slide strip and Closed captions" width="860">
-  <img src="assets/screenshots/tutor-image-desktop.webp" alt="A Tutor chat answering a question about a pasted heart diagram, with formulas" width="860"
 </p>
 
-### Progress you can trust
+### Tracks your learning progress
 
-Progress is calculated from your own review history, not by a model: how much you remembered, study time, streaks, card strength, the tags that need attention, what is coming up, and an activity calendar. A study day starts at 4 a.m. by default, so a late session counts toward the day you started it.
+Progress is calculated from your own review history: how much you remembered, study time, streaks, card strength, the tags that need attention, what is coming up, and an activity calendar. 
 
 
 ## Your data, your AI, your choice
