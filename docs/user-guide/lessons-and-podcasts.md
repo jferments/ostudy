@@ -16,6 +16,10 @@ When **Make lecture audio with new lessons** is on in **Settings → AI** (it is
 
 The tab lists the course in order with how many lessons are done. Each lesson shows whether it is **In progress** or **Done**, and **Start lesson** or **Continue lesson**. A lesson whose documents changed since it was written says **Source changed** and offers **Update**, which writes that lesson again from the documents as they are now. **Rewrite course** writes every lesson again, at about the cost of writing the course the first time; each lesson keeps its place, and what you did in a lesson stays with its earlier version. Home shows the slide your current lesson is on, with **Resume**.
 
+<p align="center">
+  <img src="../../assets/screenshots/lessons-desktop.webp" alt="A subject's Lessons tab: Continue lesson on the lesson in progress, the four lessons with how far each is, and Rewrite course" width="860">
+</p>
+
 Lesson progress is only a place to pick up from. Answering a lesson's questions never counts as a flashcard review and never changes a card's schedule.
 
 ## Watch and listen to a lecture

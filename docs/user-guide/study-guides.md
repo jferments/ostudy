@@ -2,6 +2,10 @@
 
 A study guide teaches what a source says, in sections sized for one sitting. A document's guide is written from what ostudy extracted from that document; a subject's guide is written from what it extracted from the subject's documents and their reading ranges. Both have an overview, learning objectives, a short list of key concepts, ordered sections, source labels, and links to the flashcards made from each section. A guide does not replace checking the original sources.
 
+<p align="center">
+  <img src="../../assets/screenshots/guides-desktop.webp" alt="A subject's Study guides tab with a guide card showing its sections, reading progress and Open" width="860">
+</p>
+
 ## Create and find a guide
 
 Choose a model for **Flashcard and study-guide generation** in **Settings → AI**. For one document, open a subject's **Documents** tab, upload a supported source, and choose **Make a study guide** from its **…** menu. For a whole subject, choose the subject in Library, open **Documents** and choose **Make study materials** with **Study guide** ticked (it can write the subject's flashcards and lessons at the same time), or **Update study materials** once it has them; a subject has one guide alongside its decks. A subject guide is written from what ostudy already extracted from each document, so its documents are not read again and do not need guides of their own. Large subjects are split into many bounded requests rather than refused. A document guide can exist without a flashcard deck.
@@ -17,6 +21,11 @@ The reader has no revision numbers or Regenerate button; **Remake the study guid
 ## Read and write on the guide's pages
 
 A document guide opens as its own PDF pages, the same pages **Save a copy as PDF…** writes, laid out on your device in the study guide theme (**Navy**, **Sage**, **Slate** or **Plum**; Sage until you choose another). The theme is one setting for reading and for PDFs: choosing one in the **Page** menu changes **Settings → Appearance → Study guides → Study guide theme**, and the other way round. Every page sits on one canvas with the PDF annotator's tools: the pen, highlighter, shapes, text and sticky notes, the eraser, lasso, undo and zoom (see [Tools](pdf-annotation.md#tools)). The page in view and **Saved** show at the toolbar's right. **Add link** (or **K**), beside the shapes, places a link to a document page, a study guide, a deck or a notes page on the page you are reading; select a link and choose **Open link**, or tap it twice, to follow it, and a deck's link can be a button that starts Practice. Your marks save as you make them.
+
+<p align="center">
+  <img src="../../assets/screenshots/guide-reader-desktop.webp" alt="A guide page with the contents on the left, the annotation toolbar, key points, a process flow, a Key idea box and the source figure beside the text" width="49%">
+  <img src="../../assets/screenshots/guide-digestion-desktop.webp" alt="An anatomy guide page with its figure" width="49%">
+</p>
 
 Beside each section's heading, a **Practice** button starts Practice on the flashcards linked to that section. On a wide window the guide's contents sit beside the pages: the cover, each chapter with its numbered sections, the cram sheet and the self-test. Choose one to scroll the pages to it; the section you are reading is highlighted, and scrolling on past a section counts it read. Each section's **…** menu in the contents holds **Practice this section's flashcards**, **Ask Tutor about this section** when the tutor is available, **Mark as read** and **Edit or rewrite this section**. On narrower windows the contents open from **Contents** in the top bar.
 
