@@ -6,6 +6,10 @@ Subjects are the tiles on Library's page. The [Library Workbench guide](flashcar
 
 A subject keeps one course's decks, documents, notebooks, guides, lessons and podcasts together. Choosing a subject's tile shows its decks on the **Flashcards** tab and its documents on the **Documents** tab; there is no second grouping inside either tab. A deck or document belongs to at most one subject. Decks and documents that are not filed anywhere appear under **No subject**, whose tile shows only when it holds something. Subject membership does not alter card content, schedules, or review history.
 
+<p align="center">
+  <img src="../../assets/screenshots/library-desktop.webp" alt="Library's page with a tile for each subject, No subject and the New study set tile" width="860">
+</p>
+
 Choose **New study set +** on Library's page, or on Home, to create a subject. On the Flashcards tab, the first entry lists the cards of all the subject's decks and offers **Practice…** for those decks and **New deck** to start a deck in it; **New deck** also ends the subject's deck list.
 
 When subjects arrived, or when a sync met two choices, some entries may have had more than one sensible place. Each was given one, and **Check these (N)** appears at the top of the Workbench's decks, and Home shows the same **Check these**. It lists those entries with the reason for each. Move any that belong elsewhere with **Move to subject…**, and choose **Dismiss** once an entry looks right.

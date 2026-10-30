@@ -2,6 +2,10 @@
 
 Library's **Flashcards** tab opens the **Workbench**, one place to browse, search, edit, and organize your cards. It has three parts: the chosen subject's decks and tags on the left; the card list for whatever you chose in the middle; and the open card's editor on the right. The header's **Search** opens the Workbench on **All cards** with the search field focused. Reusable templates live in **Settings → Card templates**, not in Library. Deck import and export open from the Workbench's contextual actions; whole-library backup belongs in Settings → Backup and sync.
 
+<p align="center">
+  <img src="../../assets/screenshots/workbench-desktop.webp" alt="The Workbench on a subject: decks and tags on the left, the card list with search, Show and Sort in the middle" width="860">
+</p>
+
 A subject's pages are tabs under its name: **Lessons**, **Flashcards** (the Workbench), **Study guides**, **Podcasts** and **Documents**; **All cards** on Library's page opens the Workbench on every card, without tabs. **Import deck** sits at the end of the tabs on the Flashcards page; on a phone it sits beside **New deck** under the decks, so the five tabs fit. The Workbench shows the subject you chose on Library's page; there is no second list of subjects inside it.
 
 ## The tree
@@ -71,6 +75,11 @@ An archived deck is still readable, but practice and new cards are unavailable u
 
 In a deck, **New card** opens the full rich editor for that deck. Choose a row to open that card in the editor. The editor's top bar keeps **Preview card**, **Save card** and **×** (close) in reach while you scroll; its **…** menu holds **Move / copy**, **Suspend** (or **Resume**) and **Reset schedule…** for that one card. Below the fields, the **Schedule** panel shows when it is **Due** and, once studied, its **Interval**, **Stability**, **Difficulty**, **Reviews**, and **Lapses**. **Bulk add…** in the deck's menu opens multi-row plain-text entry with the deck already fixed.
 
+<p align="center">
+  <img src="../../assets/screenshots/card-editor-desktop.webp" alt="The card editor open beside the card list" width="49%">
+  <img src="../../assets/screenshots/occlusion-editor-desktop.webp" alt="The image occlusion editor with numbered regions over a heart diagram" width="49%">
+</p>
+
 Basic questions and answers support the editor's allowed formatting, lists, links, managed images, and audio or video. Formatting shortcuts are an authoring convenience; the app stores a validated structured document, not arbitrary executable HTML. Images become managed library assets rather than references to arbitrary local paths or remote image URLs.
 
 Use the editor's **Insert or edit formula** button for mathematical notation. The formula dialog includes graphical **Structures**, **Symbols**, **Relations**, **Greek**, and **Calculus** controls plus MathLive's full mathematical keyboard. Selecting existing math before choosing Fraction, Power, Root, or a grouping structure wraps that selection rather than requiring LaTeX or adding unwanted parentheses. See [Enter and edit mathematical formulas](formula-entry.md) for the graphical workflow and keyboard-shortcut reference.
@@ -112,6 +121,10 @@ Saving may succeed even when a following list refresh fails. Read an information
 ## Reusable templates
 
 Open **Settings → Card templates** to create, edit, preview, or remove reusable structures. Templates contain named fields and safe question/answer layout rules. They do not execute JavaScript, HTML, SQL, or arbitrary expressions.
+
+<p align="center">
+  <img src="../../assets/screenshots/settings-templates-desktop.webp" alt="Settings, Card templates: switches for the formats AI writes, Question mix, and Your templates" width="860">
+</p>
 
 A template is useful for repeating structures such as term/definition, mechanism/effect, or a comparison. Preview and generation use the same validated rendering path. Generated outputs become ordinary independent notes/cards with fresh schedules; later template edits or deletion do not retroactively change those cards.
 

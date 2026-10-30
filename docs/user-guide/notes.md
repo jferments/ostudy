@@ -6,6 +6,10 @@ A notebook is pages of paper, and boards, you write and draw on with the same to
 
 Open **Notes** in the main navigation. Beside your notebooks is a list of places: **All notes**, **Recent** (the notebooks you changed last), **Pinned**, and your folders, with **New folder** under them; on a phone, a **Show** menu and a **New folder** button take its place. Each notebook is a tile with a small picture of its first page, when you last changed it, how many pages, boards and links it has, and the names of its first few links. Choose a notebook's picture to open it, and use **Sort notes** to list them by when they changed or by name.
 
+<p align="center">
+  <img src="../../assets/screenshots/notes-desktop.webp" alt="Notes: notebook tiles with a picture of their first page, beside All notes, Recent, Pinned and folders" width="860">
+</p>
+
 A notebook's **…** menu has **Pin** (or **Unpin**), **Rename**, **Move to folder**, **Move to subject** and **Delete notebook**; deleting removes every page and cannot be undone. Folders are your own way to arrange notes and can hold other folders, four deep. An open folder shows the folders inside it as tiles, and its **…** menu has **New folder inside**, **Rename folder** and **Delete folder**. Deleting a folder deletes the folders inside it but keeps their notebooks, which go back to **All notes**. A notebook made while a folder is open goes in that folder. Folders are kept on this device: [device sync](device-sync.md) does not carry them.
 
 **New notebook** asks for a name, the subject, what it **Starts with** (**Pages** or a **Board**), the paper (**Blank**, **Lined**, **Grid** or **Dots**) and, for pages, the page size: **Letter**, **A4**, or **Wide**, a landscape page twice as wide as Letter with room for mind maps and diagrams. A board has no ruled lines, so it offers Blank, Grid and Dots.
@@ -13,6 +17,11 @@ A notebook's **…** menu has **Pin** (or **Unpin**), **Rename**, **Move to fold
 ## Write and draw
 
 The pages scroll in one column, and the toolbar, keys and zoom work as they do on a PDF; see [Tools](pdf-annotation.md#tools). The highlighter has no text to snap to on paper, so it always draws a free stroke. **Back to notes** returns to the list, and so does Android Back once nothing is open or selected. The header shows **Saving…** and **Saved**; if a save fails it shows **Not saved** with **Retry**, and leaving asks before discarding anything unsaved.
+
+<p align="center">
+  <img src="../../assets/screenshots/notebook-desktop.webp" alt="A notebook page with typed bullets, a highlight, formulas in a dashed box, a heart picture and a sticky note" width="72%">
+  <img src="../../assets/screenshots/notebook-phone.webp" alt="A notebook on a phone" width="24%">
+</p>
 
 The bar above the toolbar shows which page is in view. **Add page** adds a page after it, with the notebook's paper and size. Its **…** menu moves the page earlier or later, or deletes it; a page with marks on it asks first, and a notebook keeps at least one page. Adding, moving or deleting a page saves your marks first and starts undo afresh.
 
@@ -27,6 +36,10 @@ Text notes can hold bulleted and numbered lists, checklists and formulas, as des
 ## Mind maps
 
 The **Mind map** tool (**M**) starts a map on any notebook page or board: tap empty paper and type the central idea. With a topic selected or being typed, **Tab** adds a branch to it and **Enter** adds the next topic beside it (**Shift+Enter** starts a new line instead). The map keeps itself tidy: branches spread to both sides of the central topic, and each topic is as wide as its words. The Mind map tool otherwise works like Select, so it picks up and drags topics and other marks.
+
+<p align="center">
+  <img src="../../assets/screenshots/mindmap-desktop.webp" alt="A mind map of the cardiac cycle on a dotted board with coloured branches, handwriting and a sticky note, and the overview in the corner" width="860">
+</p>
 
 The arrow beside the **Mind map** button opens the map's actions: **Start a new map**, **Add a branch**, **Add the next topic**, **Move up a level**, **Fold branches** (and **Show branches**, which the folded topic's count also tells you about), the map's layout (both sides, to the right, or downward like an outline turned on its side), **Put this topic back in place**, **Tidy the map** and **Copy the map as a list**, which copies it as an indented list. Actions for a topic work on the selected one.
 

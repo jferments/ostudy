@@ -25,6 +25,10 @@ Write Basic, Reverse and Fill in the blank cards, or questions that ostudy check
 
 Library has a tile for every subject. A subject keeps one course together: its documents, flashcard decks, study guides, lessons and podcasts, each on its own tab. **New study set** starts a subject from your documents, from a short description of what you want to learn, or both, and makes the materials you tick.
 
+<p align="center">
+  <img src="assets/screenshots/library-desktop.webp" alt="Library's page: a tile for each subject with a figure from its documents, what it holds and its due count, then No subject and New study set" width="860">
+</p>
+
 ### Read, annotate and learn from documents
 
 Add PDFs, Word and PowerPoint files, OpenDocument, EPUB, RTF, spreadsheets, CSV, or a set of screenshots and photos. ostudy keeps a copy and reads it on your device, with OCR for scanned pages. Write on PDF pages with a pen, highlighter, shapes, text and sticky notes, then make flashcards from what you marked and practice exactly those cards. Save a copy of the PDF with your marks drawn in.

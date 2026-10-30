@@ -1,6 +1,10 @@
 # Documents and AI-generated learning material
 
-Library's **Documents** page keeps a local copy of each source you add and turns it into flashcards and study guides. Both are made from the same saved reading of the source and can be made independently. Generated cards are ordinary editable cards; a generated guide keeps its text separate from your own notes and edits.
+A subject's **Documents** tab keeps a local copy of each source you add and turns it into flashcards and study guides. Both are made from the same saved reading of the source and can be made independently. Generated cards are ordinary editable cards; a generated guide keeps its text separate from your own notes and edits.
+
+<p align="center">
+  <img src="../../assets/screenshots/documents-desktop.webp" alt="A subject's Documents tab: Search documents, Make study materials and Upload, and a document row with Open and its menu" width="860">
+</p>
 
 ## Before you begin
 
@@ -100,6 +104,10 @@ The format is detected from the file's contents. The older Word, PowerPoint and 
 For a PDF imported with its images on, oStudy looks for its figures once the pages are read, beside card and guide writing, without contacting a provider. A figure is a picture or a drawing big enough to study. Logos and other marks that repeat in the same place on several pages, pictures in the header or footer band, ruled tables and boxed paragraphs are left out, and so is a page that is one scanned picture.
 
 **Figures** in a document's menu shows each figure drawn from the PDF, with its label and page ("Figure 3.2 · Page 14"), its caption, and the pages that explain it: passages anywhere in the document that name its label, quoted, and, for a figure that fills most of its page or a page with little other text, the pages on either side. **Show captions in the picture** draws each figure with or without its caption. **Hide** moves a figure that is not worth studying into **Hidden**; **Show** brings it back. Searching again keeps a hidden figure hidden while it is found in the same place.
+
+<p align="center">
+  <img src="../../assets/screenshots/figures-desktop.webp" alt="A document's Figures page: a pressure-volume loop figure with its label, page, title, description and importance" width="860">
+</p>
 
 When your AI model can see images, oStudy also reads each figure on its page, beside card and guide writing: a short title, what the figure shows, how the text uses it, and how much it matters (**Essential**, **Key figure**, **Helpful** or **Minor**). It also marks a figure that is not worth studying, such as a decorative photo. **Read figures with AI** in the page's **…** menu reads them for a document imported earlier, and **Read figures again** reads them anew. A model that cannot see images leaves figures with their captions and passages, and the page says so. Searching again keeps what was read of a figure found in the same place.
 

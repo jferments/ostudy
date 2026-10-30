@@ -2,6 +2,11 @@
 
 The annotator lets you write, highlight, draw arrows and boxes, and type notes on the pages of a PDF in your library. The PDF itself is never changed: annotations are saved in your library as you work, page by page, and drawn over the page images made when the PDF was imported.
 
+<p align="center">
+  <img src="../../assets/screenshots/annotate-desktop.webp" alt="A PDF page with handwriting, a sticky note, a dashed box, an arrow and a circled point, with Save PDF and Study marked cards in the header" width="72%">
+  <img src="../../assets/screenshots/annotate-phone.webp" alt="The annotator on a phone" width="24%">
+</p>
+
 ## Open a document
 
 Open a subject's **Documents** tab and choose **Annotate** from a PDF's **…** menu. **Annotate** appears once the import has drawn the document's pages and the document is not being processed; other document formats cannot be annotated yet.

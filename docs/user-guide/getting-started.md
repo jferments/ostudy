@@ -8,11 +8,23 @@ The main navigation has five destinations: **Home**, **Library**, **Notes**, **T
 
 **Home** opens first. Its Today strip shows how many cards are due today and about how long they take, with **Start review**; on a wider window the arrow beside it lets you choose which subjects to review. Above the strip is the **Question of the day**, one of your flashcards picked for the day, more often one you have not tried yet or have found hard; **Show answer** turns it over without counting as a review. Below the strip are your subjects: each shows what is due, its sources and cards, and opens the subject in Library. Under them is the slide your current lesson is on, with **Resume** (or **Start** for the next lesson you have not begun).
 
+<p align="center">
+  <img src="../../assets/screenshots/home-desktop.webp" alt="Home: the question of the day, the Today strip with Start review, your subjects and the lesson to pick up" width="860">
+</p>
+
 **Library** holds everything you study, organized by subject. It opens on a page titled **Library** with a tile for each subject: a figure from its documents, what it holds, how many cards are due, and a button for each kind of material in it (**Flashcards**, **Guides**, **Lessons**, **Podcasts**, **Documents**). **No subject** comes last when something is not filed yet, then **New study set +**, which makes a subject and its materials from documents, a description of what to learn, or both (see [New study set](documents-and-ai-generation.md#new-study-set)). The header has **Review N due** and **All cards**. Choosing a subject opens its pages as tabs: **Lessons**, **Flashcards**, **Study guides**, **Podcasts** and **Documents**, under the subject's name, counts, **Practice a mix** and **Review N due**, with **Library** at the top to go back. The **…** on a tile or beside the subject's name adds materials to it, renames, reorders or deletes it. **Notes** is its own place in the main navigation and holds your own notebooks, written and drawn with the PDF tools; see [Notes](notes.md).
+
+<p align="center">
+  <img src="../../assets/screenshots/library-desktop.webp" alt="Library's page: a tile for each subject with a figure from its documents, what it holds, its due count and buttons for its materials, then No subject and New study set" width="860">
+</p>
 
 The **Flashcards** tab is the **Workbench**, where you browse, search, edit, and organize cards. **Review N due**, on Library's page and on each subject, starts that review straight away. **Tutor** holds conversations with the AI model you set up, grounded in your study material. **Progress** shows your study activity, how well you remembered, card strength, and upcoming workload.
 
 The Workbench shows the chosen subject's cards, decks, and tags on the left (under **All cards**, every deck with its subject's badge), the chosen cards in the middle, and the open card's editor on the right; on a phone you see one of these at a time. The header's **Search** opens the Workbench on **All cards** with the search field focused. Card templates are in **Settings → Card templates**. Deck import/export is contextual; complete-library backup and device sync are in **Settings → Backup and sync**.
+
+<p align="center">
+  <img src="../../assets/screenshots/workbench-desktop.webp" alt="A subject's Flashcards tab: the subject's decks and tags on the left and its cards in the middle, with Practice a mix and Review in the header" width="860">
+</p>
 
 Choosing **Library** opens its page of subjects. A subject's **Flashcards** tab opens the Workbench on the subject's cards, and choosing Study guides returns to the guide library rather than keeping an already-open viewer in the way. Practice opens from a study action and runs inside Home; it is not a navigation tab of its own. On Android, Back returns to Home from any other destination. In the Workbench it first steps back to the tree on a phone, or to all of the subject's cards on a wider screen; during practice it returns to where the session started.
 
@@ -43,6 +55,10 @@ A deck's actions menu also has **Merge into…**, **Export…**, **Archive**, an
 Use **Start review** on Home for everything due today, **Review N due** on a subject for that subject, **Practice** on a deck, or **Practice with options…** in a deck's actions menu (or **Practice…** on a subject) to open the practice setup. There you choose **Due**, which keeps to today's schedule and daily limits, or **Extra**; each shows how many cards it would study. Suspended, buried, or archived cards are not studied.
 
 Think of the answer before choosing **Show answer**. Then choose **Wrong**, **Hard**, **Medium**, or **Easy** based on how well you recalled it. On a keyboard, Space or Enter reveals the answer, and 0–3 chooses a rating when no editor or overlay has focus. Each rating is saved as a review and updates the card's schedule; it is not merely a visual score.
+
+<p align="center">
+  <img src="../../assets/screenshots/practice-image-desktop.webp" alt="Practice: a single best answer question about the eye checked as correct, with the four ratings and their intervals" width="860">
+</p>
 
 The top bar shows how many cards you have studied and how many remain. When the last card is rated, **Session complete** sums up the session: how many you remembered, cards that became solid, focused time, and any missed cards you can practice again. **End session** stops early and returns to where you started; every rating you already gave stays saved. A session that was interrupted can resume after you reopen ostudy. See [Practice, scheduling, and Progress](practice-and-analytics.md).
 
