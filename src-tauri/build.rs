@@ -21,8 +21,37 @@ const PDF_FONT_FILES: &[&str] = &[
 ];
 
 fn main() {
+    require_lf_migrations();
     embed_pdf_fonts();
     tauri_build::build();
+}
+
+/// The release migrations are compiled in and checked by SHA-256 at startup,
+/// so a checkout that turned their line endings into CRLF builds an app that
+/// cannot open its library. Refuse to build it instead.
+fn require_lf_migrations() {
+    let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let directory = manifest.join("migrations");
+    println!("cargo:rerun-if-changed={}", directory.display());
+    let mut converted = fs::read_dir(&directory)
+        .expect("read the migrations directory")
+        .map(|entry| entry.expect("read a migrations entry").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "sql"))
+        .filter(|path| fs::read(path).expect("read a migration").contains(&b'\r'))
+        .filter_map(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .collect::<Vec<_>>();
+    if !converted.is_empty() {
+        converted.sort();
+        panic!(
+            "These migrations have CRLF line endings, which would fail their checksums at \
+             startup: {}. Check them out again with LF (from the repository root: \
+             `git rm -r -q --cached .` then `git reset -q --hard HEAD`).",
+            converted.join(", ")
+        );
+    }
 }
 
 fn embed_pdf_fonts() {
