@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -20,7 +21,7 @@ import { AnnotatorGestures, type GestureContext, type GestureEffect, type Gestur
 import { PageImageCache } from "./pageImages";
 import { createTileCache } from "./pageTiles";
 import { createPageTextCache, type PageTextCache } from "./textSelection";
-import { isTopic, visibleMarks } from "./mindMap";
+import { isTopic, parseList, visibleMarks } from "./mindMap";
 import type { DocumentAnnotatorController } from "./useDocumentAnnotator";
 import { MAX_SCALE, type useAnnotatorViewport } from "./useAnnotatorViewport";
 
@@ -188,6 +189,22 @@ export function AnnotatorCanvas({
       return pageSizes.get(pageNumber) ?? null;
     },
   }), [pageRects, pageSizes]);
+
+  // An outline pasted onto a notebook page becomes a mind map in the middle of the view.
+  const paste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+    const { controller: current } = latest.current;
+    const element = viewportRef.current;
+    if (!current.notebook || !element || (event.target instanceof HTMLElement && event.target.closest("textarea, input, [contenteditable]"))) return;
+    const items = parseList(event.clipboardData.getData("text/plain"));
+    if (items.length < 2) return;
+    const view = element.getBoundingClientRect();
+    const middle = { x: view.left + view.width / 2, y: view.top + view.height / 2 };
+    const pageNumber = surface.pageAt(middle.x, middle.y) ?? surface.nearestPage(middle.x, middle.y);
+    const size = pageNumber === null ? null : surface.pageSize(pageNumber);
+    if (pageNumber === null || !size) return;
+    event.preventDefault();
+    current.pasteList(items, pageNumber, surface.toPage(pageNumber, middle.x, middle.y), size);
+  }, [surface, viewportRef]);
 
   const context = useCallback((): GestureContext => {
     const { controller: current, scale: currentScale } = latest.current;
@@ -493,6 +510,7 @@ export function AnnotatorCanvas({
         onLostPointerCapture={pointerCancel}
         onScroll={() => { rects.current = null; }}
         onKeyDown={keyDown}
+        onPaste={paste}
         onContextMenu={contextMenu}
       >
         <div ref={contentRef} className="tw:relative tw:w-max tw:min-w-full tw:p-4 tw:compact:p-2">
@@ -522,6 +540,7 @@ export function AnnotatorCanvas({
                 selectable={selectable}
                 coarse={coarse}
                 textHeight={controller.textHeight}
+                connects={controller.notebook}
                 onMeasureText={controller.measureText}
                 onTypeText={controller.typeText}
                 onFinishText={controller.finishEditing}

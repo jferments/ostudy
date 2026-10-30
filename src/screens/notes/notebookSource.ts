@@ -52,6 +52,7 @@ export function rememberPictureDraft(assetId: string, draftId: string): void {
 export function notebookSource(onLoaded: (contents: NotebookContents) => void): AnnotatorSource {
   let pageIds: readonly string[] = [];
   return {
+    notebook: true,
     async load(notebookId) {
       const contents = await getNotebook(notebookId);
       pageIds = contents.pages.map((page) => page.id);

@@ -54,9 +54,11 @@ import {
   type ToolStyles,
 } from "./annotationModel";
 import { AnnotationSaveQueue, type SaveState } from "./annotationSaveQueue";
+import { connectMarks } from "./connectors";
 import {
   arrangeMaps,
   isTopic,
+  mapFromList,
   mapsOn,
   newCentralTopic,
   newTopic,
@@ -64,6 +66,7 @@ import {
   retopic,
   tidyEdits,
   topicToward,
+  type ListItem,
   type MapTree,
   type Topic,
 } from "./mindMap";
@@ -87,6 +90,8 @@ export interface TextEditing {
 export interface AnnotatorSource {
   load: (key: string) => Promise<Pick<DocumentAnnotations, "pages" | "annotations">>;
   send: (key: string, changes: DocumentAnnotationChange[]) => Promise<unknown>;
+  /** A notebook's pages, which alone hold mind maps and lines attached to other marks. */
+  notebook?: true;
 }
 
 const DOCUMENT_SOURCE: AnnotatorSource = { load: getDocumentAnnotations, send: applyDocumentAnnotationChanges };
@@ -177,14 +182,21 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     return measured?.shape === annotation.shape ? measured.height : estimateTextHeight(annotation.shape);
   }, []);
 
-  /** Applies edits as one undoable step; mind maps they touch are tidied in the same step. */
+  /** The edits with the mind maps they touch tidied, and lines attached to what they move brought along. */
+  const settle = useCallback((edits: readonly AnnotationEdit[]): AnnotationEdit[] => {
+    const pageSize = (pageNumber: number) => pageSizes.current.get(pageNumber) ?? null;
+    const arranged = arrangeMaps(edits, annotationsRef.current, textHeight, pageSize);
+    return source.notebook ? connectMarks(arranged, annotationsRef.current, textHeight, pageSize) : arranged;
+  }, [source, textHeight]);
+
+  /** Applies edits as one undoable step; mind maps and lines they touch follow in the same step. */
   const commit = useCallback((edits: readonly AnnotationEdit[]) => {
     const storable = edits.filter((edit) => !edit.after || isStorable(edit.after.shape));
-    const kept = arrangeMaps(storable, annotationsRef.current, textHeight, (pageNumber) => pageSizes.current.get(pageNumber) ?? null);
+    const kept = settle(storable);
     if (kept.length === 0) return;
     apply(kept);
     setHistory(recordStep(historyRef.current, kept));
-  }, [apply, setHistory, textHeight]);
+  }, [apply, setHistory, settle]);
 
   const find = useCallback((id: string, pageNumber: number): Annotation | null => (
     annotationsRef.current.get(pageNumber)?.find((annotation) => annotation.id === id) ?? null
@@ -228,8 +240,8 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
       return topic ? [{ id, before: topic, after: topic }] : [];
     });
     // Not a step of its own: the map only settles around what was drawn.
-    apply(arrangeMaps(edits, annotationsRef.current, textHeight, (pageNumber) => pageSizes.current.get(pageNumber) ?? null));
-  }, [apply, textHeight]);
+    apply(settle(edits));
+  }, [apply, settle]);
 
   const measureText = useCallback((annotation: Annotation, height: number) => {
     if (annotation.shape.kind !== "text") return;
@@ -339,6 +351,22 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     setSelection(null);
     setEditing({ annotation: newCentralTopic(pageNumber, point, page, now()), isNew: true, text: "" });
   }, [finishEditing, now, setEditing]);
+
+  /**
+   * Makes a map of a pasted list around `point`. A list with one top line
+   * opens selected; one with several opens its new central topic for naming.
+   */
+  const pasteList = useCallback((items: readonly ListItem[], pageNumber: number, point: Point, page: { width: number; height: number }) => {
+    const made = mapFromList(items, pageNumber, point, page, now);
+    if (!made) return;
+    finishEditing();
+    commit(made.topics.map((topic) => ({ id: topic.id, before: null, after: topic })));
+    const root = made.topics[0];
+    const placed = root ? find(root.id, pageNumber) : null;
+    if (!placed) return;
+    if (made.named) setSelection({ id: placed.id, pageNumber });
+    else editText(placed);
+  }, [commit, editText, find, finishEditing, now]);
 
   /** The topic being typed, or else the selected one. */
   const topicTarget = useCallback((): { id: string; pageNumber: number } | null => {
@@ -601,6 +629,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     editText,
     newText,
     newMap,
+    pasteList,
     addTopic,
     toggleFolded,
     promoteTopic,
@@ -618,6 +647,7 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     redo,
     textHeight,
     measureText,
+    notebook: source.notebook === true,
     now,
     saveState,
     retrySave: () => { void queue.flush(); },

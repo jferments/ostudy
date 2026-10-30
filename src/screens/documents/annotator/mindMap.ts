@@ -1,6 +1,6 @@
 import type { MapLayout, MapTopic } from "../../../ipc/documentAnnotations";
 import { applyEdits, type AnnotationEdit, type PageAnnotations } from "./annotationHistory";
-import { createAnnotationId, TOPIC_BORDER, TOPIC_PADDING_X, type Annotation, type Point, type Size, type TextShape } from "./annotationModel";
+import { cleanNoteText, createAnnotationId, MAX_TEXT_CHARS, TOPIC_BORDER, TOPIC_PADDING_X, type Annotation, type Point, type Size, type TextShape } from "./annotationModel";
 
 /**
  * Mind maps on a notebook page. A topic is a text note with a `topic`; the
@@ -120,7 +120,12 @@ const EMPTY_SET: ReadonlySet<string> = new Set();
 /** A page's marks without the topics folded away; the same array when nothing is folded. */
 export function visibleMarks(annotations: readonly Annotation[]): readonly Annotation[] {
   const hidden = hiddenTopics(annotations);
-  return hidden.size === 0 ? annotations : annotations.filter((annotation) => !hidden.has(annotation.id));
+  if (hidden.size === 0) return annotations;
+  // A line or arrow attached to a hidden topic goes out of sight with it.
+  return annotations.filter((annotation) => !hidden.has(annotation.id)
+    && !((annotation.shape.kind === "line" || annotation.shape.kind === "arrow")
+      && ((annotation.shape.from !== undefined && hidden.has(annotation.shape.from))
+        || (annotation.shape.to !== undefined && hidden.has(annotation.shape.to)))));
 }
 
 /** How many topics a folded topic holds out of sight. */
@@ -787,6 +792,97 @@ export function mapAsList(tree: MapTree): string {
   };
   if (tree.root) visit(tree.root, 0, new Set());
   return lines.join("\n");
+}
+
+/** One line of a pasted list: its words and how deep it sits, from 0. */
+export interface ListItem { text: string; depth: number; }
+
+/** The most topics one pasted list makes. */
+export const MAX_LIST_TOPICS = 300;
+
+/**
+ * An outline's lines as list items: Markdown bullets, numbered lines,
+ * headings, or plain lines indented with spaces or tabs. A line never sits
+ * more than one level under the line before it.
+ */
+export function parseList(text: string): ListItem[] {
+  const lines = cleanNoteText(text).split("\n").map((line) => line.replace(/\t/g, "    ")).filter((line) => line.trim() !== "");
+  const headings = lines.map((line) => /^\s*(#{1,6})\s/.exec(line)?.[1]?.length).filter((level): level is number => level !== undefined);
+  const top = Math.min(...headings);
+  const items: ListItem[] = [];
+  let under = 0;
+  const indents: number[] = [];
+  for (const line of lines) {
+    if (items.length >= MAX_LIST_TOPICS) break;
+    const heading = /^\s*(#{1,6})\s+(.*)$/.exec(line);
+    let depth: number;
+    let words: string;
+    if (heading) {
+      depth = (heading[1]?.length ?? top) - top;
+      words = heading[2] ?? "";
+      under = depth + 1;
+      indents.length = 0;
+    } else {
+      const indent = line.length - line.trimStart().length;
+      while (indents.length > 0 && (indents[indents.length - 1] ?? 0) > indent) indents.pop();
+      if (indents.length === 0 || (indents[indents.length - 1] ?? 0) < indent) indents.push(indent);
+      depth = under + indents.length - 1;
+      words = line.trim().replace(/^(?:[-*+•]|\d+[.)])\s+/, "").replace(/^\[[ xX]\]\s+/, "");
+    }
+    words = words.trim().slice(0, MAX_TEXT_CHARS);
+    if (!words) continue;
+    const previous = items[items.length - 1];
+    items.push({ text: words, depth: previous ? Math.min(depth, previous.depth + 1) : 0 });
+  }
+  return items;
+}
+
+/**
+ * A new map of the list around `point`: its one top line is the central
+ * topic, or, when it has several, they branch from a new central topic
+ * (`named` false). The map lays itself out when it is added.
+ */
+export function mapFromList(
+  items: readonly ListItem[],
+  pageNumber: number,
+  point: Point,
+  page: Size,
+  now: () => number,
+): { topics: Topic[]; named: boolean } | null {
+  if (items.length === 0) return null;
+  const named = items[0]?.depth === 0 && !items.slice(1).some((item) => item.depth === 0);
+  const root = newCentralTopic(pageNumber, point, page, now());
+  root.shape.text = named ? items[0]?.text ?? "" : "Central topic";
+  const topics: Topic[] = [root];
+  // The latest topic at each depth, and how many branches each topic has so far.
+  const parents: Topic[] = [root];
+  const counts = new Map<string, number>();
+  for (const item of named ? items.slice(1) : items) {
+    const level = Math.max(1, Math.min(named ? item.depth : item.depth + 1, parents.length));
+    const parent = parents[level - 1] ?? root;
+    const order = counts.get(parent.id) ?? 0;
+    counts.set(parent.id, order + 1);
+    const { width, fontSize } = topicLook(level);
+    const topic: Topic = {
+      id: createAnnotationId(),
+      pageNumber,
+      createdAt: now(),
+      shape: {
+        kind: "text",
+        x: root.shape.x,
+        y: root.shape.y,
+        width,
+        text: item.text,
+        color: level === 1 ? BRANCH_COLORS[order % BRANCH_COLORS.length] ?? BRANCH_COLORS[0] : parent.shape.color,
+        fontSize,
+        topic: { map: root.id, parent: parent.id, order },
+      },
+    };
+    topics.push(topic);
+    parents.length = level;
+    parents.push(topic);
+  }
+  return { topics, named };
 }
 
 /** Puts a dragged topic, or with none every dragged topic of the map, back where the map's layout puts it. */

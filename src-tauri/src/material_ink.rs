@@ -251,8 +251,8 @@ pub(crate) fn apply_changes(
             if shape.is_link() && matches!(input.material, InkMaterial::Lesson { .. }) {
                 return Err(invalid("Links go in notebooks or guides, not on slides."));
             }
-            if shape.is_topic() {
-                return Err(invalid("Mind maps go in notebooks."));
+            if shape.is_topic() || shape.is_attached() {
+                return Err(invalid("Mind maps and attached lines go in notebooks."));
             }
         }
     }

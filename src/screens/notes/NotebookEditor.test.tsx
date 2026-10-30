@@ -481,4 +481,40 @@ describe("notebook editor", () => {
     fireEvent.keyDown(branch, { key: "Escape" });
     await waitFor(() => expect(saved().find((shape) => shape.text === "Aortic valve opens")?.topic?.parent).toBeDefined());
   });
+
+  it("makes a map of a pasted outline, copies it back as a list, and keeps an arrow on its topics", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const { canvas, showToast } = await openNotebook();
+    fireEvent.paste(canvas, { clipboardData: { getData: () => "# Heart\n- Systole\n  - Ejection\n- Diastole" } });
+    await waitFor(() => expect(document.querySelectorAll("[data-map-branch]")).toHaveLength(3));
+
+    // The central topic opens selected, with the map's actions.
+    await openMenu(screen.getByRole("button", { name: "Mind map actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy the map as a list" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("- Heart\n  - Systole\n    - Ejection\n  - Diastole"));
+    expect(showToast).toHaveBeenCalledWith("success", "Copied the map as a list.");
+
+    const topics = () => new Map(vi.mocked(notebooksIpc.applyNotebookItemChanges).mock.calls
+      .flatMap((call) => call[1])
+      .flatMap((change) => (change.op === "put" && change.shape.kind === "text" ? [[change.shape.text, { id: change.id, shape: change.shape }] as const] : [])));
+    await waitFor(() => expect(topics().size).toBe(4));
+    const middle = (text: string) => {
+      const shape = topics().get(text)?.shape;
+      return shape ? { x: shape.x + shape.width / 2, y: shape.y + 12 } : { x: 0, y: 0 };
+    };
+    const from = middle("Ejection");
+    const to = middle("Diastole");
+    fireEvent.keyDown(canvas, { key: "a" });
+    fireEvent.pointerDown(canvas, onPage(from.x, from.y));
+    fireEvent.pointerMove(canvas, onPage(to.x, to.y));
+    fireEvent.pointerUp(canvas, onPage(to.x, to.y));
+    await waitFor(() => {
+      const arrow = vi.mocked(notebooksIpc.applyNotebookItemChanges).mock.calls
+        .flatMap((call) => call[1])
+        .find((change) => change.op === "put" && change.shape.kind === "arrow");
+      expect(arrow?.op === "put" && arrow.shape.kind === "arrow" ? [arrow.shape.from, arrow.shape.to] : null)
+        .toEqual([topics().get("Ejection")?.id, topics().get("Diastole")?.id]);
+    });
+  });
 });

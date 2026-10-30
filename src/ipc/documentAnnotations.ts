@@ -48,6 +48,12 @@ export interface SegmentShape {
   curve?: [number, number, number, number];
   /** Marks of one page that share a group are selected and moved together. */
   group?: string;
+  /**
+   * Only on a notebook page: the marks its first and second ends are attached
+   * to. An attached end follows its mark, and lets go when the mark is deleted.
+   */
+  from?: string;
+  to?: string;
 }
 
 /** The outline of a rectangle, or of the ellipse inside it, filled with `fill` if it has one. */

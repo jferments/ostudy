@@ -15,6 +15,7 @@ import {
 } from "../../ipc/notebooks";
 import { managedAssetUrl } from "../../platform/assets";
 import { registerPlatformBackHandler } from "../../platform/backNavigation";
+import { copyText } from "../../platform/clipboard";
 import { selectExternalImport } from "../../platform/files";
 import { useLayoutMode } from "../../ui/layout/LayoutModeProvider";
 import { InlineWorkspace } from "../../ui/overlays/Dialog";
@@ -40,7 +41,7 @@ import { AnnotatorCanvas } from "../documents/annotator/AnnotatorCanvas";
 import type { PaperPages } from "../documents/annotator/AnnotatorPage";
 import { AnnotatorToolbar } from "../documents/annotator/AnnotatorToolbar";
 import { SaveStatus, SHORTCUTS, useAnnotatorLeave } from "../documents/annotator/DocumentAnnotator";
-import { BRANCH_COLORS, CENTRAL_TOPIC_COLOR, depthOf, isTopic, mapsOn, type MapTree, type Topic } from "../documents/annotator/mindMap";
+import { BRANCH_COLORS, CENTRAL_TOPIC_COLOR, depthOf, isTopic, mapAsList, mapsOn, type MapTree, type Topic } from "../documents/annotator/mindMap";
 import { SourcePassageDialog } from "../documents/annotator/SourcePassageDialog";
 import {
   ACTUAL_SIZE_SCALE,
@@ -671,7 +672,13 @@ function ReadyNotebook({
 
   const selected = controller.selected;
   const selectedTree = isTopic(selected) ? mapsOn(controller.annotations.get(selected.pageNumber) ?? []).get(selected.shape.topic.map) : undefined;
-  const mapMenu = mapActions(isTopic(selected) && selectedTree ? { topic: selected, tree: selectedTree } : null, controller, () => chooseTool("mindmap"));
+  const copyMap = (tree: MapTree) => {
+    copyText(mapAsList(tree)).then(
+      () => showToast("success", "Copied the map as a list."),
+      (error: unknown) => showToast("error", `The map could not be copied: ${getErrorMessage(error)}`),
+    );
+  };
+  const mapMenu = mapActions(isTopic(selected) && selectedTree ? { topic: selected, tree: selectedTree } : null, controller, () => chooseTool("mindmap"), copyMap);
   const topicMenu: PointMenuItem[] = isTopic(selected) && selectedTree ? topicMenuItems(selected, selectedTree, controller, mapMenu, {
     onLink: () => setLinkDialog({ editing: selected }),
   }) : [];
@@ -882,6 +889,7 @@ function mapActions(
   found: { topic: Topic; tree: MapTree } | null,
   controller: DocumentAnnotatorController,
   onStart: () => void,
+  onCopy: (tree: MapTree) => void,
 ): OverflowMenuItem[] {
   const topic = found?.topic;
   const tree = found?.tree;
@@ -900,6 +908,7 @@ function mapActions(
     })),
     { id: "put-back", label: "Put this topic back in place", disabled: topic?.shape.topic.offset === undefined, onSelect: () => controller.tidyMap(true) },
     { id: "tidy", label: "Tidy the map", disabled: !dragged, onSelect: () => controller.tidyMap(false) },
+    { id: "copy-list", label: "Copy the map as a list", disabled: !tree, onSelect: () => { if (tree) onCopy(tree); } },
   ];
 }
 
@@ -939,6 +948,7 @@ function topicMenuItems(
     { id: "layout", label: "Map layout", items: mapMenu.filter((item) => MAP_LAYOUTS.some((choice) => choice.layout === item.id)) },
     ...shown("put-back"),
     ...shown("tidy"),
+    ...shown("copy-list"),
     { id: "link", label: "Add link… (K)", onSelect: onLink },
     { id: "delete", label: (tree.children.get(topic.id) ?? []).length > 0 ? "Delete topic and its branches" : "Delete topic", destructive: true, onSelect: controller.deleteSelected },
   ];
