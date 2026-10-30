@@ -131,7 +131,7 @@ pub enum InkChange {
     Put {
         id: String,
         page_key: String,
-        shape: AnnotationShape,
+        shape: Box<AnnotationShape>,
     },
     Delete {
         id: String,
@@ -245,7 +245,8 @@ pub(crate) fn apply_changes(
         {
             validate_page_key(page_key)?;
             shape.validate()?;
-            if matches!(shape, AnnotationShape::Highlight(stroke) if stroke.rects.is_some()) {
+            if matches!(shape.as_ref(), AnnotationShape::Highlight(stroke) if stroke.rects.is_some())
+            {
                 return Err(invalid("A designed page has no text to highlight."));
             }
             if shape.is_link() && matches!(input.material, InkMaterial::Lesson { .. }) {
@@ -285,7 +286,7 @@ pub(crate) fn apply_changes(
                 &input.material,
                 id,
                 page_key,
-                shape,
+                *shape,
                 now,
                 &mut next_created_at,
             )?),

@@ -125,7 +125,7 @@ pub struct Segment {
     pub to: Option<String>,
     /// Only on a notebook page: a few words written at the line's middle.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
+    pub label: Option<Box<str>>,
 }
 
 /// The outline of a rectangle or of the ellipse inside it, optionally filled
