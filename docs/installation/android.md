@@ -194,7 +194,29 @@ Multi-ABI Android App Bundle:
 pnpm android:build:aab
 ```
 
-An AAB is store input, not directly installable. Release signing material stays outside the repository. The planned public direct-distribution path is a long-lived signed universal APK with checksums/certificate fingerprint and signed-release qualification; F-Droid is a later option. Google Play/Play App Signing is not required for direct APK distribution.
+An AAB is store input, not directly installable. Google Play/Play App Signing is not required for direct APK distribution; F-Droid is a later option.
+
+### The public APK
+
+Public releases ship one universal APK, `ostudy-vX.Y.Z-android.apk`, signed with oStudy's long-lived release key. It installs from a browser download: Android asks once to allow that browser to install apps, and needs no USB or developer options. It is the release application `io.github.jferments.ostudy`, so it installs beside a debug build (`.dev`).
+
+`scripts/release.sh TAG --skip-gate` builds it with `pnpm android:build:release` (Gradle leaves it unsigned), then `scripts/sign-android-release.sh` aligns it to 16 KiB, signs it with `apksigner` and refuses unless the signing certificate's SHA-256 equals `src-tauri/packaging/android/release-certificate.sha256`. `verify-android-package.sh … release` then checks the package as for any release APK. The key comes from the environment and never enters the build or the repository:
+
+```bash
+export OSTUDY_ANDROID_KEYSTORE=~/keys/ostudy-release.jks   # outside the checkout
+read -rs OSTUDY_ANDROID_KEYSTORE_PASSWORD && export OSTUDY_ANDROID_KEYSTORE_PASSWORD
+./scripts/release.sh vX.Y.Z --skip-gate
+```
+
+Every later APK must be signed with the same key, or Android refuses it as an update; losing the key means every user has to uninstall and reinstall. Keep at least one offline backup of the keystore and its password. The key was made once with:
+
+```bash
+keytool -genkeypair -v -keystore ~/keys/ostudy-release.jks -alias ostudy \
+  -keyalg RSA -keysize 4096 -validity 36500 -dname "CN=oStudy, O=oStudy"
+keytool -list -v -keystore ~/keys/ostudy-release.jks -alias ostudy | grep 'SHA256:'
+```
+
+The certificate fingerprint is public and committed; the keystore and password are not.
 
 ## Android storage and permissions
 

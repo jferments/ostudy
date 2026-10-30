@@ -13,28 +13,36 @@ cd "$ROOT_DIR"
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate]
+Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate] [--linux-only]
 
 Qualify and package a tagged release. With no option it runs the complete
-gate in a clean source copy, then builds the Linux files.
+gate in a clean source copy, then builds the Linux files and the signed
+Android APK.
 
 --gate-only   only the gate. The tag's Release gate workflow runs this on the
               CI runner, which deliberately has no Docker.
 --skip-gate   only the files, on a maintainer machine with Podman or Docker
               and flatpak-builder. HEAD must be the tag, and the tag's Release
               gate run must have passed (checked with gh).
+--linux-only  leave out the Android APK.
 
-The files go to artifacts/TAG/linux-x86_64; publish them with
+The APK is the universal release build, signed by
+scripts/sign-android-release.sh with the release key named in
+OSTUDY_ANDROID_KEYSTORE (password in OSTUDY_ANDROID_KEYSTORE_PASSWORD).
+
+The files go to artifacts/TAG/release; publish them with
 ./scripts/publish-github-release.sh and ostudy-io's tools/publish-release.sh.
 USAGE
 }
 
 MODE=all
+ANDROID=1
 REQUESTED_TAG=""
 while (($#)); do
   case "$1" in
     --gate-only) MODE=gate; shift ;;
     --skip-gate) MODE=packages; shift ;;
+    --linux-only) ANDROID=0; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     *) [[ -z "$REQUESTED_TAG" ]] || { usage >&2; exit 2; }; REQUESTED_TAG="$1"; shift ;;
@@ -87,12 +95,19 @@ if [[ "$MODE" == gate ]]; then
   exit 0
 fi
 
+if [[ "$ANDROID" == 1 ]]; then
+  [[ -n "${OSTUDY_ANDROID_KEYSTORE:-}" && -n "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" ]] || {
+    printf 'ERROR: set OSTUDY_ANDROID_KEYSTORE and OSTUDY_ANDROID_KEYSTORE_PASSWORD for the Android APK, or pass --linux-only.\n' >&2
+    exit 1
+  }
+fi
+
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;
   *) printf 'ERROR: Linux releases are built on x86_64 only, not %s.\n' "$(uname -m)" >&2; exit 1 ;;
 esac
 
-OUT_DIR="$ROOT_DIR/artifacts/$EXPECTED_TAG/linux-$ARCH"
+OUT_DIR="$ROOT_DIR/artifacts/$EXPECTED_TAG/release"
 rm -rf -- "$ROOT_DIR/artifacts/$EXPECTED_TAG"
 mkdir -p "$OUT_DIR"
 
@@ -113,6 +128,17 @@ trap 'rm -rf -- "$FLATPAK_DIR"' EXIT
 "$SCRIPT_DIR/build-flatpak.sh" --deb "$DEB" --output "$FLATPAK_DIR"
 cp "$FLATPAK_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.flatpak" "$OUT_DIR/"
 
+if [[ "$ANDROID" == 1 ]]; then
+  # The universal release APK (every ABI) installs from a browser download;
+  # Gradle leaves it unsigned and the release key never enters the build.
+  printf '\n==> Building and signing the Android APK\n'
+  "$SCRIPT_DIR/android-build.sh" --release --apk --target all
+  UNSIGNED_APK="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
+  APK="$OUT_DIR/ostudy-$EXPECTED_TAG-android.apk"
+  "$SCRIPT_DIR/sign-android-release.sh" "$UNSIGNED_APK" "$APK"
+  "$SCRIPT_DIR/verify-android-package.sh" "$APK" release
+fi
+
 git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
   --output="$OUT_DIR/ostudy-$EXPECTED_TAG-source.tar.gz" HEAD
 
@@ -120,10 +146,14 @@ git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
   printf 'tag=%s\n' "$EXPECTED_TAG"
   printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
   printf 'pdfium_build=%s\n' "$PDFIUM_BUILD"
+  if [[ "$ANDROID" == 1 ]]; then
+    printf 'android_certificate_sha256=%s\n' "$(tr -d ' :\n' < "$ROOT_DIR/src-tauri/packaging/android/release-certificate.sha256")"
+  fi
 } >> "$OUT_DIR/BUILD-INFO.txt"
 (
   cd "$OUT_DIR"
-  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
+  shopt -s nullglob
+  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.apk *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
 )
 
 printf '\nRelease artifacts created in: %s\n' "$OUT_DIR"
