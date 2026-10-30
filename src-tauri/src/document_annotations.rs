@@ -123,6 +123,9 @@ pub struct Segment {
     pub from: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to: Option<String>,
+    /// Only on a notebook page: a few words written at the line's middle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Box<str>>,
 }
 
 /// The outline of a rectangle or of the ellipse inside it, optionally filled
@@ -234,6 +237,10 @@ pub struct MapTopic {
     /// points from where the map's layout would put it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub offset: Option<Vec<f64>>,
+    /// Only on a map's first topic: drawn as a topic of its own, one that
+    /// other topics link to, rather than as the map's central topic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub free: Option<bool>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -253,6 +260,20 @@ pub enum MapLayout {
 
 /// Farther than any page reaches, in points; it bounds a dragged topic's offset.
 const MAX_TOPIC_OFFSET: f64 = 30_000.0;
+/// The most characters a line's label holds, as the app's label field allows.
+const MAX_LINE_LABEL_CHARS: usize = 120;
+
+fn validate_line_label(label: &str) -> Result<(), CommandError> {
+    if label.trim().is_empty() || label.trim() != label {
+        return Err(invalid(
+            "A line's label has words and no space around them.",
+        ));
+    }
+    if label.chars().count() > MAX_LINE_LABEL_CHARS || label.chars().any(char::is_control) {
+        return Err(invalid("A line's label is one short line of words."));
+    }
+    Ok(())
+}
 
 /// More branches than any one topic needs; it bounds the stored order.
 const MAX_TOPIC_ORDER: u32 = 100_000;
@@ -376,6 +397,9 @@ impl AnnotationShape {
                 }
                 if segment.from.is_some() && segment.from == segment.to {
                     return Err(invalid("A line's two ends attach to different marks."));
+                }
+                if let Some(label) = &segment.label {
+                    validate_line_label(label)?;
                 }
                 match segment.both_ends {
                     None => Ok(()),
@@ -529,11 +553,11 @@ impl AnnotationShape {
         matches!(self, Self::Text(TextNote { topic: Some(_), .. }))
     }
 
-    /// Whether this is a line or arrow attached to other marks, which only a
-    /// notebook page holds.
+    /// Whether this is a line or arrow attached to other marks or labelled,
+    /// which only a notebook page holds.
     pub(crate) fn is_attached(&self) -> bool {
         matches!(self, Self::Line(segment) | Self::Arrow(segment)
-            if segment.from.is_some() || segment.to.is_some())
+            if segment.from.is_some() || segment.to.is_some() || segment.label.is_some())
     }
 
     /// The managed asset a picture shows; only notebook pages hold pictures.
@@ -561,6 +585,12 @@ impl MapTopic {
         }
         if self.folded == Some(false) {
             return Err(invalid("A topic is either folded or not marked at all."));
+        }
+        match self.free {
+            None => {}
+            Some(true) if self.parent.is_none() => {}
+            Some(true) => return Err(invalid("Only a map's first topic can be a free topic.")),
+            Some(false) => return Err(invalid("A topic is either free or not marked at all.")),
         }
         if let Some(offset) = &self.offset {
             if self.parent.is_none() {
@@ -770,7 +800,7 @@ pub(crate) fn apply_changes(
             }
             if shape.is_attached() {
                 return Err(invalid(
-                    "Attached lines go on notebook pages, not on a document.",
+                    "Attached or labelled lines go on notebook pages, not on a document.",
                 ));
             }
             if shape.image_asset().is_some() {

@@ -64,7 +64,7 @@ fn put(id: String, page_key: &str, shape: AnnotationShape) -> InkChange {
     InkChange::Put {
         id,
         page_key: page_key.into(),
-        shape,
+        shape: Box::new(shape),
     }
 }
 

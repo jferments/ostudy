@@ -54,14 +54,18 @@ import {
   type ToolStyles,
 } from "./annotationModel";
 import { AnnotationSaveQueue, type SaveState } from "./annotationSaveQueue";
-import { connectMarks } from "./connectors";
+import { connectMarks, isLinkable, isSegment, linkBetween, MAX_LABEL_CHARS } from "./connectors";
 import {
   arrangeMaps,
+  detachEdits,
+  freeEdits,
   isTopic,
   mapFromList,
   mapsOn,
   newCentralTopic,
+  newFreeTopic,
   newTopic,
+  nextFreeColor,
   promote,
   retopic,
   tidyEdits,
@@ -352,6 +356,14 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     setEditing({ annotation: newCentralTopic(pageNumber, point, page, now()), isNew: true, text: "" });
   }, [finishEditing, now, setEditing]);
 
+  /** Opens a new free topic around `point`: a topic of its own, for maps that are webs rather than trees. */
+  const newFree = useCallback((pageNumber: number, point: Point, page: { width: number; height: number }) => {
+    finishEditing();
+    setSelection(null);
+    const color = nextFreeColor(annotationsRef.current.get(pageNumber) ?? []);
+    setEditing({ annotation: newFreeTopic(pageNumber, point, page, now(), color), isNew: true, text: "" });
+  }, [finishEditing, now, setEditing]);
+
   /**
    * Makes a map of a pasted list around `point`. A list with one top line
    * opens selected; one with several opens its new central topic for naming.
@@ -442,6 +454,58 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     const found = currentTopic();
     if (found) commit(tidyEdits(found.tree, onlySelected ? found.topic : undefined));
   }, [commit, currentTopic]);
+
+  /** Takes the selected topic and its branches out of their map, as a free topic where it stands. */
+  const detachTopic = useCallback(() => {
+    const found = currentTopic();
+    if (found) commit(detachEdits(found.tree, found.topic));
+  }, [commit, currentTopic]);
+
+  /** Shows the selected map's first topic as a free topic, or as its central topic again. */
+  const setFreeTopic = useCallback((free: boolean) => {
+    const found = currentTopic();
+    if (found?.tree.root) commit(freeEdits(found.tree.root, free));
+  }, [commit, currentTopic]);
+
+  /** The mark a link is being drawn from, while the learner picks what it links to. */
+  const [linking, setLinking] = useState<{ id: string; pageNumber: number } | null>(null);
+  const linkingRef = useRef(linking);
+  linkingRef.current = linking;
+
+  /** Starts linking the selected topic or mark to another one, picked next. */
+  const startLink = useCallback(() => {
+    const target = topicTarget();
+    finishEditing();
+    const mark = target ? find(target.id, target.pageNumber) : null;
+    if (!mark || !isLinkable(mark)) return;
+    setLinking({ id: mark.id, pageNumber: mark.pageNumber });
+  }, [find, finishEditing, topicTarget]);
+
+  const cancelLink = useCallback(() => setLinking(null), []);
+
+  /** Links the mark being linked from to `target` with a curved line; false when `target` cannot take it. */
+  const linkTo = useCallback((target: Annotation): boolean => {
+    const from = linkingRef.current;
+    setLinking(null);
+    if (!from || target.id === from.id || target.pageNumber !== from.pageNumber || !isLinkable(target)) return false;
+    const source = find(from.id, from.pageNumber);
+    if (!source) return false;
+    const color = isTopic(source) ? source.shape.color : styles.shape.color;
+    const link = linkBetween(source, target, textHeight, color, now(), createAnnotationId());
+    commit([{ id: link.id, before: null, after: link }]);
+    setSelection({ id: link.id, pageNumber: link.pageNumber });
+    return true;
+  }, [commit, find, now, styles.shape.color, textHeight]);
+
+  /** Writes words on a line, or takes them off with an empty label. */
+  const setLineLabel = useCallback((id: string, pageNumber: number, label: string) => {
+    const line = find(id, pageNumber);
+    if (!isSegment(line)) return;
+    const words = cleanNoteText(label).replace(/\s+/g, " ").trim().slice(0, MAX_LABEL_CHARS);
+    if ((line.shape.label ?? "") === words) return;
+    const { label: _label, ...rest } = line.shape;
+    commit([{ id, before: line, after: { ...line, shape: words ? { ...rest, label: words } : rest } }]);
+  }, [commit, find]);
 
   /** Selects the topic an arrow key leads to from the selected one; false when there is none. */
   const goToTopic = useCallback((key: "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown"): boolean => {
@@ -629,12 +693,20 @@ export function useDocumentAnnotator(documentId: string, showToast: ShowToast, s
     editText,
     newText,
     newMap,
+    newFree,
     pasteList,
     addTopic,
     toggleFolded,
     promoteTopic,
     setMapLayout,
     tidyMap,
+    detachTopic,
+    setFreeTopic,
+    linking,
+    startLink,
+    cancelLink,
+    linkTo,
+    setLineLabel,
     goToTopic,
     typeText,
     finishEditing,

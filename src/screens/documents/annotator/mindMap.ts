@@ -88,6 +88,16 @@ export function subtree(tree: MapTree, id: string): Topic[] {
   return found;
 }
 
+/** Whether a topic is drawn as its map's central topic: the map's first topic, unless it is a free topic. */
+export function isCentral(topic: Topic): boolean {
+  return topic.shape.topic.parent === undefined && !topic.shape.topic.free;
+}
+
+/** How deep a topic looks: a free topic looks like a first-level branch, and its branches one level deeper. */
+export function lookDepth(tree: MapTree, topic: Topic): number {
+  return depthOf(tree, topic) + (tree.root?.shape.topic.free ? 1 : 0);
+}
+
 /** How deep a topic is: 0 for the central topic. */
 export function depthOf(tree: MapTree, topic: Topic): number {
   let depth = 0;
@@ -388,7 +398,7 @@ export function branchLines(annotations: readonly Annotation[], height: (annotat
       for (const child of children) {
         const childHeight = height(child);
         const color = child.shape.color;
-        const width = parent.id === root.id ? 3 : 2;
+        const width = parent.id === root.id && isCentral(root) ? 3 : 2;
         if (layout === "down") {
           const from = { x: parent.shape.x + parent.shape.width / 2, y: parent.shape.y + parentHeight };
           const to = { x: child.shape.x + child.shape.width / 2, y: child.shape.y };
@@ -441,7 +451,8 @@ export function foldBadges(annotations: readonly Annotation[], height: (annotati
 
 function sameTopic(a: MapTopic, b: MapTopic): boolean {
   return a.map === b.map && a.parent === b.parent && a.order === b.order && a.side === b.side
-    && a.layout === b.layout && a.folded === b.folded && a.offset?.[0] === b.offset?.[0] && a.offset?.[1] === b.offset?.[1];
+    && a.layout === b.layout && a.folded === b.folded && a.offset?.[0] === b.offset?.[0] && a.offset?.[1] === b.offset?.[1]
+    && a.free === b.free;
 }
 
 function withTopic(annotation: Topic, topic: MapTopic): Topic {
@@ -451,6 +462,7 @@ function withTopic(annotation: Topic, topic: MapTopic): Topic {
   if (topic.layout !== undefined) clean.layout = topic.layout;
   if (topic.folded) clean.folded = true;
   if (topic.offset && topic.parent !== undefined) clean.offset = topic.offset;
+  if (topic.free && topic.parent === undefined) clean.free = true;
   return { ...annotation, shape: { ...annotation.shape, topic: clean } };
 }
 
@@ -536,6 +548,34 @@ export function arrangeMaps(
     }
   }
 
+  // A free topic dropped on a topic of another map joins it as that topic's last branch, with its own branches.
+  for (const edit of edits) {
+    if (!moved(edit) || edit.after.shape.topic.parent !== undefined || !edit.after.shape.topic.free) continue;
+    const page = state.get(edit.after.pageNumber) ?? [];
+    const trees = mapsOn(page);
+    const tree = trees.get(edit.after.shape.topic.map);
+    const self = tree?.topics.get(edit.after.id);
+    if (!tree || !self) continue;
+    const center = centerOf(self, height);
+    const target = page.filter(isTopic).reverse().find((candidate) => (
+      candidate.shape.topic.map !== tree.id
+      && center.x >= candidate.shape.x - DROP_SLOP && center.x <= candidate.shape.x + candidate.shape.width + DROP_SLOP
+      && center.y >= candidate.shape.y - DROP_SLOP && center.y <= candidate.shape.y + height(candidate) + DROP_SLOP
+    ));
+    if (!target) continue;
+    const siblings = trees.get(target.shape.topic.map)?.children.get(target.id) ?? [];
+    const order = siblings.reduce((most, sibling) => Math.max(most, sibling.shape.topic.order + 1), 0);
+    for (const under of tree.topics.values()) {
+      const latest = current(under.id, under.pageNumber);
+      if (!isTopic(latest)) continue;
+      const next: MapTopic = under.id === self.id
+        ? { map: target.shape.topic.map, parent: target.id, order }
+        : { ...latest.shape.topic, map: target.shape.topic.map };
+      change(latest, withTopic(latest, next));
+    }
+    touch(target);
+  }
+
   // A topic dragged on its own finds its new place in the tree; one moved with its central topic only follows it.
   const movedRoots = new Set(edits.filter((edit) => moved(edit) && edit.after.shape.topic.parent === undefined)
     .map((edit) => edit.after?.shape.kind === "text" ? edit.after.shape.topic?.map : undefined));
@@ -613,7 +653,7 @@ export function arrangeMaps(
       // Each topic is as wide as its words, up to its level's width.
       const unfitted = mapsOn(state.get(pageNumber) ?? []).get(mapId);
       for (const topic of unfitted?.topics.values() ?? []) {
-        const width = fittedWidth(topic, depthOf(unfitted as MapTree, topic));
+        const width = fittedWidth(topic, lookDepth(unfitted as MapTree, topic));
         if (width !== topic.shape.width) change(topic, { ...topic, shape: { ...topic.shape, width } });
       }
       const tree = mapsOn(state.get(pageNumber) ?? []).get(mapId);
@@ -678,6 +718,78 @@ export function newCentralTopic(pageNumber: number, point: Point, page: Size, cr
 }
 
 /**
+ * A new free topic, its middle at `point`, empty for typing: a topic of its
+ * own that other topics can branch from or link to, drawn like a branch
+ * rather than as a central topic.
+ */
+export function newFreeTopic(pageNumber: number, point: Point, page: Size, createdAt: number, color: string): Topic {
+  const topic = newCentralTopic(pageNumber, point, page, createdAt);
+  const { width, fontSize } = topicLook(1);
+  const tall = fontSize * 1.3 + 16;
+  return {
+    ...topic,
+    shape: {
+      ...topic.shape,
+      x: round(clamp(point.x - width / 2, 0, Math.max(0, page.width - width))),
+      y: round(clamp(point.y - tall / 2, 0, Math.max(0, page.height - tall))),
+      width,
+      fontSize,
+      color,
+      topic: { ...topic.shape.topic, free: true },
+    },
+  };
+}
+
+/** The color for a new free topic: the branch color the page's free topics have used least. */
+export function nextFreeColor(annotations: readonly Annotation[]): string {
+  const used = new Map<string, number>(BRANCH_COLORS.map((color) => [color, 0]));
+  for (const tree of mapsOn(annotations).values()) {
+    const color = tree.root?.shape.topic.free ? tree.root.shape.color : undefined;
+    if (color && used.has(color)) used.set(color, (used.get(color) ?? 0) + 1);
+  }
+  return BRANCH_COLORS.reduce<string>((best, color) => ((used.get(color) ?? 0) < (used.get(best) ?? 0) ? color : best), BRANCH_COLORS[0]);
+}
+
+/**
+ * Takes a topic and its branches out of their map as a map of their own,
+ * the topic a free topic where it stands. Lines linking it stay linked.
+ */
+export function detachEdits(tree: MapTree, topic: Topic): AnnotationEdit[] {
+  if (topic.shape.topic.parent === undefined) return [];
+  // Its branches keep growing away from the old map, rather than back across it.
+  const root = tree.root;
+  const side = root && topic.shape.x + topic.shape.width / 2 < root.shape.x + root.shape.width / 2 ? "left" : "right";
+  return subtree(tree, topic.id).map((under) => {
+    const next: MapTopic = under.id === topic.id
+      ? { map: topic.id, order: 0, free: true, ...(under.shape.topic.folded ? { folded: true } : {}) }
+      : { ...under.shape.topic, map: topic.id, ...(under.shape.topic.parent === topic.id ? { side } : {}) };
+    return { id: under.id, before: under, after: withTopic(under, next) };
+  });
+}
+
+/** Shows a map's first topic as a free topic, or as the map's central topic again. */
+export function freeEdits(root: Topic, free: boolean): AnnotationEdit[] {
+  if (root.shape.topic.parent !== undefined || Boolean(root.shape.topic.free) === free) return [];
+  const { free: _free, ...rest } = root.shape.topic;
+  const after = withTopic(root, free ? { ...rest, free: true } : rest);
+  const { width, fontSize } = topicLook(free ? 1 : 0);
+  const scale = fontSize / topicLook(free ? 0 : 1).fontSize;
+  return [{
+    id: root.id,
+    before: root,
+    after: {
+      ...after,
+      shape: {
+        ...after.shape,
+        fontSize: round(clamp(root.shape.fontSize * scale, 8, 96)),
+        width: Math.min(width, Math.max(MIN_TOPIC_WIDTH, round(root.shape.width * scale))),
+        ...(free ? {} : { color: CENTRAL_TOPIC_COLOR }),
+      },
+    },
+  }];
+}
+
+/**
  * A new empty topic under `parent` (after its last branch), or beside
  * `sibling` (right after it), placed near where the map will put it.
  */
@@ -685,7 +797,7 @@ export function newTopic(tree: MapTree, relative: { parent: Topic } | { after: T
   const parent = "parent" in relative ? relative.parent : tree.topics.get(relative.after.shape.topic.parent ?? "");
   if (!parent) return null;
   const siblings = tree.children.get(parent.id) ?? [];
-  const depth = depthOf(tree, parent) + 1;
+  const depth = lookDepth(tree, parent) + 1;
   const { width, fontSize } = topicLook(depth);
   const color = depth === 1
     ? BRANCH_COLORS[siblings.length % BRANCH_COLORS.length] ?? BRANCH_COLORS[0]

@@ -41,6 +41,7 @@ import { AnnotatorCanvas } from "../documents/annotator/AnnotatorCanvas";
 import type { PaperPages } from "../documents/annotator/AnnotatorPage";
 import { AnnotatorToolbar } from "../documents/annotator/AnnotatorToolbar";
 import { SaveStatus, SHORTCUTS, useAnnotatorLeave } from "../documents/annotator/DocumentAnnotator";
+import { isSegment, type Connector } from "../documents/annotator/connectors";
 import { BRANCH_COLORS, CENTRAL_TOPIC_COLOR, depthOf, isTopic, mapAsList, mapsOn, type MapTree, type Topic } from "../documents/annotator/mindMap";
 import { SourcePassageDialog } from "../documents/annotator/SourcePassageDialog";
 import {
@@ -54,6 +55,7 @@ import { useDocumentAnnotator, type DocumentAnnotatorController } from "../docum
 import { useLibraryFullPage } from "../library/LibraryFrame";
 import { BOARD_MARGIN, BoardOverview, marksBounds, regionAround } from "./BoardOverview";
 import { ChooseDocumentDialog, DocumentBeside } from "./DocumentBeside";
+import { LineLabelDialog } from "./LineLabelDialog";
 import { LinkDialog, type LinkChoice } from "./LinkDialog";
 import { notebookSource, rememberPictureDraft } from "./notebookSource";
 import { PaperBackground } from "./paper";
@@ -344,12 +346,13 @@ function ReadyNotebook({
   const [lastShape, setLastShape] = useState<ShapeTool>("arrow");
   const [lastNote, setLastNote] = useState<"text" | "sticky">("text");
   const [linkDialog, setLinkDialog] = useState<{ editing: Annotation | null } | null>(null);
-  /** Where the selected topic's menu was opened, by a right-click or a long press. */
-  const [topicMenuAt, setTopicMenuAt] = useState<{ x: number; y: number } | null>(null);
-  const closeTopicMenu = useCallback(() => {
-    setTopicMenuAt(null);
+  /** Where the selected topic's or line's menu was opened, by a right-click or a long press. */
+  const [markMenuAt, setMarkMenuAt] = useState<{ x: number; y: number } | null>(null);
+  const closeMarkMenu = useCallback(() => {
+    setMarkMenuAt(null);
     viewportRef.current?.focus({ preventScroll: true });
   }, []);
+  const [labelling, setLabelling] = useState<Connector | null>(null);
   const [busy, setBusy] = useState(false);
   const [addingPicture, setAddingPicture] = useState(false);
   const textFormat = useTextFormat(controller);
@@ -678,10 +681,21 @@ function ReadyNotebook({
       (error: unknown) => showToast("error", `The map could not be copied: ${getErrorMessage(error)}`),
     );
   };
-  const mapMenu = mapActions(isTopic(selected) && selectedTree ? { topic: selected, tree: selectedTree } : null, controller, () => chooseTool("mindmap"), copyMap);
-  const topicMenu: PointMenuItem[] = isTopic(selected) && selectedTree ? topicMenuItems(selected, selectedTree, controller, mapMenu, {
+  const addFree = () => {
+    const page = shown.find((one) => one.pageNumber === current) ?? shown[0];
+    const region = page ? viewport.visibleRegion(page.pageNumber) : null;
+    if (!page) return;
+    chooseTool("mindmap");
+    const point = region
+      ? { x: region.x + region.width / 2, y: region.y + region.height / 2 }
+      : { x: page.width / 2, y: page.height / 2 };
+    controller.newFree(page.pageNumber, point, { width: page.width, height: page.height });
+  };
+  const mapMenu = mapActions(isTopic(selected) && selectedTree ? { topic: selected, tree: selectedTree } : null, controller,
+    { onStart: () => chooseTool("mindmap"), onFree: addFree, onCopy: copyMap });
+  const markMenu: PointMenuItem[] = isTopic(selected) && selectedTree ? topicMenuItems(selected, selectedTree, controller, mapMenu, {
     onLink: () => setLinkDialog({ editing: selected }),
-  }) : [];
+  }) : isSegment(selected) ? lineMenuItems(selected, controller, { onLabel: () => setLabelling(selected) }) : [];
   const selectedLink = linkOf(selected);
   const selectedClip = clipOf(selected);
   return (
@@ -827,9 +841,16 @@ function ReadyNotebook({
           contentRef={contentRef}
           coarse={inputMode === "coarse"}
           paperPages={paperPages}
-          onTopicMenu={(_topic, client) => setTopicMenuAt(client)}
+          onMarkMenu={(_mark, client) => setMarkMenuAt(client)}
         />
-        <PointMenu label="Topic" point={isTopic(selected) ? topicMenuAt : null} items={topicMenu} onClose={closeTopicMenu} />
+        <PointMenu label={isSegment(selected) ? "Line" : "Topic"} point={markMenu.length > 0 ? markMenuAt : null} items={markMenu}
+          onClose={closeMarkMenu} />
+        {controller.linking ? (
+          <div role="status" className="tw:absolute tw:top-3 tw:left-1/2 tw:z-(--ostudy-layer-raised) tw:flex tw:-translate-x-1/2 tw:items-center tw:gap-2 tw:rounded-full tw:border tw:border-solid tw:border-border tw:bg-background tw:py-1 tw:ps-4 tw:pe-1 tw:text-small tw:shadow-md">
+            Choose the topic or shape to connect to.
+            <Button size="small" variant="ghost" onClick={controller.cancelLink}>Cancel</Button>
+          </div>
+        ) : null}
         {board !== null && boardPage && !compact ? (
           <BoardOverview
             pageNumber={board}
@@ -845,6 +866,16 @@ function ReadyNotebook({
         ) : null}
       </div>
       {textFormat.dialog}
+      {labelling ? (
+        <LineLabelDialog
+          initial={labelling.shape.label ?? ""}
+          onClose={() => setLabelling(null)}
+          onSave={(label) => {
+            controller.setLineLabel(labelling.id, labelling.pageNumber, label);
+            setLabelling(null);
+          }}
+        />
+      ) : null}
       {linkDialog ? (
         <LinkDialog
           notebookId={notebookId}
@@ -888,20 +919,26 @@ const TOPIC_SIZES = [
 function mapActions(
   found: { topic: Topic; tree: MapTree } | null,
   controller: DocumentAnnotatorController,
-  onStart: () => void,
-  onCopy: (tree: MapTree) => void,
+  { onStart, onFree, onCopy }: { onStart: () => void; onFree: () => void; onCopy: (tree: MapTree) => void },
 ): OverflowMenuItem[] {
   const topic = found?.topic;
   const tree = found?.tree;
   const branches = topic && tree ? (tree.children.get(topic.id) ?? []).length : 0;
   const layout = tree?.root?.shape.topic.layout ?? "both";
   const dragged = tree ? [...tree.topics.values()].some((one) => one.shape.topic.offset !== undefined) : false;
+  const first = topic?.shape.topic.parent === undefined;
   return [
     { id: "start", label: "Start a new map", onSelect: onStart },
+    { id: "free", label: "Add a free topic (Shift+click)", onSelect: onFree },
     { id: "branch", label: "Add a branch (Tab)", disabled: !topic, onSelect: () => controller.addTopic("child") },
     { id: "next", label: "Add the next topic (Enter)", disabled: !topic || topic.shape.topic.parent === undefined, onSelect: () => controller.addTopic("sibling") },
     { id: "promote", label: "Move up a level (Shift+Tab)", disabled: !topic || !tree || depthOf(tree, topic) < 2, onSelect: controller.promoteTopic },
     { id: "fold", label: topic?.shape.topic.folded ? "Show branches (/)" : "Fold branches (/)", disabled: branches === 0, onSelect: controller.toggleFolded },
+    { id: "connect", label: "Connect to another topic…", disabled: !topic, onSelect: controller.startLink },
+    { id: "detach", label: "Detach as a free topic", disabled: !topic || first, onSelect: controller.detachTopic },
+    topic?.shape.topic.free && first
+      ? { id: "central", label: "Show as a central topic", onSelect: () => controller.setFreeTopic(false) }
+      : { id: "central", label: "Show as a free topic", disabled: !topic || !first, onSelect: () => controller.setFreeTopic(true) },
     ...MAP_LAYOUTS.map((choice) => ({
       id: choice.layout, label: choice.label, disabled: !topic, checked: topic ? choice.layout === layout : false,
       onSelect: () => controller.setMapLayout(choice.layout),
@@ -931,6 +968,9 @@ function topicMenuItems(
     ...shown("next"),
     ...shown("promote"),
     ...shown("fold"),
+    ...shown("connect"),
+    ...shown("detach"),
+    ...shown("central"),
     {
       id: "color", label: "Colour",
       items: TOPIC_COLORS.map((choice) => ({
@@ -951,5 +991,25 @@ function topicMenuItems(
     ...shown("copy-list"),
     { id: "link", label: "Add link… (K)", onSelect: onLink },
     { id: "delete", label: (tree.children.get(topic.id) ?? []).length > 0 ? "Delete topic and its branches" : "Delete topic", destructive: true, onSelect: controller.deleteSelected },
+  ];
+}
+
+/** A line's own menu, opened on it: its words, color and deletion. */
+function lineMenuItems(
+  line: Connector,
+  controller: DocumentAnnotatorController,
+  { onLabel }: { onLabel: () => void },
+): PointMenuItem[] {
+  return [
+    { id: "label", label: line.shape.label ? "Edit label…" : "Add label…", onSelect: onLabel },
+    ...(line.shape.label ? [{ id: "unlabel", label: "Remove label", onSelect: () => controller.setLineLabel(line.id, line.pageNumber, "") }] : []),
+    {
+      id: "color", label: "Colour",
+      items: TOPIC_COLORS.map((choice) => ({
+        id: choice.color, label: choice.label, checked: line.shape.color === choice.color,
+        onSelect: () => controller.chooseStyle({ color: choice.color }),
+      })),
+    },
+    { id: "delete", label: "Delete line", destructive: true, onSelect: controller.deleteSelected },
   ];
 }
