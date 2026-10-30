@@ -6,9 +6,6 @@
 
 [**Download ostudy 0.1.0 for Linux**](https://ostudy.io/install/) · [Release notes and files](https://github.com/jferments/ostudy/releases/tag/v0.1.0) · [Build for Android](docs/installation/android.md) · [Documentation](docs/README.md)
 
-<p align="center">
-  <img src="assets/screenshots/home-desktop.webp" alt="ostudy's Home: the question of the day, 27 cards due today with Start review, your subjects with how much of each you remember, and the lesson to pick up" width="860">
-</p>
 
 ## What you can do with it
 
@@ -58,20 +55,14 @@ With an AI service connected, ostudy can make from your documents:
 **Tutor** is a chat that answers from the model's knowledge and grounds its answers in your documents, decks and guides when you add them. It can quiz you with question cards, read a picture you paste, show a figure from your documents, read its answers aloud, take your questions by voice (turned into text on your device), and turn an answer into flashcards.
 
 <p align="center">
-  <img src="assets/screenshots/guide-reader-desktop.webp" alt="A study guide page with key points, a numbered process, a key idea box and the source figure beside the text" width="860">
-</p>
-<p align="center">
-  <img src="assets/screenshots/lesson-kidney-desktop.webp" alt="A lesson's lecture: a slide about the kidney with its anatomy figure, the slide strip and Closed captions" width="49%">
-  <img src="assets/screenshots/tutor-image-desktop.webp" alt="A Tutor chat answering a question about a pasted heart diagram, with formulas" width="49%">
+  <img src="assets/screenshots/lesson-kidney-desktop.webp" alt="A lesson's lecture: a slide about the kidney with its anatomy figure, the slide strip and Closed captions" width="860">
+  <img src="assets/screenshots/tutor-image-desktop.webp" alt="A Tutor chat answering a question about a pasted heart diagram, with formulas" width="860"
 </p>
 
 ### Progress you can trust
 
 Progress is calculated from your own review history, not by a model: how much you remembered, study time, streaks, card strength, the tags that need attention, what is coming up, and an activity calendar. A study day starts at 4 a.m. by default, so a late session counts toward the day you started it.
 
-<p align="center">
-  <img src="assets/screenshots/progress-desktop.webp" alt="The Progress page with remembered, study time, days studied and solid cards, and a chart of reviews" width="860">
-</p>
 
 ## Your data, your AI, your choice
 
@@ -81,12 +72,6 @@ Progress is calculated from your own review history, not by a model: how much yo
 - **Keep it safe.** Back up the whole library to one `.ostudybackup` file and restore it without restarting. Sync chosen parts of your library directly between your own devices over the local network or a USB cable, with no cloud in between.
 - **Comfortable to use.** Light, Dark, Console and Synthwave themes, adjustable fonts and sizes, reduced motion, keyboard shortcuts, and layouts for wide screens and phones.
 
-<p align="center">
-  <img src="assets/screenshots/guides-phone.webp" alt="Study guides on a phone" width="24%">
-  <img src="assets/screenshots/lesson-kidney-phone.webp" alt="A lesson slide on a phone" width="24%">
-  <img src="assets/screenshots/practice-image-phone.webp" alt="Practice on a phone" width="24%">
-  <img src="assets/screenshots/notebook-phone.webp" alt="A notebook on a phone" width="24%">
-</p>
 
 ## Install
 
