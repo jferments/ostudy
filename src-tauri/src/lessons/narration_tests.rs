@@ -570,7 +570,9 @@ fn a_voice_on_the_device_needs_no_connection_and_is_kept_as_its_own_audio() {
         "device_voice_unsupported"
     };
     assert_eq!(refused.code, expected);
-    assert!(refused.message.contains("Kokoro"), "{}", refused.message);
+    if crate::device_voices::SUPPORTED {
+        assert!(refused.message.contains("Kokoro"), "{}", refused.message);
+    }
 
     // Kept audio from the device is WAV under its own engine, never taken for
     // a provider's.

@@ -546,6 +546,9 @@ fn prepare<'a>(
     let (model, voice) = choose(&settings)?;
     let (request, engine) = match model.device {
         Some(device) => {
+            if !device_voices::SUPPORTED {
+                return Err(device_voices::unsupported());
+            }
             if !device_voices::is_installed(paths, device) {
                 return Err(device_voices::not_installed(device));
             }
