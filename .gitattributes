@@ -1,0 +1,4 @@
+# Check out text files with LF on every platform. Migrations and other files
+# compiled into the app are verified by checksum, so a Windows checkout that
+# turns them into CRLF builds an app that refuses to open its library.
+* text=auto eol=lf

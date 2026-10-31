@@ -201,11 +201,7 @@ pub(super) fn export_deck_from_connection(
     drop(package);
     source.commit().map_err(CommandError::database)?;
 
-    OpenOptions::new()
-        .read(true)
-        .open(&temporary)
-        .and_then(|file| file.sync_all())
-        .map_err(CommandError::io)?;
+    crate::util::durable_fs::sync_file(&temporary).map_err(CommandError::io)?;
     replace_export_file(&temporary, destination)?;
     guard.keep();
 

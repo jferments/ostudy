@@ -100,13 +100,44 @@ impl Default for PlatformOcrProvider {
     }
 }
 
+/// Tesseract on `PATH`, or on Windows where its usual installer puts it,
+/// since that installer leaves `PATH` alone.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn default_executable() -> String {
+    #[cfg(windows)]
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        let installed = std::path::Path::new(&program_files)
+            .join("Tesseract-OCR")
+            .join("tesseract.exe");
+        if installed.is_file() {
+            return installed.to_string_lossy().into_owned();
+        }
+    }
+    DEFAULT_EXECUTABLE.to_string()
+}
+
+/// A Tesseract run. On Windows it is a console program, so without
+/// `CREATE_NO_WINDOW` every page would flash a console window.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn tesseract_command(executable: &str) -> Command {
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut command = Command::new(executable);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+}
+
 impl PlatformOcrProvider {
     pub(crate) fn new() -> Self {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let executable = std::env::var(EXECUTABLE_ENV)
             .ok()
             .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| DEFAULT_EXECUTABLE.to_string());
+            .unwrap_or_else(default_executable);
 
         Self {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -161,7 +192,7 @@ impl PlatformOcrProvider {
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
-            let status = Command::new(&self.executable)
+            let status = tesseract_command(&self.executable)
                 .arg("--version")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -363,7 +394,7 @@ impl PlatformOcrProvider {
         }
 
         let output_base = workspace.path.join(format!("result-psm-{psm}"));
-        let mut child = Command::new(&self.executable)
+        let mut child = tesseract_command(&self.executable)
             .env(TESSERACT_THREAD_ENV.0, TESSERACT_THREAD_ENV.1)
             .arg(input)
             .arg(&output_base)

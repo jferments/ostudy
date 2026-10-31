@@ -1,4 +1,5 @@
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -17,9 +18,15 @@ import { AiLlmSettings } from "./AiLlmSettings";
 
 vi.mock("../../ipc/speech", () => ({ getSpeechSettings: vi.fn(), getDeviceVoices: vi.fn(async () => ({ supported: false, models: [] })) }));
 let browserSignIn: "available" | "unavailable" = "unavailable";
+let onDeviceSpeech: "available" | "unavailable" = "available";
 vi.mock("../../platform/PlatformProvider", () => ({
   usePlatformCapabilities: () => ({
-    native: { services: { browserSignIn: { state: browserSignIn } } },
+    native: {
+      services: {
+        browserSignIn: { state: browserSignIn },
+        onDeviceSpeech: { state: onDeviceSpeech },
+      },
+    },
   }),
 }));
 vi.mock("../../platform/externalLinks", () => ({
@@ -518,6 +525,26 @@ describe("AiLlmSettings", () => {
       await within(wizard()).findByRole("heading", { name: /^You're set up/u }),
     ).toBeTruthy();
     browserSignIn = "unavailable";
+  });
+
+  it("offers free speech on the device only where the build has it", () => {
+    const freeSpeech = /Talking to the Tutor is turned into text on your device/u;
+    const seen = () => {
+      const value = firstRun();
+      renderSettings(value);
+      fireEvent.click(screen.getByRole("button", { name: "Set up AI" }));
+      let found = false;
+      for (let step = 0; step < 3; step += 1) {
+        found ||= within(wizard()).queryByText(freeSpeech) !== null;
+        fireEvent.click(within(wizard()).getByRole("button", { name: "Next" }));
+      }
+      cleanup();
+      return found;
+    };
+    expect(seen()).toBe(true);
+    onDeviceSpeech = "unavailable";
+    expect(seen()).toBe(false);
+    onDeviceSpeech = "available";
   });
 
   it("keeps paste-a-key as the way in beside one-click sign-in", () => {

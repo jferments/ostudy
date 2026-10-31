@@ -106,6 +106,8 @@ fn normalize_zone_identifier(value: &str) -> Option<String> {
     if trimmed.is_empty()
         || trimmed.len() > 128
         || Path::new(trimmed).is_absolute()
+        // Windows calls "/usr/share/zoneinfo/UTC" relative; it is still a path.
+        || trimmed.starts_with(['/', '\\'])
         || trimmed.chars().any(|character| {
             character.is_control()
                 || !(character.is_ascii_alphanumeric()

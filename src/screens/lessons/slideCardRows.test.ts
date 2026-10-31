@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LessonBlock } from "../../ipc/lessons";
-import { MAX_SLIDE_CARDS, slideCards } from "./slideCards";
+import { MAX_SLIDE_CARDS, slideCards } from "./slideCardRows";
 
 describe("slideCards", () => {
   it("turns terms, misconceptions, comparisons and worked examples into cards", () => {

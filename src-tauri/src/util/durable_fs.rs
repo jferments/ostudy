@@ -54,6 +54,26 @@ fn sync_directory_platform(_path: &Path) -> io::Result<()> {
     ))
 }
 
+/// Flush an existing file's data. Windows FlushFileBuffers refuses a handle
+/// without write access, so a read-only open fails there with Access denied.
+pub(crate) fn sync_file(path: &Path) -> io::Result<()> {
+    sync_file_platform(path)
+}
+
+#[cfg(windows)]
+fn sync_file_platform(path: &Path) -> io::Result<()> {
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)?
+        .sync_all()
+}
+
+#[cfg(not(windows))]
+fn sync_file_platform(path: &Path) -> io::Result<()> {
+    File::open(path)?.sync_all()
+}
+
 /// Preserve callers' explicit distinction between an optional directory and a
 /// required parent. Required-parent callers must validate Some before calling.
 pub(crate) fn sync_optional_directory(path: Option<&Path>) -> io::Result<()> {

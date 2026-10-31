@@ -257,7 +257,7 @@ fn unknown() -> CommandError {
     )
 }
 
-fn unsupported() -> CommandError {
+pub(crate) fn unsupported() -> CommandError {
     CommandError::new(
         "device_voice_unsupported",
         "Voices on this device are not available in this build yet.",
