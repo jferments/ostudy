@@ -139,7 +139,10 @@ export function AiSetupWizard({
   const [keyVisible, setKeyVisible] = useState(false);
   const [pasting, setPasting] = useState(false);
   // One-click sign-in needs the browser to return to oStudy; elsewhere the key is pasted.
-  const browserSignIn = usePlatformCapabilities().native?.services.browserSignIn?.state === "available";
+  const services = usePlatformCapabilities().native?.services;
+  const browserSignIn = services?.browserSignIn?.state === "available";
+  // Builds without on-device speech (Windows for now) do not offer it.
+  const deviceSpeech = services?.onDeviceSpeech?.state !== "unavailable";
   const [voice, setVoice] = useState<Awaited<ReturnType<typeof loadVoice>> | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const hosted = service === "llama_cpp" ? null : GUIDES[service];
@@ -284,10 +287,12 @@ export function AiSetupWizard({
           <p className="tw:m-0 tw:text-label tw:text-muted-foreground">
             $10 of credit lasts most learners several months. Unused credit stays in your account.
           </p>
-          <p className="tw:m-0 tw:flex tw:items-start tw:gap-2 tw:text-label tw:text-muted-foreground">
-            <Icon name="mic" size={16} className="tw:mt-0.5 tw:shrink-0" />
-            <span>Talking to the Tutor is turned into text on your device, so it is free and your voice never leaves it. Reading aloud can be free too: choose <b>This device (free)</b> for Voice in Settings → AI to download the Kokoro voice once.</span>
-          </p>
+          {deviceSpeech ? (
+            <p className="tw:m-0 tw:flex tw:items-start tw:gap-2 tw:text-label tw:text-muted-foreground">
+              <Icon name="mic" size={16} className="tw:mt-0.5 tw:shrink-0" />
+              <span>Talking to the Tutor is turned into text on your device, so it is free and your voice never leaves it. Reading aloud can be free too: choose <b>This device (free)</b> for Voice in Settings → AI to download the Kokoro voice once.</span>
+            </p>
+          ) : null}
         </>
       );
       actions = <>{back("choose")}<Button variant="primary" onClick={() => setStep("account")}>Next</Button></>;

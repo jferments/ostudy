@@ -71,6 +71,8 @@ fn database_backups_preserve_profile_metadata_without_session_credentials() {
     assert_eq!(restored_name, "Backup profile");
     assert_eq!(restored_storage, "session");
 
+    drop(restored);
+
     let bytes = fs::read(&snapshot_path).expect("snapshot bytes should read");
     assert!(!contains_bytes(&bytes, sentinel.as_bytes()));
     fs::remove_file(snapshot_path).expect("snapshot should clean up");

@@ -96,6 +96,8 @@ pub struct NativeServiceCapabilities {
     pub background_execution: ServiceCapability,
     /// Signing in to a service in the browser and returning to the app.
     pub browser_sign_in: ServiceCapability,
+    /// Speaking and recognizing speech on this device, with no connection.
+    pub on_device_speech: ServiceCapability,
 }
 
 #[derive(Clone, Debug, Serialize)]

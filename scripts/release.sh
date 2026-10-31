@@ -13,28 +13,36 @@ cd "$ROOT_DIR"
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate]
+Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate] [--no-windows]
 
 Qualify and package a tagged release. With no option it runs the complete
-gate in a clean source copy, then builds the Linux files.
+gate in a clean source copy, then builds the Linux files and adds the
+Windows installer.
 
 --gate-only   only the gate. The tag's Release gate workflow runs this on the
               CI runner, which deliberately has no Docker.
 --skip-gate   only the files, on a maintainer machine with Podman or Docker
               and flatpak-builder. HEAD must be the tag, and the tag's Release
               gate run must have passed (checked with gh).
+--no-windows  leave out the Windows installer.
 
-The files go to artifacts/TAG/linux-x86_64; publish them with
+The Windows installer is built on the Windows build box from the same
+commit (jferments/ostudy-io: tools/windows-build.sh build TAG), which saves
+it with its SHA256SUMS.txt in artifacts/windows/<commit>/.
+
+The files go to artifacts/TAG/release; publish them with
 ./scripts/publish-github-release.sh and ostudy-io's tools/publish-release.sh.
 USAGE
 }
 
 MODE=all
+WINDOWS=1
 REQUESTED_TAG=""
 while (($#)); do
   case "$1" in
     --gate-only) MODE=gate; shift ;;
     --skip-gate) MODE=packages; shift ;;
+    --no-windows) WINDOWS=0; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     *) [[ -z "$REQUESTED_TAG" ]] || { usage >&2; exit 2; }; REQUESTED_TAG="$1"; shift ;;
@@ -87,12 +95,32 @@ if [[ "$MODE" == gate ]]; then
   exit 0
 fi
 
+WINDOWS_INSTALLER="ostudy-$EXPECTED_TAG-windows-x86_64-setup.exe"
+WINDOWS_DIR="$ROOT_DIR/artifacts/windows/$(git rev-parse HEAD)"
+if [[ "$WINDOWS" == 1 ]]; then
+  # Checked before the long Linux build, so a missing installer fails at once.
+  [[ -f "$WINDOWS_DIR/$WINDOWS_INSTALLER" && -f "$WINDOWS_DIR/SHA256SUMS.txt" ]] || {
+    printf 'ERROR: no %s in %s.
+' "$WINDOWS_INSTALLER" "${WINDOWS_DIR#"$ROOT_DIR/"}" >&2
+    printf 'Build it first: cd ~/code/ostudy-io && tools/windows-build.sh build %s
+' "$EXPECTED_TAG" >&2
+    printf 'or pass --no-windows.
+' >&2
+    exit 1
+  }
+  (cd "$WINDOWS_DIR" && sha256sum --check --strict --quiet --ignore-missing SHA256SUMS.txt) || {
+    printf 'ERROR: %s does not match its SHA256SUMS.txt.
+' "$WINDOWS_INSTALLER" >&2
+    exit 1
+  }
+fi
+
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;
   *) printf 'ERROR: Linux releases are built on x86_64 only, not %s.\n' "$(uname -m)" >&2; exit 1 ;;
 esac
 
-OUT_DIR="$ROOT_DIR/artifacts/$EXPECTED_TAG/linux-$ARCH"
+OUT_DIR="$ROOT_DIR/artifacts/$EXPECTED_TAG/release"
 rm -rf -- "$ROOT_DIR/artifacts/$EXPECTED_TAG"
 mkdir -p "$OUT_DIR"
 
@@ -113,6 +141,10 @@ trap 'rm -rf -- "$FLATPAK_DIR"' EXIT
 "$SCRIPT_DIR/build-flatpak.sh" --deb "$DEB" --output "$FLATPAK_DIR"
 cp "$FLATPAK_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.flatpak" "$OUT_DIR/"
 
+if [[ "$WINDOWS" == 1 ]]; then
+  cp -- "$WINDOWS_DIR/$WINDOWS_INSTALLER" "$OUT_DIR/"
+fi
+
 git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
   --output="$OUT_DIR/ostudy-$EXPECTED_TAG-source.tar.gz" HEAD
 
@@ -123,7 +155,8 @@ git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
 } >> "$OUT_DIR/BUILD-INFO.txt"
 (
   cd "$OUT_DIR"
-  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
+  shopt -s nullglob
+  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.exe *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
 )
 
 printf '\nRelease artifacts created in: %s\n' "$OUT_DIR"

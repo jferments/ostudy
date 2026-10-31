@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::Write,
     path::Path,
 };
@@ -140,7 +140,5 @@ fn write_immutable_file(destination: &Path, bytes: &[u8]) -> Result<(), CommandE
     file.write_all(bytes).map_err(CommandError::io)?;
     file.sync_all().map_err(CommandError::io)?;
     fs::rename(&temporary, destination).map_err(CommandError::io)?;
-    File::open(destination)
-        .and_then(|file| file.sync_all())
-        .map_err(CommandError::io)
+    crate::util::durable_fs::sync_file(destination).map_err(CommandError::io)
 }

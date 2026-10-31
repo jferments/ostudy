@@ -56,8 +56,8 @@ print(json.dumps({
     "name": f"oStudy {tag[1:]}",
     "draft": True,
     "body": (
-        f"oStudy {tag[1:]} for Linux (x86_64), built from commit {commit}.\n\n"
-        "Install steps for each file: https://ostudy.io/download/\n\n"
+        f"oStudy {tag[1:]} for Linux and Windows (x86_64), built from commit {commit}.\n\n"
+        "Install steps for each file: https://ostudy.io/install/\n\n"
         "Check a download with `sha256sum --check --ignore-missing SHA256SUMS.txt`."
     ),
 }))
