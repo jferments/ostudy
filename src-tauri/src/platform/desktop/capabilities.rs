@@ -1,5 +1,6 @@
 use crate::platform::{
-    CapabilityProvider, NativeServiceCapabilities, PlatformCapabilitySnapshot, ServiceCapability,
+    speech_recognition, speech_synthesis, CapabilityProvider, NativeServiceCapabilities,
+    PlatformCapabilitySnapshot, ServiceCapability,
 };
 
 pub(super) struct DesktopCapabilityProvider;
@@ -32,8 +33,17 @@ impl CapabilityProvider for DesktopCapabilityProvider {
                     "desktop_background_scheduler_not_configured",
                 ),
                 browser_sign_in: ServiceCapability::available(),
+                on_device_speech: on_device_speech(),
             },
         }
+    }
+}
+
+fn on_device_speech() -> ServiceCapability {
+    if speech_synthesis::SUPPORTED && speech_recognition::SUPPORTED {
+        ServiceCapability::available()
+    } else {
+        ServiceCapability::unavailable("on_device_speech_not_qualified")
     }
 }
 
@@ -56,5 +66,20 @@ mod tests {
             snapshot.services.window_full_screen.state,
             CapabilityState::Available
         );
+    }
+
+    #[test]
+    fn desktop_reports_on_device_speech_where_the_build_has_it() {
+        let state = DesktopCapabilityProvider
+            .snapshot()
+            .services
+            .on_device_speech
+            .state;
+
+        if cfg!(target_os = "windows") {
+            assert_eq!(state, CapabilityState::Unavailable);
+        } else {
+            assert_eq!(state, CapabilityState::Available);
+        }
     }
 }

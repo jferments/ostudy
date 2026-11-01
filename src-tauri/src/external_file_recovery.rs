@@ -185,9 +185,7 @@ fn remove_file_if_exists(path: &Path) -> Result<(), CommandError> {
 }
 
 fn sync_file(path: &Path) -> Result<(), CommandError> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(CommandError::io)
+    crate::util::durable_fs::sync_file(path).map_err(CommandError::io)
 }
 
 #[cfg(unix)]

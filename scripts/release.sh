@@ -13,18 +13,23 @@ cd "$ROOT_DIR"
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate] [--linux-only]
+Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate] [--no-windows] [--no-android]
 
 Qualify and package a tagged release. With no option it runs the complete
 gate in a clean source copy, then builds the Linux files and the signed
-Android APK.
+Android APK and adds the Windows installer.
 
 --gate-only   only the gate. The tag's Release gate workflow runs this on the
               CI runner, which deliberately has no Docker.
 --skip-gate   only the files, on a maintainer machine with Podman or Docker
               and flatpak-builder. HEAD must be the tag, and the tag's Release
               gate run must have passed (checked with gh).
---linux-only  leave out the Android APK.
+--no-windows  leave out the Windows installer.
+--no-android  leave out the Android APK.
+
+The Windows installer is built on the Windows build box from the same
+commit (jferments/ostudy-io: tools/windows-build.sh build TAG), which saves
+it with its SHA256SUMS.txt in artifacts/windows/<commit>/.
 
 The APK is the universal release build, signed by
 scripts/sign-android-release.sh with the release key named in
@@ -36,13 +41,15 @@ USAGE
 }
 
 MODE=all
+WINDOWS=1
 ANDROID=1
 REQUESTED_TAG=""
 while (($#)); do
   case "$1" in
     --gate-only) MODE=gate; shift ;;
     --skip-gate) MODE=packages; shift ;;
-    --linux-only) ANDROID=0; shift ;;
+    --no-windows) WINDOWS=0; shift ;;
+    --no-android) ANDROID=0; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     *) [[ -z "$REQUESTED_TAG" ]] || { usage >&2; exit 2; }; REQUESTED_TAG="$1"; shift ;;
@@ -95,9 +102,29 @@ if [[ "$MODE" == gate ]]; then
   exit 0
 fi
 
+WINDOWS_INSTALLER="ostudy-$EXPECTED_TAG-windows-x86_64-setup.exe"
+WINDOWS_DIR="$ROOT_DIR/artifacts/windows/$(git rev-parse HEAD)"
+if [[ "$WINDOWS" == 1 ]]; then
+  # Checked before the long Linux build, so a missing installer fails at once.
+  [[ -f "$WINDOWS_DIR/$WINDOWS_INSTALLER" && -f "$WINDOWS_DIR/SHA256SUMS.txt" ]] || {
+    printf 'ERROR: no %s in %s.
+' "$WINDOWS_INSTALLER" "${WINDOWS_DIR#"$ROOT_DIR/"}" >&2
+    printf 'Build it first: cd ~/code/ostudy-io && tools/windows-build.sh build %s
+' "$EXPECTED_TAG" >&2
+    printf 'or pass --no-windows.
+' >&2
+    exit 1
+  }
+  (cd "$WINDOWS_DIR" && sha256sum --check --strict --quiet --ignore-missing SHA256SUMS.txt) || {
+    printf 'ERROR: %s does not match its SHA256SUMS.txt.
+' "$WINDOWS_INSTALLER" >&2
+    exit 1
+  }
+fi
+
 if [[ "$ANDROID" == 1 ]]; then
   [[ -n "${OSTUDY_ANDROID_KEYSTORE:-}" && -n "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" ]] || {
-    printf 'ERROR: set OSTUDY_ANDROID_KEYSTORE and OSTUDY_ANDROID_KEYSTORE_PASSWORD for the Android APK, or pass --linux-only.\n' >&2
+    printf 'ERROR: set OSTUDY_ANDROID_KEYSTORE and OSTUDY_ANDROID_KEYSTORE_PASSWORD for the Android APK, or pass --no-android.\n' >&2
     exit 1
   }
 fi
@@ -128,6 +155,10 @@ trap 'rm -rf -- "$FLATPAK_DIR"' EXIT
 "$SCRIPT_DIR/build-flatpak.sh" --deb "$DEB" --output "$FLATPAK_DIR"
 cp "$FLATPAK_DIR/ostudy-$EXPECTED_TAG-linux-$ARCH.flatpak" "$OUT_DIR/"
 
+if [[ "$WINDOWS" == 1 ]]; then
+  cp -- "$WINDOWS_DIR/$WINDOWS_INSTALLER" "$OUT_DIR/"
+fi
+
 if [[ "$ANDROID" == 1 ]]; then
   # The universal release APK (every ABI) installs from a browser download;
   # Gradle leaves it unsigned and the release key never enters the build.
@@ -153,7 +184,7 @@ git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
 (
   cd "$OUT_DIR"
   shopt -s nullglob
-  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.apk *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
+  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.apk *.exe *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
 )
 
 printf '\nRelease artifacts created in: %s\n' "$OUT_DIR"

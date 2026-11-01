@@ -276,9 +276,7 @@ impl PendingRestoreGuard {
                 }
                 // The retained, synced identical copy makes retirement retry-safe.
                 // Never remove a different backup merely to finish bookkeeping.
-                File::open(&retained)
-                    .and_then(|file| file.sync_all())
-                    .map_err(io_error)?;
+                crate::util::durable_fs::sync_file(&retained).map_err(io_error)?;
                 sync(&self.transaction())?;
                 super::remove_file_if_exists(&pending).map_err(io_error)?;
                 sync(&self.root)?;
@@ -563,9 +561,7 @@ pub(super) fn preserve_pending(paths: &AppPaths) -> Result<(), String> {
                     .into(),
             );
         }
-        File::open(&retained)
-            .and_then(|file| file.sync_all())
-            .map_err(io_error)?;
+        crate::util::durable_fs::sync_file(&retained).map_err(io_error)?;
         sync(retained.parent().unwrap())?;
         super::remove_file_if_exists(&pending).map_err(io_error)?;
         sync(root)
@@ -681,9 +677,7 @@ fn sync_tree(path: &Path) -> Result<(), String> {
         if kind.is_dir() {
             sync_tree(&entry.path())?;
         } else {
-            File::open(entry.path())
-                .and_then(|file| file.sync_all())
-                .map_err(io_error)?;
+            crate::util::durable_fs::sync_file(&entry.path()).map_err(io_error)?;
         }
     }
     sync(path)

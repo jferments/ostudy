@@ -1,14 +1,14 @@
 # Installation and platform availability
 
-ostudy 0.1.0 is released for Linux: download a `.deb`, `.rpm`, Flatpak, AppImage or portable `.tar.gz` from [ostudy.io/install](https://ostudy.io/install/) or the [GitHub release](https://github.com/jferments/ostudy/releases/tag/v0.1.0), with `SHA256SUMS.txt` to check them. Android and every other platform are built from source for now. The repository has integrated setup, build, and qualification paths for Ubuntu/Debian Linux and Android. Other desktop targets share the application architecture, but support should be judged by repeatable qualification and packaging—not merely by whether Tauri can theoretically compile for a platform.
+ostudy 0.1.1 is released for Windows (an installer) and Linux (a `.deb`, `.rpm`, Flatpak, AppImage or portable `.tar.gz`): download them from [ostudy.io/install](https://ostudy.io/install/) or the [GitHub release](https://github.com/jferments/ostudy/releases/tag/v0.1.1), with `SHA256SUMS.txt` to check them. Android and every other platform are built from source for now. The repository has integrated setup, build, and qualification paths for Ubuntu/Debian Linux and Android. Other desktop targets share the application architecture, but support should be judged by repeatable qualification and packaging—not merely by whether Tauri can theoretically compile for a platform.
 
 ## Current status
 
 | Platform | Installation status | Qualification status |
 | --- | --- | --- |
-| Linux (x86-64) | Released packages (0.1.0): `.deb`, `.rpm`, Flatpak, AppImage and portable folder, built in an Ubuntu 22.04 container so they run on it and newer distributions; complete source setup on Ubuntu/Debian | Ubuntu/Debian is the primary local and CI path; packages on other distributions are not continuously qualified |
+| Linux (x86-64) | Released packages (0.1.1): `.deb`, `.rpm`, Flatpak, AppImage and portable folder, built in an Ubuntu 22.04 container so they run on it and newer distributions; complete source setup on Ubuntu/Debian | Ubuntu/Debian is the primary local and CI path; packages on other distributions are not continuously qualified |
 | Android | Generated Tauri project, pinned toolchain, debug APK/AAB tooling, emulator tests, and physical-device install path | Shared study, document, AI, and sync application qualified through compile/package and API 36 emulator gates; public signed distribution not yet provided |
-| Windows | Source-build components/native dependency support present | In progress; not continuously qualified or released |
+| Windows (x86-64) | Released (0.1.1): an NSIS installer (`ostudy-vX.Y.Z-windows-x86_64-setup.exe`) built from the release commit on the on-demand Windows build box (jferments/ostudy-io `docs/windows-build-box.md`); it installs for the current user, ships PDFium and links the C runtime statically. Not on Windows yet: device voices and speech input, USB phone sync, Tesseract bundling | Not in CI. The Rust lib suite passes as a Windows build under Wine, and the installer builds with MSVC on Windows 11 and on the build box; releases are not continuously qualified |
 | macOS | Source-build components/native dependency support present | In progress; not continuously qualified or released |
 | iOS | No generated project or installable application | Planned |
 

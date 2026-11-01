@@ -4,7 +4,7 @@
 
 **ostudy is a free, open-source study app that keeps your library on your own device.** Write and review flashcards with spaced repetition, read and mark up your course documents, take handwritten notes and draw mind maps, and follow your progress, all without an account. When you want more, connect an AI service of your choice and ostudy turns your documents into flashcards, study guides, narrated lessons and podcasts, and gives you a tutor that knows your material.
 
-[**Download ostudy 0.1.0 for Linux**](https://ostudy.io/install/) · [Release notes and files](https://github.com/jferments/ostudy/releases/tag/v0.1.0) · [Build for Android](docs/installation/android.md) · [Documentation](docs/README.md)
+[**Download ostudy 0.1.1 for Windows and Linux**](https://ostudy.io/install/) · [Release notes and files](https://github.com/jferments/ostudy/releases/tag/v0.1.1) · [Build for Android](docs/installation/android.md) · [Documentation](docs/README.md)
 
 
 ## What you can do with it
@@ -30,7 +30,7 @@ Add PDFs, Word and PowerPoint files, OpenDocument, EPUB, RTF, spreadsheets, CSV,
 
 ### Notes, boards and mind maps
 
-**Notes** holds notebooks you write and draw in with the same tools: lined, grid or dotted pages, pictures, clips from your PDFs, and links that open a document page, a study guide, a deck or another note. Boards give you an endless canvas, and the mind map tool builds a tidy map as you type (boards and mind maps arrive in the release after 0.1.0). A notebook saves as an ordinary PDF.
+**Notes** holds notebooks you write and draw in with the same tools: lined, grid or dotted pages, pictures, clips from your PDFs, and links that open a document page, a study guide, a deck or another note. Boards give you an endless canvas, and the mind map tool builds a tidy map as you type (boards and mind maps arrived in 0.1.1). A notebook saves as an ordinary PDF.
 
 <p align="center">
   <img src="assets/screenshots/notebook-desktop.webp" alt="A notebook page with typed bullet points, a highlighted line, formulas in a dashed box and a labelled heart diagram" width="49%">
@@ -68,13 +68,14 @@ Progress is calculated from your own review history: how much you remembered, st
 
 ## Install
 
-ostudy 0.1.0 is out for Linux, and it runs on Android from source.
+ostudy 0.1.1 is out for Windows and Linux, and it runs on Android from source.
 
 | Platform | How to get it |
 | --- | --- |
-| Linux (x86-64) | `.deb`, `.rpm`, Flatpak, AppImage or a portable folder from [ostudy.io/install](https://ostudy.io/install/) or the [GitHub release](https://github.com/jferments/ostudy/releases/tag/v0.1.0). They are built on Ubuntu 22.04, so they run on it and on newer distributions. |
+| Windows 10 and 11 (x86-64) | An installer from [ostudy.io/install](https://ostudy.io/install/) or the [GitHub release](https://github.com/jferments/ostudy/releases/tag/v0.1.1). It is not signed yet, so Windows asks you to choose More info, then Run anyway. Device voices, speech input and USB phone sync are not on Windows yet. |
+| Linux (x86-64) | `.deb`, `.rpm`, Flatpak, AppImage or a portable folder from [ostudy.io/install](https://ostudy.io/install/) or the [GitHub release](https://github.com/jferments/ostudy/releases/tag/v0.1.1). They are built on Ubuntu 22.04, so they run on it and on newer distributions. |
 | Android 9 or newer (64-bit ARM) | A signed download is on its way. Until then, [build it on Linux and install it over USB](docs/installation/android.md). |
-| Windows, macOS, iOS | Not released yet. Windows and macOS can be built from source for development; see the [installation overview](docs/installation/README.md). |
+| macOS, iOS | Not released yet. macOS can be built from source for development; see the [installation overview](docs/installation/README.md). |
 
 To build from source on Ubuntu or Debian:
 

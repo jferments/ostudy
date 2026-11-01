@@ -11,7 +11,7 @@ import { Button } from "../../ui/primitives/Button";
 import { Checkbox, Disclosure } from "../../ui/primitives/FormControls";
 import { InlineNotice } from "../../ui/primitives/InlineNotice";
 import { NativeSelect } from "../../ui/primitives/NativeSelect";
-import { slideCards } from "./slideCards";
+import { slideCards } from "./slideCardRows";
 
 /**
  * The live decks a lesson's cards can go to: its subject's decks in their

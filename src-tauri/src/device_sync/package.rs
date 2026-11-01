@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::Write,
     path::{Component, Path, PathBuf},
     time::Duration,
@@ -682,10 +682,7 @@ fn write_new_file(path: &Path, data: &[u8]) -> Result<(), CommandError> {
 }
 
 fn sync_file(path: &Path) -> Result<(), CommandError> {
-    OpenOptions::new()
-        .read(true)
-        .open(path)
-        .and_then(|file| file.sync_all())
+    crate::util::durable_fs::sync_file(path)
         .map_err(CommandError::io)
 }
 
@@ -695,9 +692,7 @@ fn replace_file(temporary: &Path, destination: &Path) -> Result<(), CommandError
     }
     fs::rename(temporary, destination).map_err(CommandError::io)?;
     if let Some(parent) = destination.parent() {
-        File::open(parent)
-            .and_then(|directory| directory.sync_all())
-            .map_err(CommandError::io)?;
+        crate::util::durable_fs::sync_directory(parent).map_err(CommandError::io)?;
     }
     Ok(())
 }

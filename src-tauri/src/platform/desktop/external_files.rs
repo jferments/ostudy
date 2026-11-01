@@ -288,11 +288,7 @@ fn publish_atomic(
         fs::remove_file(destination).map_err(CommandError::io)?;
     }
     fs::rename(&temporary, destination).map_err(CommandError::io)?;
-    let directory = OpenOptions::new()
-        .read(true)
-        .open(parent)
-        .map_err(CommandError::io)?;
-    directory.sync_all().map_err(CommandError::io)?;
+    crate::util::durable_fs::sync_directory(parent).map_err(CommandError::io)?;
     Ok(copied)
 }
 

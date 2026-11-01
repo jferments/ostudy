@@ -123,6 +123,7 @@ impl CapabilityProvider for AndroidCapabilityProvider {
                 local_network: environment_capability(),
                 background_execution: ServiceCapability::available(),
                 browser_sign_in: ServiceCapability::available(),
+                on_device_speech: ServiceCapability::available(),
             },
         }
     }

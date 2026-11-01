@@ -366,9 +366,7 @@ fn validate_document_title(value: &str) -> Result<String, CommandError> {
 }
 
 fn sync_file(path: &Path) -> Result<(), CommandError> {
-    File::open(path)
-        .and_then(|file| file.sync_all())
-        .map_err(CommandError::io)
+    crate::util::durable_fs::sync_file(path).map_err(CommandError::io)
 }
 
 #[cfg(unix)]

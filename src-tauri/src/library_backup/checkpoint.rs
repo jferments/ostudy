@@ -497,9 +497,7 @@ fn snapshot_database(
         return Err("The recovery snapshot could not settle its SQLite journal.".into());
     }
     target.close().map_err(|(_, error)| error.to_string())?;
-    fs::File::open(destination)
-        .and_then(|file| file.sync_all())
-        .map_err(io_error)
+    crate::util::durable_fs::sync_file(destination).map_err(io_error)
 }
 
 fn settle_candidate(database: &Database) -> Result<(), String> {
@@ -727,9 +725,7 @@ fn archive_intent(paths: &AppPaths, intent: &Intent, name: &str) -> Result<(), S
         if hash_file(&destination)? != hash_file(&paths.app_data_dir().join(INTENT))? {
             return Err("Conflicting library update intents were retained.".into());
         }
-        fs::File::open(&destination)
-            .and_then(|file| file.sync_all())
-            .map_err(io_error)?;
+        crate::util::durable_fs::sync_file(&destination).map_err(io_error)?;
         sync(&transaction)?;
         fs::remove_file(paths.app_data_dir().join(INTENT)).map_err(io_error)?;
         sync(paths.app_data_dir())

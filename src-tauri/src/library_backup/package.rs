@@ -146,6 +146,8 @@ pub(super) fn export_backup(
         ));
     }
     drop(package);
+    // Windows refuses to remove the scratch folder while this file is open.
+    drop(snapshot);
     let package_size = fs::metadata(&temporary).map_err(CommandError::io)?.len();
     if package_size == 0 || package_size > MAX_BACKUP_FILE_BYTES {
         return Err(CommandError::new(
@@ -153,11 +155,7 @@ pub(super) fn export_backup(
             "The completed backup exceeds ostudy's supported size limit.",
         ));
     }
-    OpenOptions::new()
-        .read(true)
-        .open(&temporary)
-        .and_then(|file| file.sync_all())
-        .map_err(CommandError::io)?;
+    crate::util::durable_fs::sync_file(&temporary).map_err(CommandError::io)?;
     replace_file(&temporary, destination)?;
     remove_dir_if_exists(&scratch).map_err(CommandError::io)?;
     Ok(LibraryBackupResultDto {
