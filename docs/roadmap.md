@@ -4,7 +4,7 @@ ostudy is being developed in layers, but the roadmap is not a list of promises o
 
 ## Current foundation
 
-ostudy 0.1.1 (tag `v0.1.1`) is released for Windows as an installer and for Linux as `.deb`, `.rpm`, Flatpak, AppImage and a portable folder. `main` has moved on since then; this list describes `main`.
+ostudy 0.1.0 (tag `v0.1.0`) is released for Windows as an installer, for Linux as `.deb`, `.rpm`, Flatpak, AppImage and a portable folder, and for Android as a signed APK. `main` has moved on since then; this list describes `main`.
 
 - **Study shell.** Five destinations (Home, Library, Notes, Tutor, Progress) with Search and Settings at the foot of the side rail or in a phone's top bar. Home holds the question of the day, the Today strip and Start review, the current lesson's slide, lessons to pick up, suggestions, the week at a glance and the subjects. Library opens on subject tiles; a subject's pages are its Lessons, Flashcards (the Workbench), Study guides, Podcasts and Documents tabs. New study set is the one place a subject starts.
 - **Library and scheduling.** A local SQLite library (release schema 26, migrated forward from the immutable release-v1 baseline with pre-upgrade checkpoints) for subjects, decks, notes, card presentations, FSRS schedules, review history, a study activity ledger, documents, guides, lessons, notebooks and settings. Exact, deck, subject, scheduled and extra study scopes; suspend, bury, reset and reschedule; daily limits; a configurable study-day start; resumable sessions; deterministic Progress statistics from one set of metric definitions.
