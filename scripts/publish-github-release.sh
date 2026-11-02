@@ -56,9 +56,10 @@ print(json.dumps({
     "name": f"oStudy {tag[1:]}",
     "draft": True,
     "body": (
-        f"oStudy {tag[1:]} for Linux and Windows (x86_64), built from commit {commit}.\n\n"
+        f"oStudy {tag[1:]} for Linux and Windows (x86_64) and Android, built from commit {commit}.\n\n"
         "Install steps for each file: https://ostudy.io/install/\n\n"
-        "Check a download with `sha256sum --check --ignore-missing SHA256SUMS.txt`."
+        "Check a download with `sha256sum --check --ignore-missing SHA256SUMS.txt`. "
+        "BUILD-INFO.txt names the Android signing certificate's SHA-256."
     ),
 }))
 PY

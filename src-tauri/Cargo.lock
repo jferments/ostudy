@@ -4242,7 +4242,7 @@ checksum = "cfdf547b633735ad9d67353aba48b3e685ab5ffb3195aaa9a1b1d8613e11b98c"
 
 [[package]]
 name = "ostudy"
-version = "0.1.1"
+version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",

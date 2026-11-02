@@ -14,7 +14,7 @@ mod response;
 mod retry;
 mod streaming;
 
-pub(crate) use client::AiGateway;
+pub(crate) use client::{https_client_builder, AiGateway};
 pub(crate) use contracts::{AiGatewayError, ProviderAccess, ProviderWire, SafeAiError};
 pub(crate) use errors::error;
 pub(crate) use response::AudioResponse;

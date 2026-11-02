@@ -14,6 +14,22 @@ use super::{
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
 
+/// A client builder whose HTTPS connections trust the operating system's
+/// certificate authorities: the platform verifier, or the PEM authorities the
+/// platform supplies where that verifier cannot run (Android).
+pub(crate) fn https_client_builder() -> reqwest::ClientBuilder {
+    let builder = Client::builder();
+    let anchors: Vec<reqwest::Certificate> = crate::platform::https_trust_anchors_pem()
+        .iter()
+        .filter_map(|pem| reqwest::Certificate::from_pem(pem).ok())
+        .collect();
+    if anchors.is_empty() {
+        builder
+    } else {
+        builder.tls_certs_only(anchors)
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct AiGateway {
     pub(super) client: Client,
@@ -22,13 +38,13 @@ pub(crate) struct AiGateway {
 
 impl AiGateway {
     pub(crate) fn new() -> Result<Self, String> {
-        let client = Client::builder()
+        let client = https_client_builder()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECONDS))
             .user_agent(concat!("ostudy/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| format!("Could not initialize the AI HTTP client: {error}"))?;
-        let streaming_client = Client::builder()
+        let streaming_client = https_client_builder()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECONDS))
             .user_agent(concat!("ostudy/", env!("CARGO_PKG_VERSION")))

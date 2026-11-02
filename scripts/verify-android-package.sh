@@ -85,6 +85,12 @@ if ((${#libraries[@]} == 0)); then
   exit 1
 fi
 for library in "${libraries[@]}"; do
+  # 16 KiB pages exist only on 64-bit Android, so Google Play and the
+  # platform require 16 KiB LOAD alignment for arm64-v8a and x86_64 alone;
+  # 32-bit libraries in the universal release APK keep 4 KiB.
+  case "${library#"$temporary/lib/"}" in
+    armeabi-v7a/*|x86/*) continue ;;
+  esac
   while read -r alignment_literal; do
     [[ -n "$alignment_literal" ]] || continue
     alignment=$((alignment_literal))

@@ -90,7 +90,7 @@ for (const [name, expected] of Object.entries(packageVersions)) {
 }
 
 equal("package name", pkg.name, "ostudy");
-equal("package version", pkg.version, "0.1.1");
+equal("package version", pkg.version, "0.1.0");
 equal("packageManager", pkg.packageManager, `pnpm@${env.get("PNPM_VERSION")}`);
 equal("Node engine", pkg.engines?.node, env.get("NODE_VERSION"));
 equal("pnpm engine", pkg.engines?.pnpm, env.get("PNPM_VERSION"));
