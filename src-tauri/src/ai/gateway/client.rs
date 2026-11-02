@@ -15,23 +15,19 @@ use super::{
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
 
 /// A client builder whose HTTPS connections trust the operating system's
-/// certificate authorities: the platform verifier on desktop, and on Android
-/// the system CA files (see `system_roots`).
+/// certificate authorities: the platform verifier, or the PEM authorities the
+/// platform supplies where that verifier cannot run (Android).
 pub(crate) fn https_client_builder() -> reqwest::ClientBuilder {
     let builder = Client::builder();
-    #[cfg(target_os = "android")]
-    let builder = {
-        static ROOTS: std::sync::LazyLock<Vec<reqwest::Certificate>> =
-            std::sync::LazyLock::new(|| {
-                super::system_roots::system_roots(&super::system_roots::ANDROID_CA_DIRECTORIES)
-            });
-        if ROOTS.is_empty() {
-            builder
-        } else {
-            builder.tls_certs_only(ROOTS.iter().cloned())
-        }
-    };
-    builder
+    let anchors: Vec<reqwest::Certificate> = crate::platform::https_trust_anchors_pem()
+        .iter()
+        .filter_map(|pem| reqwest::Certificate::from_pem(pem).ok())
+        .collect();
+    if anchors.is_empty() {
+        builder
+    } else {
+        builder.tls_certs_only(anchors)
+    }
 }
 
 #[derive(Clone)]

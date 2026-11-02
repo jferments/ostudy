@@ -8,6 +8,8 @@ mod desktop;
 mod mobile_stub;
 pub(crate) mod speech_recognition;
 pub(crate) mod speech_synthesis;
+#[cfg(any(target_os = "android", test))]
+mod system_ca;
 
 /// Where a page in the system browser links to bring oStudy back to the
 /// front, on platforms whose browser is a separate app (`None` elsewhere).
@@ -15,6 +17,22 @@ pub(crate) mod speech_synthesis;
 pub(crate) const BROWSER_RETURN_URL: Option<&str> = Some(android::BROWSER_RETURN_URL);
 #[cfg(not(target_os = "android"))]
 pub(crate) const BROWSER_RETURN_URL: Option<&str> = None;
+
+/// PEM certificate authorities that HTTPS clients trust instead of the
+/// platform verifier: Android's system store, which the verifier cannot reach
+/// there. Empty elsewhere, where the platform verifier is used.
+pub(crate) fn https_trust_anchors_pem() -> &'static [Vec<u8>] {
+    #[cfg(target_os = "android")]
+    {
+        static ANCHORS: LazyLock<Vec<Vec<u8>>> =
+            LazyLock::new(|| system_ca::read_ca_directories(&system_ca::ANDROID_CA_DIRECTORIES));
+        &ANCHORS
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        &[]
+    }
+}
 
 /// Process-wide choices that must be made before the windowing toolkit starts.
 pub(crate) fn prepare_process() {

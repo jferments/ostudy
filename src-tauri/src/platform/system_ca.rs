@@ -1,15 +1,13 @@
-//! The certificate authorities Android trusts, for the HTTPS clients.
+//! The certificate authorities Android trusts, as PEM files.
 //!
-//! Desktop builds verify servers through `rustls-platform-verifier`. On
-//! Android that verifier calls a Kotlin component over JNI, which the app
-//! neither packages nor initializes, so every TLS handshake failed there and
-//! the AI gateway reported that it could not connect. Android keeps its
-//! trusted authorities as PEM files, so the Android build reads them and
-//! verifies against exactly that set.
+//! Desktop HTTPS clients verify servers through `rustls-platform-verifier`.
+//! Its Android half is a Kotlin component reached over JNI, which the app
+//! neither packages nor initializes, so every TLS handshake failed on a phone
+//! and OpenRouter setup reported that it could not connect. Android keeps its
+//! trusted authorities as one PEM file each, so the Android build reads them
+//! and the AI gateway trusts exactly that set.
 
 use std::path::Path;
-
-use reqwest::Certificate;
 
 /// The updatable Conscrypt store (Android 14 and later) wins over the copy in
 /// the system image, which older releases use.
@@ -18,17 +16,24 @@ pub(super) const ANDROID_CA_DIRECTORIES: [&str; 2] = [
     "/system/etc/security/cacerts",
 ];
 
-/// The certificates in the first directory that holds any. Each file is one
-/// PEM certificate followed by its text dump; unreadable files are skipped.
-pub(super) fn system_roots(directories: &[impl AsRef<Path>]) -> Vec<Certificate> {
+const CERTIFICATE_MARKER: &[u8] = b"-----BEGIN CERTIFICATE-----";
+
+/// The PEM certificate files in the first directory that holds any. Android
+/// writes a text dump after each certificate, which PEM parsing skips; files
+/// without a certificate are left out.
+pub(super) fn read_ca_directories(directories: &[impl AsRef<Path>]) -> Vec<Vec<u8>> {
     for directory in directories {
         let Ok(entries) = std::fs::read_dir(directory) else {
             continue;
         };
-        let certificates: Vec<Certificate> = entries
+        let certificates: Vec<Vec<u8>> = entries
             .filter_map(Result::ok)
             .filter_map(|entry| std::fs::read(entry.path()).ok())
-            .filter_map(|bytes| Certificate::from_pem(&bytes).ok())
+            .filter(|bytes| {
+                bytes
+                    .windows(CERTIFICATE_MARKER.len())
+                    .any(|window| window == CERTIFICATE_MARKER)
+            })
             .collect();
         if !certificates.is_empty() {
             return certificates;
@@ -56,7 +61,7 @@ wJD45/S4gBc2etf7VpvgMA==
 
     fn scratch(name: &str) -> std::path::PathBuf {
         let root =
-            std::env::temp_dir().join(format!("ostudy-https-client-{name}-{}", std::process::id()));
+            std::env::temp_dir().join(format!("ostudy-system-ca-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         root
@@ -75,7 +80,7 @@ wJD45/S4gBc2etf7VpvgMA==
         std::fs::write(store.join("broken.0"), "not a certificate").unwrap();
 
         let missing = root.join("missing");
-        assert_eq!(system_roots(&[&missing, &store]).len(), 1);
+        assert_eq!(read_ca_directories(&[&missing, &store]).len(), 1);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -90,8 +95,8 @@ wJD45/S4gBc2etf7VpvgMA==
         std::fs::write(system.join("a.0"), TEST_ROOT).unwrap();
         std::fs::write(system.join("b.0"), TEST_ROOT).unwrap();
 
-        assert_eq!(system_roots(&[&empty, &apex, &system]).len(), 1);
-        assert!(system_roots(&[root.join("missing")]).is_empty());
+        assert_eq!(read_ca_directories(&[&empty, &apex, &system]).len(), 1);
+        assert!(read_ca_directories(&[root.join("missing")]).is_empty());
         assert_eq!(
             ANDROID_CA_DIRECTORIES[0],
             "/apex/com.android.conscrypt/cacerts"

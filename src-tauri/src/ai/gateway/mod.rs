@@ -13,8 +13,6 @@ mod request;
 mod response;
 mod retry;
 mod streaming;
-#[cfg(any(target_os = "android", test))]
-mod system_roots;
 
 pub(crate) use client::{https_client_builder, AiGateway};
 pub(crate) use contracts::{AiGatewayError, ProviderAccess, ProviderWire, SafeAiError};
