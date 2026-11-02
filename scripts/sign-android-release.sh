@@ -13,8 +13,9 @@ Usage: ./scripts/sign-android-release.sh UNSIGNED_APK SIGNED_APK
 
 Reads the release key from the environment; nothing secret is passed on the
 command line or written to the repository:
-  OSTUDY_ANDROID_KEYSTORE           path to the keystore (outside the checkout)
-  OSTUDY_ANDROID_KEYSTORE_PASSWORD  its password
+  OSTUDY_ANDROID_KEYSTORE           path to the keystore, outside the checkout
+                                    (default: ~/keys/ostudy-release.jks)
+  OSTUDY_ANDROID_KEYSTORE_PASSWORD  its password; asked for when unset
   OSTUDY_ANDROID_KEY_ALIAS          the key's alias (default: ostudy)
 USAGE
 }
@@ -38,16 +39,23 @@ for tool in "$ZIPALIGN" "$APKSIGNER"; do
 done
 
 [[ -f "$UNSIGNED" ]] || { printf 'ERROR: no APK at %s.\n' "$UNSIGNED" >&2; exit 1; }
-KEYSTORE="${OSTUDY_ANDROID_KEYSTORE:-}"
+KEYSTORE="${OSTUDY_ANDROID_KEYSTORE:-$HOME/keys/ostudy-release.jks}"
 ALIAS="${OSTUDY_ANDROID_KEY_ALIAS:-ostudy}"
 [[ -n "$KEYSTORE" && -f "$KEYSTORE" ]] || {
   printf 'ERROR: set OSTUDY_ANDROID_KEYSTORE to the release keystore file.\n' >&2
   exit 1
 }
+if [[ -z "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" && -t 0 ]]; then
+  # Asked here rather than in the maintainer's shell, so a pasted block of
+  # commands can't feed its next line to the prompt.
+  read -rsp "Password for $KEYSTORE: " OSTUDY_ANDROID_KEYSTORE_PASSWORD
+  printf '\n' >&2
+fi
 [[ -n "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" ]] || {
-  printf 'ERROR: set OSTUDY_ANDROID_KEYSTORE_PASSWORD (read -rs OSTUDY_ANDROID_KEYSTORE_PASSWORD; export it).\n' >&2
+  printf 'ERROR: no keystore password; run this in a terminal or set OSTUDY_ANDROID_KEYSTORE_PASSWORD.\n' >&2
   exit 1
 }
+export OSTUDY_ANDROID_KEYSTORE_PASSWORD
 case "$(realpath "$KEYSTORE")" in
   "$ROOT_DIR"/*) printf 'ERROR: keep the release keystore outside the checkout.\n' >&2; exit 1 ;;
 esac

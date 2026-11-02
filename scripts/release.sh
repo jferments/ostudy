@@ -32,8 +32,9 @@ commit (jferments/ostudy-io: tools/windows-build.sh build TAG), which saves
 it with its SHA256SUMS.txt in artifacts/windows/<commit>/.
 
 The APK is the universal release build, signed by
-scripts/sign-android-release.sh with the release key named in
-OSTUDY_ANDROID_KEYSTORE (password in OSTUDY_ANDROID_KEYSTORE_PASSWORD).
+scripts/sign-android-release.sh with the release key in
+OSTUDY_ANDROID_KEYSTORE (default ~/keys/ostudy-release.jks); it asks for
+the password unless OSTUDY_ANDROID_KEYSTORE_PASSWORD is set.
 
 The files go to artifacts/TAG/release; publish them with
 ./scripts/publish-github-release.sh and ostudy-io's tools/publish-release.sh.
@@ -123,10 +124,21 @@ if [[ "$WINDOWS" == 1 ]]; then
 fi
 
 if [[ "$ANDROID" == 1 ]]; then
-  [[ -n "${OSTUDY_ANDROID_KEYSTORE:-}" && -n "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" ]] || {
-    printf 'ERROR: set OSTUDY_ANDROID_KEYSTORE and OSTUDY_ANDROID_KEYSTORE_PASSWORD for the Android APK, or pass --no-android.\n' >&2
+  # Asked before the long Linux build, so signing never stops at the end.
+  export OSTUDY_ANDROID_KEYSTORE="${OSTUDY_ANDROID_KEYSTORE:-$HOME/keys/ostudy-release.jks}"
+  [[ -f "$OSTUDY_ANDROID_KEYSTORE" ]] || {
+    printf 'ERROR: no release keystore at %s; set OSTUDY_ANDROID_KEYSTORE, or pass --no-android.\n' "$OSTUDY_ANDROID_KEYSTORE" >&2
     exit 1
   }
+  if [[ -z "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" && -t 0 ]]; then
+    read -rsp "Password for $OSTUDY_ANDROID_KEYSTORE: " OSTUDY_ANDROID_KEYSTORE_PASSWORD
+    printf '\n' >&2
+  fi
+  [[ -n "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" ]] || {
+    printf 'ERROR: no keystore password; run release.sh in a terminal or set OSTUDY_ANDROID_KEYSTORE_PASSWORD.\n' >&2
+    exit 1
+  }
+  export OSTUDY_ANDROID_KEYSTORE_PASSWORD
 fi
 
 case "$(uname -m)" in

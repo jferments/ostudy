@@ -200,13 +200,13 @@ An AAB is store input, not directly installable. Google Play/Play App Signing is
 
 Public releases ship one universal APK, `ostudy-vX.Y.Z-android.apk`, signed with oStudy's long-lived release key. It installs from a browser download: Android asks once to allow that browser to install apps, and needs no USB or developer options. It is the release application `io.github.jferments.ostudy`, so it installs beside a debug build (`.dev`).
 
-`scripts/release.sh TAG --skip-gate` builds it with `pnpm android:build:release` (Gradle leaves it unsigned), then `scripts/sign-android-release.sh` aligns it to 16 KiB, signs it with `apksigner` and refuses unless the signing certificate's SHA-256 equals `src-tauri/packaging/android/release-certificate.sha256`. `verify-android-package.sh … release` then checks the package as for any release APK. The key comes from the environment and never enters the build or the repository:
+`scripts/release.sh TAG --skip-gate` builds it with `pnpm android:build:release` (Gradle leaves it unsigned), then `scripts/sign-android-release.sh` aligns it to 16 KiB, signs it with `apksigner` and refuses unless the signing certificate's SHA-256 equals `src-tauri/packaging/android/release-certificate.sha256`. `verify-android-package.sh … release` then checks the package as for any release APK. The key never enters the build or the repository:
 
 ```bash
-export OSTUDY_ANDROID_KEYSTORE=~/keys/ostudy-release.jks   # outside the checkout
-read -rs OSTUDY_ANDROID_KEYSTORE_PASSWORD && export OSTUDY_ANDROID_KEYSTORE_PASSWORD
-./scripts/release.sh vX.Y.Z --skip-gate
+./scripts/release.sh vX.Y.Z --skip-gate   # asks for the keystore password first
 ```
+
+The keystore is `~/keys/ostudy-release.jks` unless `OSTUDY_ANDROID_KEYSTORE` names another file outside the checkout; the password is asked for in the terminal unless `OSTUDY_ANDROID_KEYSTORE_PASSWORD` is set.
 
 Every later APK must be signed with the same key, or Android refuses it as an update; losing the key means every user has to uninstall and reinstall. Keep at least one offline backup of the keystore and its password. The key was made once with:
 
