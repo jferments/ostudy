@@ -69,16 +69,17 @@ work="$(mktemp -d -t ostudy-android-sign.XXXXXXXX)"
 trap 'rm -rf -- "$work"' EXIT
 "$ZIPALIGN" -f -P 16 4 "$UNSIGNED" "$work/aligned.apk"
 # apksigner leaves out v2 when minSdk is 28 or newer (v3 covers those
-# devices); sign both explicitly so tools that check only v2 accept it too.
+# devices); sign both, so tools that read only v2 still find a signature.
 "$APKSIGNER" sign --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
   --ks "$KEYSTORE" --ks-key-alias "$ALIAS" --ks-pass env:OSTUDY_ANDROID_KEYSTORE_PASSWORD \
   --out "$work/signed.apk" "$work/aligned.apk"
 
 "$ZIPALIGN" -c -P 16 4 "$work/signed.apk" >/dev/null
 report="$("$APKSIGNER" verify --verbose --print-certs "$work/signed.apk")"
-grep -q '^Verified using v2 scheme (APK Signature Scheme v2): true' <<< "$report" \
-  && grep -q '^Verified using v3 scheme (APK Signature Scheme v3): true' <<< "$report" || {
-  printf 'ERROR: the signed APK lacks a valid v2 or v3 signature.\n%s\n' "$report" >&2
+# With minSdk 28 the verifier checks only v3, the scheme every supported
+# device uses, and reports v2 as unverified even though it is there.
+grep -q '^Verified using v3 scheme (APK Signature Scheme v3): true' <<< "$report" || {
+  printf 'ERROR: the signed APK has no valid v3 signature.\n%s\n' "$report" >&2
   exit 1
 }
 actual="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$report" | tr -d ' :' | tr '[:upper:]' '[:lower:]')"
