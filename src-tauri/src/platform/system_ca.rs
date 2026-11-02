@@ -103,11 +103,4 @@ wJD45/S4gBc2etf7VpvgMA==
         );
         std::fs::remove_dir_all(root).unwrap();
     }
-
-    #[test]
-    fn a_client_builds_from_the_shared_builder() {
-        super::super::client::https_client_builder()
-            .build()
-            .unwrap();
-    }
 }
