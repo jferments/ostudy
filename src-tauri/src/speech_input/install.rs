@@ -125,7 +125,7 @@ pub(crate) async fn install(paths: &AppPaths, model: &PinnedModel<'_>) -> Result
 }
 
 pub(super) fn client() -> Result<Client, CommandError> {
-    Client::builder()
+    crate::ai::https_client_builder()
         // Tests serve the files from a local plain-HTTP server.
         .https_only(!cfg!(test))
         // The pinned file address answers with a redirect to its storage.

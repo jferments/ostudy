@@ -14,6 +14,26 @@ use super::{
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 10;
 
+/// A client builder whose HTTPS connections trust the operating system's
+/// certificate authorities: the platform verifier on desktop, and on Android
+/// the system CA files (see `system_roots`).
+pub(crate) fn https_client_builder() -> reqwest::ClientBuilder {
+    let builder = Client::builder();
+    #[cfg(target_os = "android")]
+    let builder = {
+        static ROOTS: std::sync::LazyLock<Vec<reqwest::Certificate>> =
+            std::sync::LazyLock::new(|| {
+                super::system_roots::system_roots(&super::system_roots::ANDROID_CA_DIRECTORIES)
+            });
+        if ROOTS.is_empty() {
+            builder
+        } else {
+            builder.tls_certs_only(ROOTS.iter().cloned())
+        }
+    };
+    builder
+}
+
 #[derive(Clone)]
 pub(crate) struct AiGateway {
     pub(super) client: Client,
@@ -22,13 +42,13 @@ pub(crate) struct AiGateway {
 
 impl AiGateway {
     pub(crate) fn new() -> Result<Self, String> {
-        let client = Client::builder()
+        let client = https_client_builder()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECONDS))
             .user_agent(concat!("ostudy/", env!("CARGO_PKG_VERSION")))
             .build()
             .map_err(|error| format!("Could not initialize the AI HTTP client: {error}"))?;
-        let streaming_client = Client::builder()
+        let streaming_client = https_client_builder()
             .redirect(Policy::none())
             .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECONDS))
             .user_agent(concat!("ostudy/", env!("CARGO_PKG_VERSION")))
