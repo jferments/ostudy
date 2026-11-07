@@ -509,7 +509,7 @@ Known limits include incomplete platform/release qualification, model/extraction
 | --- | --- |
 | Shell, routing, restoration | `src/main.tsx`, `src/App.tsx`, `src/controllers/useAppController.ts`, `src/navigation/`, `src-tauri/src/ui_checkpoint.rs` |
 | Shared interaction/visual system | `src/ui/`, `src/platform/`, `src/components/AppHeaderBar.tsx`, `src/components/MainNavigation.tsx`, `src/navigation/appDestinations.ts` |
-| Home, Review, Library | `src/screens/home/`, `src/screens/review/`, `src/screens/library/`, `src/controllers/HomeSummaryProvider.tsx`, `src-tauri/src/home_summary.rs` |
+| Home (with Review), Library | `src/screens/home/`, `src/screens/practice/`, `src/screens/library/`, `src/controllers/HomeSummaryProvider.tsx`, `src-tauri/src/home_summary.rs` |
 | Library Workbench | `src/screens/library/workbench/`; shared dialogs in `src/screens/cards/` and `src/screens/flashcards/` |
 | Card browsing/editing | `src/screens/cards/`, `CardEditorScreenBase.tsx`, `src/editor/`, `src/controllers/useDurableDraft.ts` |
 | Native composition/data | `src-tauri/src/lib.rs`, `startup.rs`, `database.rs`, `database/release.rs`, `src-tauri/schema/`, `paths.rs`, retained migrations/repairs |
