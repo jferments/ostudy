@@ -155,7 +155,7 @@ pub(crate) fn persist_pdf_compatibility_projection(
     Ok(())
 }
 
-fn normalize_element_type(value: &str) -> Result<&'static str, CommandError> {
+pub(crate) fn normalize_element_type(value: &str) -> Result<&'static str, CommandError> {
     match value.to_ascii_lowercase().replace('-', "_").as_str() {
         "title" => Ok("title"),
         "paragraph" => Ok("paragraph"),
