@@ -150,24 +150,89 @@ async fn provider_failure_is_shared_but_not_cached_as_a_success() {
 #[test]
 fn library_authorization_and_capacity_are_separate_admission_boundaries() {
     let registry = Registry::default();
-    let (first, producer) = registry.subscribe((1, "window".into())).unwrap();
-    let (other_library, other_producer) = registry.subscribe((2, "window".into())).unwrap();
-    let (other_scope, scoped_producer) = registry.subscribe((1, "different scope".into())).unwrap();
+    let window = || (1, "window".to_string());
+    let (first, producer) = registry.subscribe(&window()).unwrap().unwrap();
+    let (other_library, other_producer) =
+        registry.subscribe(&(2, "window".into())).unwrap().unwrap();
+    let (other_scope, scoped_producer) = registry
+        .subscribe(&(1, "different scope".into()))
+        .unwrap()
+        .unwrap();
     assert!(producer.is_some() && other_producer.is_some() && scoped_producer.is_some());
     let mut followers = Vec::new();
     for _ in 1..MAX_SUBSCRIBERS {
-        let (subscriber, producer) = registry.subscribe((1, "window".into())).unwrap();
+        let (subscriber, producer) = registry.subscribe(&window()).unwrap().unwrap();
         assert!(producer.is_none());
         followers.push(subscriber);
     }
-    assert!(registry.subscribe((1, "window".into())).is_err());
+    // A full window asks the caller to wait for room rather than failing.
+    assert!(registry.subscribe(&window()).unwrap().is_none());
     drop(followers);
     drop(first);
-    assert!(registry.subscribe((1, "window".into())).is_err());
+    assert_eq!(
+        registry.subscribe(&window()).err().unwrap().code,
+        "shared_preparation_stopping"
+    );
     drop(producer);
     drop(other_library);
     drop(other_producer);
     drop(other_scope);
     drop(scoped_producer);
+    assert!(registry.jobs.lock().unwrap().is_empty());
+}
+
+fn fill(registry: &Registry) -> Vec<Joined<'_>> {
+    (0..MAX_ACTIVE_WINDOWS)
+        .map(|index| {
+            registry
+                .subscribe(&(1, format!("busy window {index}")))
+                .unwrap()
+                .unwrap()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_window_beyond_capacity_waits_for_room_instead_of_failing() {
+    // Several documents prepared at once each queue a full lane of windows,
+    // so the registry fills while earlier windows wait for the provider lane.
+    let registry = Registry::default();
+    let signal = CancellationSignal::new();
+    let mut busy = fill(&registry);
+    let calls = Cell::new(0);
+    let mut waiting = Box::pin(registry.run((1, "next document".into()), &signal, |_| {
+        let calls = &calls;
+        async move {
+            calls.set(calls.get() + 1);
+            Ok(())
+        }
+    }));
+    pending(waiting.as_mut()).await;
+    pending(waiting.as_mut()).await;
+    assert_eq!(calls.get(), 0);
+    let (subscription, producer) = busy.pop().unwrap();
+    producer.unwrap().publish(Ok(()));
+    drop(subscription);
+    waiting.await.unwrap();
+    assert_eq!(calls.get(), 1);
+    drop(busy);
+    assert!(registry.jobs.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn canceling_a_window_that_waits_for_room_leaves_the_registry_alone() {
+    let registry = Registry::default();
+    let signal = CancellationSignal::new();
+    let busy = fill(&registry);
+    let mut waiting = Box::pin(
+        registry.run((1, "next document".into()), &signal, |_| async {
+            panic!("a canceled waiter must not start work")
+        }),
+    );
+    pending(waiting.as_mut()).await;
+    signal.cancel();
+    assert_eq!(waiting.await.unwrap_err().code, "ai_request_canceled");
+    assert_eq!(registry.jobs.lock().unwrap().len(), MAX_ACTIVE_WINDOWS);
+    drop(busy);
     assert!(registry.jobs.lock().unwrap().is_empty());
 }
