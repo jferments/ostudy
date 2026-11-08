@@ -506,9 +506,11 @@ pub(crate) fn page_structure(
         }
     }
     if let Some(figure) = &page.figure {
+        // Stored element types are a closed set; a caption is a paragraph, and
+        // its chunk is marked as an image so the page render goes with it.
         elements.push(element(
             page_number,
-            "caption",
+            "paragraph",
             &figure.body,
             None,
             figure.body_box,
@@ -520,7 +522,7 @@ pub(crate) fn page_structure(
             full_text: figure.body.clone(),
             page_numbers: vec![page_number],
             bounding_boxes: vec![figure.body_box],
-            element_types: vec!["caption".to_string(), "image".to_string()],
+            element_types: vec!["paragraph".to_string(), "image".to_string()],
             heading_context: None,
             is_oversized: false,
         });
@@ -719,7 +721,11 @@ mod tests {
         assert_eq!(chunks[0].text, "into the circulation.");
         // The caption is a chunk of its own, marked so its page render goes with it.
         assert!(chunks[3].text.starts_with("Fig. 8.17"));
-        assert_eq!(chunks[3].element_types, ["caption", "image"]);
+        assert_eq!(chunks[3].element_types, ["paragraph", "image"]);
+        for element in &elements {
+            crate::document_ingestion::normalize_element_type(&element.element_type)
+                .expect("every rebuilt element type can be stored");
+        }
         assert_eq!(chunks[1].heading_context.as_deref(), Some("HCl Secretion"));
         assert_eq!(
             chunks[1].full_text,
