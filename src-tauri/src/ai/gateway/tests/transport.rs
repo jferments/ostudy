@@ -471,3 +471,31 @@ async fn an_observed_task_stream_reports_its_output_as_it_grows() {
         ["{\"text\":\"Os", "{\"text\":\"Osmosis\"}"]
     );
 }
+
+/// An Android system CA file: the PEM certificate, then its text dump.
+const ANDROID_STYLE_CA_FILE: &str = "-----BEGIN CERTIFICATE-----
+MIIBjDCCATOgAwIBAgIUdQJxFSVTNT3gmhS2eHVbULlFxrIwCgYIKoZIzj0EAwIw
+GzEZMBcGA1UEAwwQb1N0dWR5IHRlc3Qgcm9vdDAgFw0yNjExMDIwMDI0MjFaGA8y
+MTI2MTAwOTAwMjQyMVowGzEZMBcGA1UEAwwQb1N0dWR5IHRlc3Qgcm9vdDBZMBMG
+ByqGSM49AgEGCCqGSM49AwEHA0IABGk177o8TonTu58REnVDmc+3yVSa4r+jMvS9
+wjXl/jrJiyJIjohfu127V45CJRC/uYMGWB6hPMaFF5/fml90Eb2jUzBRMB0GA1Ud
+DgQWBBQlN1T+vaNmxWD8QGaqagsjuHjkVzAfBgNVHSMEGDAWgBQlN1T+vaNmxWD8
+QGaqagsjuHjkVzAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0cAMEQCIDH7
+RDqaoWUJ8JqMDvIsWodJyfcve+2xHhsvUzlkAdosAiASpz+9L6d8KVEt/BEVjd7H
+wJD45/S4gBc2etf7VpvgMA==
+-----END CERTIFICATE-----
+Certificate:
+    Data:
+        Version: 3 (0x2)
+";
+
+#[test]
+fn https_clients_build_with_platform_or_android_style_trust_anchors() {
+    super::super::https_client_builder().build().unwrap();
+
+    let anchor = reqwest::Certificate::from_pem(ANDROID_STYLE_CA_FILE.as_bytes()).unwrap();
+    super::super::https_client_builder()
+        .tls_certs_only([anchor])
+        .build()
+        .unwrap();
+}

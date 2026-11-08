@@ -13,11 +13,11 @@ cd "$ROOT_DIR"
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate] [--no-windows]
+Usage: ./scripts/release.sh [TAG] [--gate-only | --skip-gate] [--no-windows] [--no-android]
 
 Qualify and package a tagged release. With no option it runs the complete
-gate in a clean source copy, then builds the Linux files and adds the
-Windows installer.
+gate in a clean source copy, then builds the Linux files and the signed
+Android APK and adds the Windows installer.
 
 --gate-only   only the gate. The tag's Release gate workflow runs this on the
               CI runner, which deliberately has no Docker.
@@ -25,10 +25,16 @@ Windows installer.
               and flatpak-builder. HEAD must be the tag, and the tag's Release
               gate run must have passed (checked with gh).
 --no-windows  leave out the Windows installer.
+--no-android  leave out the Android APK.
 
 The Windows installer is built on the Windows build box from the same
 commit (jferments/ostudy-io: tools/windows-build.sh build TAG), which saves
 it with its SHA256SUMS.txt in artifacts/windows/<commit>/.
+
+The APK is the universal release build, signed by
+scripts/sign-android-release.sh with the release key in
+OSTUDY_ANDROID_KEYSTORE (default ~/keys/ostudy-release.jks); it asks for
+the password unless OSTUDY_ANDROID_KEYSTORE_PASSWORD is set.
 
 The files go to artifacts/TAG/release; publish them with
 ./scripts/publish-github-release.sh and ostudy-io's tools/publish-release.sh.
@@ -37,12 +43,14 @@ USAGE
 
 MODE=all
 WINDOWS=1
+ANDROID=1
 REQUESTED_TAG=""
 while (($#)); do
   case "$1" in
     --gate-only) MODE=gate; shift ;;
     --skip-gate) MODE=packages; shift ;;
     --no-windows) WINDOWS=0; shift ;;
+    --no-android) ANDROID=0; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) printf 'ERROR: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     *) [[ -z "$REQUESTED_TAG" ]] || { usage >&2; exit 2; }; REQUESTED_TAG="$1"; shift ;;
@@ -115,6 +123,24 @@ if [[ "$WINDOWS" == 1 ]]; then
   }
 fi
 
+if [[ "$ANDROID" == 1 ]]; then
+  # Asked before the long Linux build, so signing never stops at the end.
+  export OSTUDY_ANDROID_KEYSTORE="${OSTUDY_ANDROID_KEYSTORE:-$HOME/keys/ostudy-release.jks}"
+  [[ -f "$OSTUDY_ANDROID_KEYSTORE" ]] || {
+    printf 'ERROR: no release keystore at %s; set OSTUDY_ANDROID_KEYSTORE, or pass --no-android.\n' "$OSTUDY_ANDROID_KEYSTORE" >&2
+    exit 1
+  }
+  if [[ -z "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" && -t 0 ]]; then
+    read -rsp "Password for $OSTUDY_ANDROID_KEYSTORE: " OSTUDY_ANDROID_KEYSTORE_PASSWORD
+    printf '\n' >&2
+  fi
+  [[ -n "${OSTUDY_ANDROID_KEYSTORE_PASSWORD:-}" ]] || {
+    printf 'ERROR: no keystore password; run release.sh in a terminal or set OSTUDY_ANDROID_KEYSTORE_PASSWORD.\n' >&2
+    exit 1
+  }
+  export OSTUDY_ANDROID_KEYSTORE_PASSWORD
+fi
+
 case "$(uname -m)" in
   x86_64) ARCH="x86_64" ;;
   *) printf 'ERROR: Linux releases are built on x86_64 only, not %s.\n' "$(uname -m)" >&2; exit 1 ;;
@@ -145,6 +171,17 @@ if [[ "$WINDOWS" == 1 ]]; then
   cp -- "$WINDOWS_DIR/$WINDOWS_INSTALLER" "$OUT_DIR/"
 fi
 
+if [[ "$ANDROID" == 1 ]]; then
+  # The universal release APK (every ABI) installs from a browser download;
+  # Gradle leaves it unsigned and the release key never enters the build.
+  printf '\n==> Building and signing the Android APK\n'
+  "$SCRIPT_DIR/android-build.sh" --release --apk --target all
+  UNSIGNED_APK="$ROOT_DIR/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
+  APK="$OUT_DIR/ostudy-$EXPECTED_TAG-android.apk"
+  "$SCRIPT_DIR/sign-android-release.sh" "$UNSIGNED_APK" "$APK"
+  "$SCRIPT_DIR/verify-android-package.sh" "$APK" release
+fi
+
 git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
   --output="$OUT_DIR/ostudy-$EXPECTED_TAG-source.tar.gz" HEAD
 
@@ -152,11 +189,14 @@ git archive --format=tar.gz --prefix="ostudy-$EXPECTED_TAG/" \
   printf 'tag=%s\n' "$EXPECTED_TAG"
   printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
   printf 'pdfium_build=%s\n' "$PDFIUM_BUILD"
+  if [[ "$ANDROID" == 1 ]]; then
+    printf 'android_certificate_sha256=%s\n' "$(tr -d ' :\n' < "$ROOT_DIR/src-tauri/packaging/android/release-certificate.sha256")"
+  fi
 } >> "$OUT_DIR/BUILD-INFO.txt"
 (
   cd "$OUT_DIR"
   shopt -s nullglob
-  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.exe *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
+  sha256sum -- *.deb *.rpm *.AppImage *.flatpak *.apk *.exe *.tar.gz BUILD-INFO.txt > SHA256SUMS.txt
 )
 
 printf '\nRelease artifacts created in: %s\n' "$OUT_DIR"

@@ -4,7 +4,9 @@
 //! listener on this device with a one-time code, and the code (with the
 //! verifier only this process knows) is exchanged for an API key. On Android
 //! the browser is a separate app, so the page it lands on offers a link that
-//! brings oStudy back to the front; the code has already arrived by then. The key
+//! brings oStudy back to the front; the code has already arrived by then, and
+//! an exchange the system blocked while oStudy was in the background is tried
+//! again until it gets through. The key
 //! stays native: it is held here until it is saved as an OpenRouter
 //! service's credential, and React only ever sees an attempt identifier.
 //!
@@ -51,6 +53,17 @@ const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 8 * 1024;
 const EXCHANGE_TIMEOUT_MS: i64 = 30_000;
 const MAX_EXCHANGE_BYTES: usize = 64 * 1024;
+/// How long a code exchange that could not reach OpenRouter keeps trying. On
+/// Android the code arrives while the browser is in front, and the system can
+/// refuse a background app's connections until oStudy is open again; a failed
+/// connection never reached OpenRouter, so the single-use code is still good.
+const EXCHANGE_RETRY_LIMIT: Duration = Duration::from_secs(3 * 60);
+const EXCHANGE_RETRY_DELAYS: [Duration; 4] = [
+    Duration::from_millis(500),
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(3),
+];
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -156,8 +169,9 @@ pub(super) async fn wait(
         )
     };
 
+    let receiving = canceled.clone();
     let code = tauri::async_runtime::spawn_blocking(move || {
-        receive_code(&listeners, &canceled, Instant::now() + WAIT_LIMIT)
+        receive_code(&listeners, &receiving, Instant::now() + WAIT_LIMIT)
     })
     .await
     .map_err(|_| sign_in_failed())??;
@@ -168,11 +182,35 @@ pub(super) async fn wait(
         "code_verifier": verifier,
         "code_challenge_method": "S256",
     });
-    let response = runtime
-        .gateway
-        .post_json(url, None, &body, EXCHANGE_TIMEOUT_MS, MAX_EXCHANGE_BYTES)
-        .await
-        .map_err(|failure| CommandError::new(failure.safe.code, failure.safe.message))?;
+    let started = Instant::now();
+    let mut attempt_number = 0_usize;
+    let response = loop {
+        match runtime
+            .gateway
+            .post_json(
+                url.clone(),
+                None,
+                &body,
+                EXCHANGE_TIMEOUT_MS,
+                MAX_EXCHANGE_BYTES,
+            )
+            .await
+        {
+            Ok(response) => break response,
+            Err(failure) => {
+                let Some(delay) =
+                    exchange_retry_delay(&failure.safe.code, attempt_number, started.elapsed())
+                else {
+                    return Err(CommandError::new(failure.safe.code, failure.safe.message));
+                };
+                tokio::time::sleep(delay).await;
+                if canceled.load(Ordering::SeqCst) {
+                    return Err(canceled_error());
+                }
+                attempt_number += 1;
+            }
+        }
+    };
     let key = exchanged_key(&response)?;
 
     let mut slot = runtime.sign_in.lock();
@@ -411,6 +449,17 @@ fn callback_outcome(request: &str) -> Option<Result<String, CommandError>> {
     })
 }
 
+/// The pause before the code exchange is tried again, or `None` to give up.
+/// Only a connection that never reached OpenRouter is retried: any answer,
+/// or a timeout after the request may have arrived, could mean the code was
+/// already spent.
+fn exchange_retry_delay(code: &str, attempt_number: usize, elapsed: Duration) -> Option<Duration> {
+    if code != "ai_connection_failed" || elapsed >= EXCHANGE_RETRY_LIMIT {
+        return None;
+    }
+    Some(EXCHANGE_RETRY_DELAYS[attempt_number.min(EXCHANGE_RETRY_DELAYS.len() - 1)])
+}
+
 fn exchanged_key(response: &Value) -> Result<String, CommandError> {
     response
         .get("key")
@@ -501,6 +550,26 @@ mod tests {
         let (missing, page) = callback_page(None, Some(back));
         assert_eq!(missing, "404 Not Found");
         assert!(!page.contains(back));
+    }
+
+    #[test]
+    fn only_a_refused_connection_retries_the_exchange_and_only_for_a_while() {
+        let soon = Duration::from_secs(1);
+        assert_eq!(
+            exchange_retry_delay("ai_connection_failed", 0, soon),
+            Some(Duration::from_millis(500))
+        );
+        assert_eq!(
+            exchange_retry_delay("ai_connection_failed", 40, soon),
+            Some(Duration::from_secs(3))
+        );
+        assert_eq!(
+            exchange_retry_delay("ai_connection_failed", 3, EXCHANGE_RETRY_LIMIT),
+            None
+        );
+        for spent in ["ai_request_timeout", "ai_network_error", "ai_bad_request"] {
+            assert_eq!(exchange_retry_delay(spent, 0, soon), None, "{spent}");
+        }
     }
 
     #[test]
