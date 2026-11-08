@@ -2,6 +2,10 @@
 //! The driving future borrows the existing native service. Canceling its subscriber
 //! detaches that interest, not other subscribers. Dropping the driving future wakes
 //! waiters with an interrupted result; it never silently retries a provider call.
+//! The registry bounds how many windows it tracks at once. A window that arrives
+//! while it is full waits for one to finish rather than failing: several
+//! documents prepared together each queue up to a full lane of windows, and the
+//! provider lane, not this registry, decides how many requests run.
 
 use std::{
     collections::HashMap,
@@ -9,7 +13,7 @@ use std::{
     sync::{Arc, LazyLock, Mutex},
 };
 
-use tokio::sync::watch;
+use tokio::sync::{watch, Notify};
 
 use crate::{
     database::Database, error::CommandError, task_activity::ActivityGuard,
@@ -25,6 +29,8 @@ type Outcome = Result<(), (String, String)>;
 #[derive(Default)]
 struct Registry {
     jobs: Mutex<HashMap<Key, Arc<Job>>>,
+    /// Woken whenever a job leaves `jobs`, so windows waiting for room retry.
+    freed: Notify,
 }
 
 struct Job {
@@ -70,6 +76,7 @@ impl Producer<'_> {
                 jobs.remove(&self.key);
             }
         }
+        self.registry.freed.notify_waiters();
         self.finished = true;
     }
 }
@@ -108,10 +115,13 @@ where
     WORK.run(key, subscriber, operation).await
 }
 
+type Joined<'a> = (Subscription, Option<Producer<'a>>);
+
 impl Registry {
-    fn subscribe(&self, key: Key) -> Result<(Subscription, Option<Producer<'_>>), CommandError> {
+    /// `Ok(None)` means the registry is full; the caller waits for `freed`.
+    fn subscribe(&self, key: &Key) -> Result<Option<Joined<'_>>, CommandError> {
         let mut jobs = self.jobs.lock().map_err(|_| unavailable())?;
-        if let Some(job) = jobs.get(&key) {
+        if let Some(job) = jobs.get(key) {
             let mut count = job.subscribers.lock().map_err(|_| unavailable())?;
             if job.signal.is_canceled() || *count == 0 {
                 return Err(CommandError::new(
@@ -120,13 +130,13 @@ impl Registry {
                 ));
             }
             if *count >= MAX_SUBSCRIBERS {
-                return Err(capacity());
+                return Ok(None);
             }
             *count += 1;
-            return Ok((Subscription { job: job.clone() }, None));
+            return Ok(Some((Subscription { job: job.clone() }, None)));
         }
         if jobs.len() >= MAX_ACTIVE_WINDOWS {
-            return Err(capacity());
+            return Ok(None);
         }
         let activity = ActivityGuard::begin()?;
         let (result, _) = watch::channel(None);
@@ -136,16 +146,38 @@ impl Registry {
             result,
         });
         jobs.insert(key.clone(), job.clone());
-        Ok((
+        Ok(Some((
             Subscription { job: job.clone() },
             Some(Producer {
                 registry: self,
-                key,
+                key: key.clone(),
                 job,
                 _activity: activity,
                 finished: false,
             }),
-        ))
+        )))
+    }
+
+    async fn join(
+        &self,
+        key: &Key,
+        subscriber: &CancellationSignal,
+    ) -> Result<Joined<'_>, CommandError> {
+        loop {
+            // Register for the wake-up before looking, so a job that finishes
+            // between the look and the wait still wakes this caller.
+            let freed = self.freed.notified();
+            tokio::pin!(freed);
+            freed.as_mut().enable();
+            if let Some(joined) = self.subscribe(key)? {
+                return Ok(joined);
+            }
+            tokio::select! {
+                biased;
+                _ = subscriber.canceled() => return Err(canceled()),
+                _ = freed => {}
+            }
+        }
     }
 
     async fn run<F, Fut>(
@@ -159,7 +191,7 @@ impl Registry {
         Fut: Future<Output = Result<(), CommandError>>,
     {
         super::runtime::check_canceled(subscriber)?;
-        let (subscription, producer) = self.subscribe(key)?;
+        let (subscription, producer) = self.join(&key, subscriber).await?;
         let job = subscription.job.clone();
         let Some(mut producer) = producer else {
             let mut result = job.result.subscribe();
@@ -216,13 +248,6 @@ fn unavailable() -> CommandError {
     CommandError::new(
         "learning_task_registry_unavailable",
         "Shared preparation is unavailable.",
-    )
-}
-
-fn capacity() -> CommandError {
-    CommandError::new(
-        "learning_task_capacity",
-        "Shared preparation is at its bounded capacity.",
     )
 }
 
